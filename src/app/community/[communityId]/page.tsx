@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import type { Database } from '@/lib/database.types';
 import MiamiDashboard from '@/components/community/MiamiDashboard';
+import Link from 'next/link';
 
 // Define a more specific Profile type for this page's needs
 interface Profile {
@@ -26,6 +27,7 @@ export default function CommunityLandingPage() {
   const [community, setCommunity] = useState<{ name: string; banner_url?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<{ username: string; avatar_url?: string } | null>(null);
+  const [events, setEvents] = useState<any[]>([]); // State to hold events
 
   useEffect(() => {
     const fetchCommunity = async () => {
@@ -61,6 +63,40 @@ export default function CommunityLandingPage() {
     };
     fetchUser();
   }, [supabase]);
+
+  // Fetch events
+  useEffect(() => {
+    const fetchEvents = async () => {
+      if (!communityId) return;
+
+      // Modify the query to join events with posts and filter by posts.community_id
+      const { data, error } = await supabase
+        .from('events')
+        // Select event details and related post info
+        .select('event_start_time, location_text, posts!inner(community_id, title)')
+        // Filter by community_id in the posts table
+        .eq('posts.community_id', communityId)
+        // Order by event start time
+        .order('event_start_time', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching events:', error);
+      } else {
+        // Filter out events that have already passed based on event_start_time
+        const upcomingEvents = data?.filter(event => event.event_start_time && new Date(event.event_start_time) >= new Date());
+        // Map the data to a simpler structure for display
+        const formattedEvents = upcomingEvents?.map(event => ({
+            title: event.posts?.title || 'Untitled Event', // Add null check for posts
+            startTime: event.event_start_time,
+            location: event.location_text || 'No location specified',
+        }));
+        setEvents(formattedEvents || []);
+      }
+    };
+
+    if (communityId) fetchEvents();
+  }, [communityId, supabase]); // Added supabase dependency
+
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center"><p>Loading community...</p></div>;
@@ -111,19 +147,22 @@ export default function CommunityLandingPage() {
                 <a href="/profile" className="text-xs text-cyan-600 hover:underline">View Profile</a>
               </div>
             </div>
+            {/* TODO: Implement link to create new listing/event with pre-filled community */}
             <button className="mt-4 w-full bg-cyan-500 text-white py-2 rounded-lg font-semibold hover:bg-cyan-600">Post an Event/Listing</button>
           </div>
           {/* 8. Notifications & Alerts */}
           <div className="bg-white p-4 rounded-lg shadow">
             <h3 className="font-semibold text-sky-700 mb-2">Notifications</h3>
+            {/* TODO: Implement fetching and displaying real-time notifications for the user in this community */}
             <ul className="text-sm text-slate-600 space-y-1">
-              <li>No new notifications.</li>
+              <li>No new notifications.</li> {/* Placeholder */}
             </ul>
           </div>
           {/* Optional: Weather, News, Leaderboard, Language Selector */}
           <div className="bg-white p-4 rounded-lg shadow">
             <h3 className="font-semibold text-sky-700 mb-2">Weather</h3>
-            <div className="text-slate-600">[Weather widget]</div>
+            {/* TODO: Implement integration of a weather widget or fetch weather data based on community location */}
+            <div className="text-slate-600">[Weather widget]</div> {/* Placeholder */}
           </div>
         </aside>
 
@@ -132,25 +171,29 @@ export default function CommunityLandingPage() {
           {/* 2. Community Feed & Composer */}
           <section id="feed" className="bg-white p-4 rounded-lg shadow">
             <h2 className="text-xl font-bold text-sky-700 mb-3">Community Feed</h2>
+            {/* TODO: Implement integration of a post composer component */}
             <div className="mb-4">
               <textarea className="w-full p-2 border rounded-lg" placeholder="What's happening in [CommunityName]?" rows={2}></textarea>
               <button className="mt-2 bg-cyan-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-cyan-600">Post</button>
             </div>
             <div className="space-y-4">
-              {/* Example post */}
-              <div className="p-3 bg-sky-50 rounded-lg">[Feed Post]</div>
-              <div className="p-3 bg-sky-50 rounded-lg">[Feed Post]</div>
+              {/* TODO: Implement fetching and displaying community posts, potentially with infinite scrolling */}
+              <div className="p-3 bg-sky-50 rounded-lg">[Feed Post]</div> {/* Placeholder */}
+              <div className="p-3 bg-sky-50 rounded-lg">[Feed Post]</div> {/* Placeholder */}
             </div>
           </section>
           {/* 9. Community Poll or Question of the Day */}
           <section className="bg-white p-4 rounded-lg shadow">
             <h3 className="font-semibold text-sky-700 mb-2">Poll of the Day</h3>
-            <div className="text-slate-600">[Poll widget]</div>
+            {/* TODO: Implement fetching and displaying the daily poll/question and handle user interaction */}
+            <div className="text-slate-600">[Poll widget]</div> {/* Placeholder */}
           </section>
           {/* 6. Property Spotlight */}
           <section id="properties" className="bg-white p-4 rounded-lg shadow">
             <h3 className="font-semibold text-sky-700 mb-2">Property Spotlight</h3>
-            <div className="text-slate-600">[Featured property listing]</div>
+            {/* TODO: Implement fetching and displaying a featured property listing */}
+            <div className="text-slate-600">[Featured property listing]</div> {/* Placeholder */}
+            {/* TODO: Implement quick search functionality for properties */}
             <input className="mt-2 w-full p-2 border rounded-lg" placeholder="Quick search properties..." />
           </section>
         </main>
@@ -160,24 +203,31 @@ export default function CommunityLandingPage() {
           {/* 3. Upcoming Events Preview */}
           <section id="events" className="bg-white p-4 rounded-lg shadow">
             <h3 className="font-semibold text-sky-700 mb-2">Upcoming Events</h3>
+            {/* TODO: Fetch and display upcoming events for the community */}
             <ul className="text-sm text-slate-600 space-y-1">
+              {/* Placeholder */}
               <li>[Event 1]</li>
               <li>[Event 2]</li>
               <li>[Event 3]</li>
             </ul>
+            {/* TODO: Link to the full events page for this community */}
             <button className="mt-3 w-full bg-cyan-500 text-white py-2 rounded-lg font-semibold hover:bg-cyan-600">View All Events</button>
           </section>
           {/* 4. Featured Local Businesses/Promotions */}
           <section id="directory" className="bg-white p-4 rounded-lg shadow">
             <h3 className="font-semibold text-sky-700 mb-2">Featured Businesses</h3>
-            <div className="text-slate-600">[Business carousel/grid]</div>
-            <div className="mt-2 text-xs text-cyan-600">Latest coupons/promos</div>
+            {/* TODO: Implement fetching and displaying featured businesses, potentially with a carousel or grid component */}
+            <div className="text-slate-600">[Business carousel/grid]</div> {/* Placeholder */}
+            {/* TODO: Implement link to the full business directory page for this community */}
+            <div className="mt-2 text-xs text-cyan-600">Latest coupons/promos {/* TODO: Implement fetching and displaying latest coupons/promos */}</div>
           </section>
           {/* 5. Marketplace Highlights */}
           <section id="marketplace" className="bg-white p-4 rounded-lg shadow">
             <h3 className="font-semibold text-sky-700 mb-2">Marketplace Highlights</h3>
-            <div className="text-slate-600">[Trending now items]</div>
-            <div className="mt-2 text-xs text-cyan-600">Top new listings in last 24 hours</div>
+            {/* TODO: Implement fetching and displaying trending/new marketplace items */}
+            <div className="text-slate-600">[Trending now items]</div> {/* Placeholder */}
+            {/* TODO: Implement link to the full marketplace page for this community */}
+            <div className="mt-2 text-xs text-cyan-600">Top new listings in last 24 hours {/* TODO: Implement fetching and displaying top new listings */}</div>
           </section>
         </aside>
       </div>

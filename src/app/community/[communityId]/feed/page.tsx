@@ -880,7 +880,7 @@ export default function CommunityFeedPage() {
           .upload(videoName, video);
         if (videoUploadError) {
           throw new Error(`Video upload failed: ${videoUploadError.message}`);
-        }
+          }
         const { data: videoPublicUrlData } = supabase.storage
           .from(FEED_VIDEOS_BUCKET)
           .getPublicUrl(videoUploadData.path);

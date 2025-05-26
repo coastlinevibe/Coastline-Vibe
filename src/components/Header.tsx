@@ -1,5 +1,5 @@
 "use client";
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
@@ -11,14 +11,44 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchUserAndProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+
+      if (user) {
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('username, avatar_url, role')
+          .eq('id', user.id)
+          .single();
+
+        if (profileData) {
+          setProfile(profileData);
+        }
+      }
+    };
+
+    fetchUserAndProfile();
+  }, [supabase]);
+
   if (pathname === '/login' || pathname === '/create-profile' || pathname.startsWith('/superadmin')) return null;
-  const navLinks = [
+
+  const baseNavLinks = [
     { label: 'Dashboard', href: `/community/${communityId}` },
     { label: 'Properties', href: '/properties' },
     { label: 'Coastline Market', href: '/market' },
     { label: 'Chatter', href: `/community/${communityId}/feed` },
-    { label: 'Business Dashboard', href: '/business/dashboard' },
   ];
+
+  const navLinks = profile?.role === 'business'
+    ? [...baseNavLinks, { label: 'Business Dashboard', href: '/business/dashboard' }]
+    : baseNavLinks;
+
   const isHome = pathname === '/';
 
   const handleLogout = async () => {
@@ -30,12 +60,12 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
     <header className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur border-b border-cyan-100 shadow-sm">
       <div className="w-full flex items-center h-16 gap-6 px-6">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 font-extrabold text-2xl text-cyan-900 tracking-tight hover:text-teal-600 transition-colors">
+        <div className="flex items-center gap-2 font-extrabold text-2xl text-cyan-900 tracking-tight">
           <span className="text-3xl">🌴</span>
           <span>CoastlineVibe</span>
-        </Link>
+        </div>
         {/* Only show nav on non-home pages */}
-        {!isHome && <>
+        {!isHome && user && <>
           <nav className="flex-1 flex items-center gap-2 ml-8">
             {navLinks.map((link) => (
               <Link
@@ -53,12 +83,19 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
               </Link>
             ))}
           </nav>
-          {/* Dashboard Button */}
-          <Link href={`/community/${communityId}`} passHref legacyBehavior>
-            <a className={`px-4 py-2 rounded font-bold text-white bg-teal-500 hover:bg-teal-600 transition shadow ${pathname === `/community/${communityId}` ? 'ring-2 ring-teal-300' : ''}`}>Dashboard</a>
-          </Link>
-          {/* Logout Button */}
-          <button onClick={handleLogout} className="ml-4 px-4 py-2 rounded font-bold bg-red-100 text-red-700 hover:bg-red-200 transition">Logout</button>
+          {/* User Info and Dashboard/Logout Buttons */}
+          <div className="flex items-center gap-4">
+            {profile && (
+              <Link href="/profile" className="flex items-center gap-2 cursor-pointer">
+                <img src={profile.avatar_url || '/placeholder-avatar.png'} alt={profile.username} className="w-8 h-8 rounded-full object-cover" />
+                <span className="font-semibold text-cyan-900 hidden md:inline">{profile.username}</span>
+              </Link>
+            )}
+            <Link href={`/community/${communityId}`} passHref legacyBehavior>
+              <a className={`px-4 py-2 rounded font-bold text-white bg-teal-500 hover:bg-teal-600 transition shadow ${pathname === `/community/${communityId}` ? 'ring-2 ring-teal-300' : ''}`}>Dashboard</a>
+            </Link>
+            <button onClick={handleLogout} className="px-4 py-2 rounded font-bold bg-red-100 text-red-700 hover:bg-red-200 transition">Logout</button>
+          </div>
         </>}
         {/* On home, show login button on right */}
         {isHome && (

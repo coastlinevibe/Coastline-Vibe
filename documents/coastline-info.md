@@ -378,3 +378,73 @@ Access or edit global platform settings.
 View/manage superadmin-level analytics.
 
 Change platform-wide roles (can’t make superadmins).
+
+
+
+Perfect. Here's your **full system checklist** for a **CoastlineVibe subscription + feature audit**, combining:
+
+1. ✅ **All basic features**
+2. 💎 **WOW (premium/AI) features**
+3. 🧾 **Mapped per subscription tier** (Onboard, Breaking Waves, Open Waters)
+4. 🔐 **Marked as free, pro, elite**
+
+---
+
+## ✅ CoastlineVibe Feature Audit (Subscription & System Checklist)
+
+| Feature                         | Description                                    | Type     | Onboard | Breaking Waves | Open Waters |
+| ------------------------------- | ---------------------------------------------- | -------- | ------- | -------------- | ----------- |
+| 📝 Create/Edit Business Profile | Add business listing, contact, address, hours  | Core     | ✅       | ✅              | ✅           |
+| 🖼 Upload Logo & Banner         | Add branding images to directory               | Core     | ✅       | ✅              | ✅           |
+| 📍 Location on Map              | Store lat/lng + show pin                       | Core     | ✅       | ✅              | ✅           |
+| 🗂 Category & Subcategory       | Pick main + related industry tags              | Core     | ✅       | ✅              | ✅           |
+| 🔍 Appears in Public Directory  | Shows up in search after approval              | Core     | ✅       | ✅              | ✅           |
+| ⌛ Status Tag                    | "Pending", "Approved", etc. badge on dashboard | Core     | ✅       | ✅              | ✅           |
+| 🧭 Community Search Filters     | Filter by category, city, open now             | Core     | ✅       | ✅              | ✅           |
+| 🗺 Map View                     | Business pins + radius search                  | Premium  | ❌       | ✅              | ✅           |
+| 🖥 View Own Analytics (Views)   | See view count of your listing                 | Core     | ✅       | ✅              | ✅           |
+| 🔗 View Clicks (Phone, Website) | See engagement with your links                 | Pro      | ❌       | ✅              | ✅           |
+| 📆 Accept Booking Requests      | Receive messages via booking form              | Core     | ✅       | ✅              | ✅           |
+| 💬 Business Reviews             | Users can rate + comment on listings           | Core     | ✅       | ✅              | ✅           |
+| 🧠 AI Description Generator     | One-click AI-generated business bio            | WOW      | ❌       | ✅              | ✅           |
+| 🧠 AI Promo Generator           | One-click AI ad/post text                      | WOW      | ❌       | ❌              | ✅           |
+| ✨ Smart Tags                    | Auto-tag listings (e.g., “Pet-Friendly”)       | WOW      | ❌       | ❌              | ✅           |
+| 📣 Post Promotions              | Monthly promo push to feed/home                | Pro      | ❌       | 1/month        | Unlimited   |
+| 📌 Homepage Feature Slot        | Featured carousel placement                    | Premium  | ❌       | ❌              | ✅           |
+| 🏷 Highlighted Badge            | Gold badge, increased visibility               | Premium  | ❌       | ❌              | ✅           |
+| 📊 Export Analytics             | Download as CSV or PDF                         | Pro      | ❌       | ❌              | ✅           |
+| 💬 Chat with Visitors           | In-app chat or DM system                       | WOW      | ❌       | ❌              | ✅ (future)  |
+| 🛠 Add-ons & Boosts             | WhatsApp booking, 7-day homepage boost         | Optional | Paid    | Discount       | Some Free   |
+| 🌐 Mobile Optimized View        | Responsive layout                              | Core     | ✅       | ✅              | ✅           |
+| 🌍 Multilingual Support         | EN/VI switcher                                 | WOW      | ❌       | ❌              | ✅           |
+| 📥 Support Request Button       | Contact admin directly                         | Core     | ✅       | ✅              | ✅           |
+
+---
+
+### 🧾 Admin Tools (System Level – Not Subscription Dependent)
+
+| Feature                  | Description                       | Status   |
+| ------------------------ | --------------------------------- | -------- |
+| ✅ User & Role Management | Promote/demote users              | ✅ Done   |
+| ✅ Business Approvals     | Approve/decline new listings      | ✅ Done   |
+| ✅ Reported Posts Viewer  | Flagged content moderation        | ✅ Done   |
+| ✅ Post/Listing Deletion  | Clean-up of inappropriate content | ✅ Done   |
+| ⏳ Analytics Summary      | Total users, businesses, activity | ⏳ Needed |
+| ⏳ Feature Control Panel  | Toggle premium add-ons            | ⏳ Needed |
+
+---
+
+### 📦 Add-On Modules (Across Pages)
+
+| Module                           | Pages Applied To           | Status      |
+| -------------------------------- | -------------------------- | ----------- |
+| 🛍 Marketplace Listings          | Marketplace Page           | ✅ Core      |
+| 🏠 Property Listings             | Properties Page            | ✅ Core      |
+| 📢 Community Feed                | Feed Page                  | ✅ Core      |
+| 🧾 Onboarding Flow (9 Steps)     | Business Signup            | In Progress |
+| 💎 Subscription Tier Recognition | Dashboard badges, UI flags | ⏳ Needed    |
+| 💳 Payment Flow (PayPal/Stripe)  | Upgrade buttons → pay wall | ⏳ Planned   |
+
+---
+
+Would you like this exported as a markdown `.md` checklist or JSON config for Cursor to use in system tests?

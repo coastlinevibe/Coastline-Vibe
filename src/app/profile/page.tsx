@@ -191,6 +191,12 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+        {/* Pending Friends */}
+        <div>
+          <div className="font-semibold text-cyan-900 mb-2 text-lg">Pending Friends</div>
+          {/* TODO: Fetch and display pending friend requests */}
+          <div className="text-cyan-700 text-sm">No pending friend requests.</div> {/* Placeholder */}
+        </div>
         {/* Notifications / Inquiries */}
         <div>
           <div className="font-semibold text-cyan-900 mb-2 text-lg">Notifications / Inquiries</div>
