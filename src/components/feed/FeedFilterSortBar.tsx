@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 // DatePicker might be removed if startDate/endDate filters are removed
 // import DatePicker from 'react-datepicker'; 
-import { X } from 'lucide-react'; 
+import { X, List, MessageCircle, HelpCircle, Megaphone, Calendar, BarChart3 } from 'lucide-react'; 
 
 // Ensure PostType is available, e.g. by import if FeedFilters uses it.
 // This path assumes PostType is exported from PostToolbar in a way that can be imported.
@@ -30,6 +30,28 @@ interface FeedFilterSortBarProps {
   onClearFilters: () => void;
   // communityAuthors prop is removed as the 'author' filter is replaced by 'searchTerm'
   // If searchTerm needs suggestions, that's a different implementation.
+}
+
+// Add a context to detect pointer mode and pointer position
+declare global {
+  interface Window {
+    __pointerMode?: boolean;
+    __pointerPos?: { x: number; y: number };
+  }
+}
+
+function usePointerMode() {
+  const [pointerMode, setPointerMode] = useState(false);
+  const [pointerPos, setPointerPos] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const handler = () => {
+      setPointerMode(!!window.__pointerMode);
+      setPointerPos(window.__pointerPos || null);
+    };
+    window.addEventListener('pointermodechange', handler);
+    return () => window.removeEventListener('pointermodechange', handler);
+  }, []);
+  return { pointerMode, pointerPos };
 }
 
 const FeedFilterSortBar: React.FC<FeedFilterSortBarProps> = ({
@@ -111,6 +133,38 @@ const FeedFilterSortBar: React.FC<FeedFilterSortBarProps> = ({
     });
   };
 
+  const { pointerMode, pointerPos } = usePointerMode();
+  const iconRefs = {
+    all: useRef<HTMLButtonElement>(null),
+    ask: useRef<HTMLButtonElement>(null),
+    announce: useRef<HTMLButtonElement>(null),
+    event: useRef<HTMLButtonElement>(null),
+    poll: useRef<HTMLButtonElement>(null),
+  };
+  const [hovered, setHovered] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pointerMode || !pointerPos) {
+      setHovered(null);
+      return;
+    }
+    for (const key of Object.keys(iconRefs)) {
+      const ref = iconRefs[key as keyof typeof iconRefs].current;
+      if (ref) {
+        const rect = ref.getBoundingClientRect();
+        if (
+          pointerPos.x >= rect.left &&
+          pointerPos.x <= rect.right &&
+          pointerPos.y >= rect.top &&
+          pointerPos.y <= rect.bottom
+        ) {
+          setHovered(key);
+          return;
+        }
+      }
+    }
+    setHovered(null);
+  }, [pointerMode, pointerPos]);
+
   return (
     <div className="bg-white p-4 rounded-lg shadow mb-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -157,19 +211,78 @@ const FeedFilterSortBar: React.FC<FeedFilterSortBarProps> = ({
           {/* Post Type Filter Dropdown */}
           <div className="p-2">
             <label htmlFor="post-type-filter" className="sr-only">Filter by Post Type</label>
-            <select 
-              id="post-type-filter"
-              value={currentFilters.postType}
-              onChange={handlePostTypeChange}
-              className="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm rounded-md shadow-sm"
+            <div className="flex gap-2">
+              <button
+                ref={iconRefs.all}
+                type="button"
+                onClick={() => onFiltersChange({ ...currentFilters, postType: 'all' })}
+                className={`p-2 rounded-full border focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${currentFilters.postType === 'all' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100'}`}
+                aria-label="All Types"
+                title="All Types"
+                tabIndex={0}
+              >
+                <List className="w-5 h-5" />
+                {(pointerMode && hovered === 'all') && (
+                  <span className="block text-xs mt-1 text-cyan-700">All Types</span>
+                )}
+              </button>
+              <button
+                ref={iconRefs.ask}
+                type="button"
+                onClick={() => onFiltersChange({ ...currentFilters, postType: 'ask' })}
+                className={`p-2 rounded-full border focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${currentFilters.postType === 'ask' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100'}`}
+                aria-label="Ask"
+                title="Ask"
+                tabIndex={0}
             >
-              <option value="all">All Types</option>
-              <option value="general">General</option>
-              <option value="ask">Ask</option>
-              <option value="announce">Announcement</option>
-              <option value="event">Event</option>
-              <option value="poll">Poll</option>
-            </select>
+                <HelpCircle className="w-5 h-5" />
+                {(pointerMode && hovered === 'ask') && (
+                  <span className="block text-xs mt-1 text-cyan-700">Ask</span>
+                )}
+              </button>
+              <button
+                ref={iconRefs.announce}
+                type="button"
+                onClick={() => onFiltersChange({ ...currentFilters, postType: 'announce' })}
+                className={`p-2 rounded-full border focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${currentFilters.postType === 'announce' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100'}`}
+                aria-label="Announcement"
+                title="Announcement"
+                tabIndex={0}
+              >
+                <Megaphone className="w-5 h-5" />
+                {(pointerMode && hovered === 'announce') && (
+                  <span className="block text-xs mt-1 text-cyan-700">Announcement</span>
+                )}
+              </button>
+              <button
+                ref={iconRefs.event}
+                type="button"
+                onClick={() => onFiltersChange({ ...currentFilters, postType: 'event' })}
+                className={`p-2 rounded-full border focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${currentFilters.postType === 'event' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100'}`}
+                aria-label="Event"
+                title="Event"
+                tabIndex={0}
+              >
+                <Calendar className="w-5 h-5" />
+                {(pointerMode && hovered === 'event') && (
+                  <span className="block text-xs mt-1 text-cyan-700">Event</span>
+                )}
+              </button>
+              <button
+                ref={iconRefs.poll}
+                type="button"
+                onClick={() => onFiltersChange({ ...currentFilters, postType: 'poll' })}
+                className={`p-2 rounded-full border focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${currentFilters.postType === 'poll' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100'}`}
+                aria-label="Poll"
+                title="Poll"
+                tabIndex={0}
+              >
+                <BarChart3 className="w-5 h-5" />
+                {(pointerMode && hovered === 'poll') && (
+                  <span className="block text-xs mt-1 text-cyan-700">Poll</span>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Removed UI for: Contains Image, Date Range, Has Poll */}

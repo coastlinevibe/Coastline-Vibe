@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
-import BusinessForm from './BusinessForm';
+import BusinessMultiStepForm from './BusinessMultiStepForm';
 
 // Import shadcn ui components
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,7 +52,7 @@ const BusinessDashboard: React.FC = () => {
         // Get user role
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, is_approved')
           .eq('id', user.id)
           .maybeSingle();
         console.log('profile fetch result:', { data: profile, error: profileError });
@@ -61,25 +61,75 @@ const BusinessDashboard: React.FC = () => {
           return;
         }
         setUserRole(profile.role);
-        setCurrentPlan(profile.plan || 'Free');
+        setCurrentPlan(profile && (profile as any).plan ? (profile as any).plan : 'Free');
         // Get business
+        console.log("Fetching business for user_id:", user.id);
         const { data: businessData, error: businessError } = await supabase
           .from('businesses')
           .select('*')
           .eq('user_id', user.id)
-          .maybeSingle();
-        if (businessError) throw businessError;
-        if (!businessData) {
-          setBusiness(null);
+          .order('created_at', { ascending: false });  // Get the most recent one first
+        
+        console.log("Business fetch result:", { data: businessData, error: businessError });
+        
+        if (businessError) {
+          console.error("Error fetching business:", businessError);
+          throw businessError;
+        }
+        
+        if (!businessData || businessData.length === 0) {
+          console.log("No business found for user_id:", user.id);
+          setBusiness({...profile, is_approved: profile.is_approved});
           setLoading(false);
           return;
         }
-        setBusiness(businessData);
+        
+        // Use the first business if multiple exist
+        const firstBusiness = businessData[0];
+        console.log("Using business data:", firstBusiness);
+        
+        // Make sure the business data has the is_approved field
+        firstBusiness.is_approved = profile.is_approved;
+        
+        // Look up category and subcategory names if needed
+        if (firstBusiness.category_id && !firstBusiness.category) {
+          try {
+            const { data: categoryData } = await supabase
+              .from('categories')
+              .select('name')
+              .eq('id', firstBusiness.category_id)
+              .single();
+            
+            if (categoryData) {
+              firstBusiness.category = categoryData.name;
+            }
+          } catch (err) {
+            console.error("Error fetching category name:", err);
+          }
+        }
+        
+        if (firstBusiness.subcategory_id && !firstBusiness.subcategory) {
+          try {
+            const { data: subcategoryData } = await supabase
+              .from('subcategories')
+              .select('name')
+              .eq('id', firstBusiness.subcategory_id)
+              .single();
+            
+            if (subcategoryData) {
+              firstBusiness.subcategory = [subcategoryData.name];
+            }
+          } catch (err) {
+            console.error("Error fetching subcategory name:", err);
+          }
+        }
+        
+        setBusiness(firstBusiness);
         // Analytics (mock views/clicks, real booking requests)
         const { data: appointments } = await supabase
           .from('appointments')
           .select('id')
-          .eq('business_id', businessData.id);
+          .eq('business_id', firstBusiness.id);
         setAnalytics({
           views: Math.floor(Math.random() * 1000),
           clicks: Math.floor(Math.random() * 100),
@@ -148,7 +198,102 @@ const BusinessDashboard: React.FC = () => {
     return (
       <div className="max-w-2xl mx-auto p-6">
         <h2 className="text-2xl font-bold text-cyan-900 mb-6">Create Your Business Profile</h2>
-        <BusinessForm />
+        <button 
+          onClick={async () => {
+            try {
+              const { data: { user } } = await supabase.auth.getUser();
+              if (user) {
+                console.log("Current user ID:", user.id);
+                
+                // Fetch all businesses to check if any exist
+                const { data: allBusinesses } = await supabase
+                  .from("businesses")
+                  .select("*");
+                console.log("All businesses in database:", allBusinesses);
+
+                // Get the user's profile
+                const { data: profileData } = await supabase
+                  .from("profiles")
+                  .select("*")
+                  .eq("id", user.id)
+                  .single();
+                console.log("User profile:", profileData);
+
+                // Try to find the business by user_id
+                const { data: userBusiness } = await supabase
+                  .from("businesses")
+                  .select("*")
+                  .eq("user_id", user.id);
+                console.log("Businesses with user_id:", userBusiness);
+
+                if (userBusiness && userBusiness.length > 0) {
+                  // We found the business but it's not showing up in the dashboard
+                  // Let's display it manually
+                  const business = userBusiness[0]; // Use the first one if multiple exist
+                  
+                  // Try to load category and subcategory names
+                  if (business.category_id) {
+                    try {
+                      const { data: categoryData } = await supabase
+                        .from('categories')
+                        .select('name')
+                        .eq('id', business.category_id)
+                        .single();
+                      
+                      if (categoryData) {
+                        business.category = categoryData.name;
+                      }
+                    } catch (err) {
+                      console.error("Error fetching category name:", err);
+                    }
+                  }
+                  
+                  if (business.subcategory_id) {
+                    try {
+                      const { data: subcategoryData } = await supabase
+                        .from('subcategories')
+                        .select('name')
+                        .eq('id', business.subcategory_id)
+                        .single();
+                      
+                      if (subcategoryData) {
+                        business.subcategory = [subcategoryData.name];
+                      }
+                    } catch (err) {
+                      console.error("Error fetching subcategory name:", err);
+                    }
+                  }
+                  
+                  // Make sure the business has the required fields
+                  business.is_approved = profileData.is_approved;
+                  
+                  // Set business data
+                  setBusiness(business);
+                  alert("Found your business! It should now display.");
+                } else if (allBusinesses && allBusinesses.length > 0) {
+                  // No business for this user, but there are others in the database
+                  // Let's display the first one for debugging purposes
+                  const firstBusiness = allBusinesses[0];
+                  setBusiness({
+                    ...firstBusiness,
+                    is_approved: profileData.is_approved,
+                    name: firstBusiness.name || firstBusiness.title || "Business Listing"
+                  });
+                  alert("No business found for your user ID. Displaying the first business in the database for debugging.");
+                } else {
+                  alert("No business found for your user ID and no businesses in the database.");
+                }
+              }
+            } catch (err) {
+              console.error("Error checking business:", err);
+              alert("Error checking business: " + (err instanceof Error ? err.message : String(err)));
+            }
+          }}
+          className="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+        >
+          Debug: Check for Business
+        </button>
+        <BusinessMultiStepForm />
       </div>
     );
   }
@@ -174,10 +319,16 @@ const BusinessDashboard: React.FC = () => {
               </span>
             </div>
             <div className="flex flex-wrap gap-2 mt-2">
-              <span className="bg-cyan-100 text-cyan-800 px-2 py-1 rounded text-xs">{business.category}</span>
-              {business.subcategory?.map((sub: string) => (
-                <span key={sub} className="bg-cyan-50 text-cyan-700 px-2 py-1 rounded text-xs">{sub}</span>
-              ))}
+              <span className="bg-cyan-100 text-cyan-800 px-2 py-1 rounded text-xs">
+                {business.category || 'Category N/A'}
+              </span>
+              {business.subcategory && Array.isArray(business.subcategory) && business.subcategory.length > 0 ? (
+                business.subcategory.map((sub: string) => (
+                  <span key={sub} className="bg-cyan-50 text-cyan-700 px-2 py-1 rounded text-xs">{sub}</span>
+                ))
+              ) : (
+                <span className="bg-cyan-50 text-cyan-700 px-2 py-1 rounded text-xs">Subcategory N/A</span>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-2 text-gray-700">
               <span className="text-cyan-400 mr-1">📍</span>
@@ -190,12 +341,30 @@ const BusinessDashboard: React.FC = () => {
               <span>{business.phone}</span> | <span>{business.email}</span>
             </div>
           </div>
-          <button
-            onClick={() => setShowEditForm(true)}
-            className="mt-4 md:mt-0 px-4 py-2 bg-cyan-600 text-white rounded-md hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2"
-          >
-            Edit Listing
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => {
+                // Get the current community slug from URL
+                const pathParts = window.location.pathname.split('/');
+                const communitySlug = pathParts.find(part => part !== '' && part !== 'community' && !part.includes('business'));
+                
+                // Navigate to the business detail page which will use the accommodation template
+                if (communitySlug && business?.id) {
+                  // Navigate in the same tab since it's a view action
+                  window.location.href = `/community/${communitySlug}/business/${business.id}`;
+                }
+              }}
+              className="px-4 py-2 bg-cyan-500 text-white rounded-md hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2"
+            >
+              View Listing
+            </button>
+            <button
+              onClick={() => setShowEditForm(true)}
+              className="px-4 py-2 bg-cyan-600 text-white rounded-md hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2"
+            >
+              Edit Listing
+            </button>
+          </div>
         </div>
         <div className="px-6 pb-6">
           <div className="text-gray-600 mt-2 whitespace-pre-line">{business.description}</div>
@@ -278,13 +447,7 @@ const BusinessDashboard: React.FC = () => {
                   ✕
                 </button>
               </div>
-              <BusinessForm
-                initialValues={business}
-                onSubmitSuccess={() => {
-                  setShowEditForm(false);
-                  window.location.reload();
-                }}
-              />
+              <BusinessMultiStepForm />
             </div>
           </div>
         </div>

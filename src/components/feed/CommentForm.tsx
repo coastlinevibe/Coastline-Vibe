@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import EmojiPicker from '@/components/shared/EmojiPicker';
+import MentionTextarea from '@/components/mention/MentionTextarea';
 
 interface CommentFormProps {
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
@@ -8,6 +9,7 @@ interface CommentFormProps {
   onChange: (value: string) => void;
   isSubmitting: boolean;
   placeholder?: string;
+  communityId: string;
 }
 
 export default function CommentForm({
@@ -15,44 +17,33 @@ export default function CommentForm({
   value,
   onChange,
   isSubmitting,
-  placeholder = "Write a comment..."
+  placeholder = "Write a comment...",
+  communityId,
 }: CommentFormProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const handleEmojiInsert = (emoji: string) => {
+    onChange(value + emoji);
+  };
 
   return (
-    <form onSubmit={onSubmit} className="mb-4 flex items-start space-x-2">
+    <form onSubmit={onSubmit} className="flex items-start space-x-2">
       <div className="flex-grow relative">
-        <textarea
-          ref={textareaRef}
+        <MentionTextarea
+          communityId={communityId}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          setValue={onChange}
           placeholder={placeholder}
-          className="w-full p-2.5 border rounded-lg text-sm resize-none overflow-hidden dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+          className="w-full p-2.5 border rounded-lg text-sm resize-none bg-white text-black border-gray-300 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 pr-10 placeholder-gray-500"
           rows={1}
-          disabled={isSubmitting}
         />
-        <div className="absolute right-2 bottom-2">
+        <div className="absolute top-1/2 right-2.5 transform -translate-y-1/2 z-10 flex items-center">
           <EmojiPicker
-            onEmojiSelect={(emoji) => {
-              const textarea = textareaRef.current;
-              if (textarea) {
-                const start = textarea.selectionStart;
-                const end = textarea.selectionEnd;
-                const newValue = value.substring(0, start) + emoji + value.substring(end);
-                onChange(newValue);
-                // Set cursor position after the inserted emoji
-                setTimeout(() => {
-                  textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
-                  textarea.focus();
-                }, 0);
-              }
-            }}
+            onEmojiSelect={handleEmojiInsert}
           />
         </div>
       </div>
       <button 
         type="submit" 
-        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm flex items-center justify-center disabled:opacity-60"
+        className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2.5 rounded-lg text-sm flex items-center justify-center disabled:opacity-60 h-[40px]"
         disabled={isSubmitting || !(typeof value === 'string' && value.trim())}
         title="Submit comment"
       >

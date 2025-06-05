@@ -1,8 +1,9 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
+import VisionChat from '../../../components/VisionChat';
 
 const categories = ['Electronics', 'Sports', 'Furniture', 'Fashion'];
 const conditions = ['New', 'Like New', 'Good', 'Used'];
@@ -45,6 +46,12 @@ export default function MarketCreatePage() {
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  // AI Assistant states
+  const [keywords, setKeywords] = useState('');
+  const [generatedDescription, setGeneratedDescription] = useState('');
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  // Add a new state for the main image
+  const [mainImage, setMainImage] = useState<File | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -209,72 +216,232 @@ export default function MarketCreatePage() {
     }
   };
 
+  // AI Description generator for market items (client-side, template-based)
+  const generateDescription = () => {
+    setIsGeneratingDescription(true);
+    // Use title, category, condition, and keywords
+    const { title, category, condition } = formData;
+    const keywordText = keywords.trim() ? `Featuring ${keywords}` : '';
+    const base = title ? `${title}: ` : '';
+    const cat = category ? `Category: ${category}. ` : '';
+    const cond = condition ? `Condition: ${condition}. ` : '';
+    const descTemplates = [
+      `${base}${cat}${cond}{keywords}A great find for anyone looking for quality and value!`,
+      `${base}This item is in {condition} condition. {cat}{keywords}Don't miss out on this opportunity!`,
+      `${base}{cat}{cond}{keywords}Ready for a new owner!`,
+    ];
+    const template = descTemplates[Math.floor(Math.random() * descTemplates.length)];
+    const desc = template
+      .replace('{keywords}', keywordText ? keywordText + '. ' : '')
+      .replace('{cat}', cat)
+      .replace('{cond}', cond)
+      .replace('{condition}', condition);
+    setTimeout(() => {
+      setGeneratedDescription(desc);
+      setFormData(prev => ({ ...prev, description: desc }));
+      setIsGeneratingDescription(false);
+    }, 800);
+  };
+  const useGeneratedDescription = () => {
+    if (generatedDescription) {
+      setFormData(prev => ({ ...prev, description: generatedDescription }));
+    }
+  };
+
+  // 2. Auto-generate description when all required fields are filled
+  // useEffect(() => {
+  //   if (mainImage && formData.title && formData.category && formData.condition) {
+  //     // Build prompt
+  //     let prompt = `Generate a detailed, appealing description for a marketplace item. Title: ${formData.title}. Category: ${formData.category}. Condition: ${formData.condition}.`;
+  //     if (keywords.trim()) prompt += ` Keywords: ${keywords}`;
+  //     // Call Vision API
+  //     const fetchDescription = async () => {
+  //       setIsGeneratingDescription(true);
+  //       setGeneratedDescription('');
+  //       setUploadError(null);
+  //       try {
+  //         const formDataObj = new FormData();
+  //         formDataObj.append('image', mainImage);
+  //         const res = await fetch('/api/vision-chat', {
+  //           method: 'POST',
+  //           body: formDataObj,
+  //         });
+  //         const data = await res.json();
+  //         if (data.reply) {
+  //           setGeneratedDescription(data.reply);
+  //           setFormData(prev => ({ ...prev, description: data.reply }));
+  //         } else {
+  //           setUploadError(data.error || 'No description generated');
+  //         }
+  //       } catch (err: any) {
+  //         setUploadError(err.message);
+  //       } finally {
+  //         setIsGeneratingDescription(false);
+  //       }
+  //     };
+  //     fetchDescription();
+  //   }
+  // }, [mainImage, formData.title, formData.category, formData.condition, keywords]);
+
+  // 3. Add main image to gallery as first image
+  useEffect(() => {
+    if (mainImage) {
+      setImagePreviews(prev => [URL.createObjectURL(mainImage), ...prev.filter((_, i) => i !== 0)]);
+      setFormData(prev => ({ ...prev, imageFiles: [mainImage, ...prev.imageFiles.filter((_, i) => i !== 0)] }));
+    }
+  }, [mainImage]);
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
         <h1 className="text-2xl font-bold mb-4">Create Market Item</h1>
         <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Basic Info */}
-          <div>
-            <h2 className="text-lg font-bold text-cyan-900 mb-2">Basic Info</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block font-medium mb-1">Title</label>
-                <input type="text" name="title" value={formData.title} onChange={handleChange} className="w-full border rounded px-2 py-1" required placeholder="e.g. iPhone 13 Pro" />
-              </div>
-              <div>
-                <label className="block font-medium mb-1">Description</label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleChange}
-                  className="w-full border rounded px-2 py-1 whitespace-pre-line"
-                  required
-                  placeholder="Describe the item, features, and condition..."
-                  rows={5}
-                />
-              </div>
-              <div>
-                <label className="block font-medium mb-1">Price</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                  <input
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleChange}
-                    className="w-full border rounded pl-7 pr-2 py-1"
-                    required
-                    placeholder="USD"
-                  />
+          {/* 1. Top row: Title, main image, Category, Condition */}
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <label className="block font-medium mb-1">Title <span className="text-red-500">*</span></label>
+              <input
+                type="text"
+                name="title"
+                value={formData.title}
+                onChange={handleChange}
+                className="w-full border rounded px-2 py-1"
+                required
+                placeholder="e.g. Pearl White Throne"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block font-medium mb-1">Main Image (required) <span className="text-red-500">*</span></label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={e => {
+                  if (e.target.files && e.target.files[0]) {
+                    setMainImage(e.target.files[0]);
+                  }
+                }}
+                className="w-full border rounded px-2 py-1"
+                required
+              />
+              {mainImage && (
+                <div className="mt-2">
+                  <img src={URL.createObjectURL(mainImage)} alt="Main preview" className="w-20 h-20 object-cover rounded" />
                 </div>
-              </div>
-              <div>
-                <label className="block font-medium mb-1">Category</label>
-                <select name="category" value={formData.category} onChange={handleChange} className="w-full border rounded px-2 py-1">
-                  {categories.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block font-medium mb-1">Condition</label>
-                <select name="condition" value={formData.condition} onChange={handleChange} className="w-full border rounded px-2 py-1">
-                  {conditions.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block font-medium mb-1">Location</label>
-                <input type="text" name="location" value={formData.location} onChange={handleChange} className="w-full border rounded px-2 py-1" required placeholder="e.g. Miami" />
-              </div>
-              <div>
-                <label className="block font-medium mb-1">Tags <span className="text-xs text-gray-500">(comma separated)</span></label>
-                <input type="text" name="tags" value={formData.tags} onChange={handleChange} className="w-full border rounded px-2 py-1" placeholder="e.g. phone, apple" />
-              </div>
+              )}
+            </div>
+            <div className="flex-1">
+              <label className="block font-medium mb-1">Category <span className="text-red-500">*</span></label>
+              <select
+                name="category"
+                value={formData.category}
+                onChange={handleChange}
+                className="w-full border rounded px-2 py-1"
+                required
+              >
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block font-medium mb-1">Condition <span className="text-red-500">*</span></label>
+              <select
+                name="condition"
+                value={formData.condition}
+                onChange={handleChange}
+                className="w-full border rounded px-2 py-1"
+                required
+              >
+                {conditions.map((cond) => (
+                  <option key={cond} value={cond}>{cond}</option>
+                ))}
+              </select>
             </div>
           </div>
-          {/* Media Uploads */}
+          {/* Description with AI Assistant */}
+          <div className="bg-cyan-50 rounded-lg p-4 mb-4">
+            <div className="flex items-center gap-2 mb-1">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-cyan-700">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="currentColor"/>
+                <path d="M13 7H11V13H17V11H13V7Z" fill="currentColor"/>
+              </svg>
+              <h3 className="text-sm font-bold text-cyan-900">AI Description Assistant</h3>
+            </div>
+            <div className="text-xs text-cyan-800 mb-2">Enter 3 keywords about your item:</div>
+            <div className="mb-3 flex gap-2 items-center">
+              <input
+                type="text"
+                value={keywords}
+                onChange={e => setKeywords(e.target.value)}
+                className="flex-1 border rounded px-2 py-1 text-sm"
+                placeholder="e.g. durable, stylish, lightweight"
+              />
+              <button
+                type="button"
+                onClick={generateDescription}
+                disabled={isGeneratingDescription || !(formData.title && formData.category && formData.condition)}
+                className="px-4 py-1 bg-teal-500 text-white rounded text-sm hover:bg-teal-600 transition shadow-sm"
+              >
+                {isGeneratingDescription ? 'Generating...' : 'Generate'}
+              </button>
+              {!mainImage && <div className="text-xs text-yellow-600 ml-2">(Image is optional for this test)</div>}
+            </div>
+            {generatedDescription && (
+              <div className="mt-2">
+                <div className="text-xs font-medium text-cyan-800 mb-1">Generated description:</div>
+                <div className="bg-white p-3 rounded border border-cyan-200 text-sm mb-2 shadow-sm">{generatedDescription}</div>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, description: generatedDescription }))}
+                  className="px-4 py-1.5 bg-teal-100 text-teal-700 rounded text-xs font-medium hover:bg-teal-200 transition flex items-center gap-1"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  Use this description
+                </button>
+              </div>
+            )}
+            <label className="block font-medium mb-1 mt-4">Description</label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              className="w-full border rounded px-2 py-1 whitespace-pre-line"
+              required
+              placeholder="Add keywords above to generate a description, or write your own description here..."
+              rows={5}
+            />
+            {uploadError && <div className="text-xs text-red-500 mt-1">{uploadError}</div>}
+          </div>
+          {/* 2. Auto-generate description when all required fields are filled */}
+          {/* 3. Rest of the fields */}
           <div>
-            <h2 className="text-lg font-bold text-cyan-900 mb-2">Media</h2>
-            {/* Image Upload */}
+            <label className="block font-medium mb-1">Price</label>
+            <input
+              type="number"
+              name="price"
+              value={formData.price}
+              onChange={handleChange}
+              className="w-full border rounded px-2 py-1"
+              required
+              placeholder="$ USD"
+              min={0}
+            />
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Location</label>
+            <input
+              type="text"
+              name="location"
+              value={formData.location}
+              onChange={handleChange}
+              className="w-full border rounded px-2 py-1"
+              required
+              placeholder="e.g. Miami"
+            />
+          </div>
+          {/* Restored: Full Image Upload Section */}
+          <div>
+            <h2 className="text-lg font-bold text-cyan-900 mb-2">Images (Full Gallery)</h2>
             <div
               className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${isDragOver ? 'border-cyan-400 bg-cyan-50' : 'border-cyan-200 bg-cyan-50'}`}
               onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
@@ -322,47 +489,53 @@ export default function MarketCreatePage() {
               {isUploading && <div className="text-xs text-cyan-600 mt-1">Uploading images...</div>}
               {uploadError && <div className="text-xs text-red-500 mt-1">{uploadError}</div>}
             </div>
-            {/* Video Upload */}
-            <div className="mt-6">
-              <div
-                className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${isDragOver ? 'border-cyan-400 bg-cyan-50' : 'border-cyan-200 bg-cyan-50'}`}
-                onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-                onDragLeave={e => { e.preventDefault(); setIsDragOver(false); }}
-                onDrop={e => {
-                  e.preventDefault();
-                  setIsDragOver(false);
-                  const files = e.dataTransfer.files;
-                  if (files && files.length) {
-                    const event = { target: { files } } as React.ChangeEvent<HTMLInputElement>;
-                    handleVideoChange(event);
-                  }
-                }}
-              >
-                <label className="block font-medium mb-2">Item Video (optional, max 1)</label>
-                <input
-                  type="file"
-                  accept="video/*"
-                  onChange={handleVideoChange}
-                  className="hidden"
-                  id="market-video-upload"
-                  disabled={isUploading || !!formData.videoFile}
-                />
-                <label htmlFor="market-video-upload" className={`cursor-pointer inline-block px-4 py-2 bg-cyan-100 text-cyan-700 rounded hover:bg-cyan-200 transition mb-2 ${formData.videoFile ? 'opacity-50 cursor-not-allowed' : ''}`}>Select Video</label>
-                <div className="text-xs text-gray-500 mb-2">Drag and drop or select a video file. <span className="font-semibold text-cyan-700">{formData.videoFile ? '1/1 selected' : '0/1 selected'}</span></div>
-                {formData.videoPreview && (
-                  <div className="relative group">
-                    <video src={formData.videoPreview} controls className="w-full h-40 object-cover rounded border" />
-                    <button type="button" onClick={handleRemoveVideo} className="absolute top-1 right-1 bg-white/80 rounded-full p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                  </div>
-                )}
-              </div>
+          </div>
+          {/* Restored: Video Upload Section */}
+          <div className="mt-6">
+            <h2 className="text-lg font-bold text-cyan-900 mb-2">Item Video (optional, max 1)</h2>
+            <div
+              className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${isDragOver ? 'border-cyan-400 bg-cyan-50' : 'border-cyan-200 bg-cyan-50'}`}
+              onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={e => { e.preventDefault(); setIsDragOver(false); }}
+              onDrop={e => {
+                e.preventDefault();
+                setIsDragOver(false);
+                const files = e.dataTransfer.files;
+                if (files && files.length) {
+                  const event = { target: { files } } as React.ChangeEvent<HTMLInputElement>;
+                  handleVideoChange(event);
+                }
+              }}
+            >
+              <input
+                type="file"
+                accept="video/*"
+                onChange={handleVideoChange}
+                className="hidden"
+                id="market-video-upload"
+                disabled={isUploading || !!formData.videoFile}
+              />
+              <label htmlFor="market-video-upload" className={`cursor-pointer inline-block px-4 py-2 bg-cyan-100 text-cyan-700 rounded hover:bg-cyan-200 transition mb-2 ${formData.videoFile ? 'opacity-50 cursor-not-allowed' : ''}`}>Select Video</label>
+              <div className="text-xs text-gray-500 mb-2">Drag and drop or select a video file. <span className="font-semibold text-cyan-700">{formData.videoFile ? '1/1 selected' : '0/1 selected'}</span></div>
+              {formData.videoPreview && (
+                <div className="relative group">
+                  <video src={formData.videoPreview} controls className="w-full h-40 object-cover rounded border" />
+                  <button type="button" onClick={handleRemoveVideo} className="absolute top-1 right-1 bg-white/80 rounded-full p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-          {/* Submission Feedback */}
-          {submitSuccess && <div className="text-xs text-green-600 mt-1">{submitSuccess}</div>}
-          <button type="submit" className="w-full py-2 bg-teal-500 text-white rounded hover:bg-teal-600 transition" disabled={isUploading}>Create Item</button>
+          <button
+            type="submit"
+            className="w-full py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700 font-semibold mt-4"
+            disabled={isUploading}
+          >
+            {isUploading ? 'Submitting...' : 'Create Item'}
+          </button>
+          {uploadError && <div className="text-red-600 mt-2 text-sm">{uploadError}</div>}
+          {submitSuccess && <div className="text-green-600 mt-2 text-sm">{submitSuccess}</div>}
         </form>
       </div>
       {showPhoneModal && (

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
-import BusinessForm from '@/components/shared/BusinessForm';
+import BusinessMultiStepForm from '@/components/shared/BusinessMultiStepForm';
 
 export default function BusinessPage() {
   const router = useRouter();
@@ -37,5 +37,5 @@ export default function BusinessPage() {
 
   if (loading) return <div className="flex items-center justify-center min-h-screen text-cyan-600">Loading...</div>;
   if (!showForm) return null;
-  return <BusinessForm />;
+  return <BusinessMultiStepForm />;
 } 

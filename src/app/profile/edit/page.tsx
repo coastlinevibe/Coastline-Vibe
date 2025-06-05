@@ -124,7 +124,7 @@ export default function EditProfilePage() {
     setSaving(false);
     if (!error) {
       setSuccess(true);
-      setTimeout(() => router.push('/profile'), 1200);
+      setTimeout(() => router.push('/community/miami'), 1200);
     }
   };
 

@@ -37,7 +37,7 @@ export default function EventPostForm({ onSubmit }: { onSubmit: (values: EventPo
           {...register('name', { required: true })} 
           type="text" 
           className="w-full border border-slate-300 rounded px-3 py-2" 
-          placeholder="Event Name" 
+          placeholder="What's on your mind…?" 
           disabled={isSubmitting} 
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2">

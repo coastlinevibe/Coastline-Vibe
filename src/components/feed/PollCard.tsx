@@ -3,13 +3,13 @@
 import { useState, useMemo } from 'react';
 import { CheckCircle, TrendingUp } from 'lucide-react';
 
-export interface PollOption {
+interface PollOption {
   id: string;
   text: string;
   votes: number;
 }
 
-export interface PollCardProps {
+interface PollCardProps {
   question: string;
   options: PollOption[];
   userVote: string | null; // option ID of the current user's vote
@@ -65,11 +65,11 @@ const PollCard: React.FC<PollCardProps> = ({ question, options, userVote, onVote
             return (
               <div key={option.id} className="group">
                 <div className="flex justify-between items-center text-sm mb-1">
-                  <span className={`font-medium ${isUserChoice ? 'text-sky-700' : 'text-gray-700'}`}>
+                  <span className={`font-medium ${isUserChoice ? 'text-sky-600' : 'text-gray-900'}`}>
                     {option.text}
                     {isUserChoice && <span className="text-sky-600 ml-1">(Your vote)</span>}
                   </span>
-                  <span className={`${isUserChoice ? 'text-sky-600 font-semibold' : 'text-gray-500'}`}>
+                  <span className={`${isUserChoice ? 'text-sky-600 font-semibold' : 'text-gray-600'}`}>
                     {option.votes} vote{option.votes !== 1 ? 's' : ''} ({percentage.toFixed(0)}%)
                   </span>
                 </div>
@@ -102,7 +102,7 @@ const PollCard: React.FC<PollCardProps> = ({ question, options, userVote, onVote
                   onChange={() => setSelectedOption(option.id)}
                   className="h-4 w-4 text-sky-600 border-gray-300 focus:ring-sky-500 mr-3"
                 />
-                <span className="text-sm font-medium text-gray-700">{option.text}</span>
+                <span className="text-sm font-medium text-gray-900">{option.text}</span>
               </label>
             );
           }
@@ -122,17 +122,17 @@ const PollCard: React.FC<PollCardProps> = ({ question, options, userVote, onVote
       )}
 
       {userVote && (
-        <div className="mt-5 pt-4 border-t border-gray-200 text-xs text-gray-500">
+        <div className="mt-5 pt-4 border-t border-gray-200 text-xs text-gray-600">
           <div className="flex items-center justify-between">
             {userVotedOptionText && (
                <p className="flex items-center">
                 <CheckCircle size={14} className="text-green-600 mr-1.5" />
-                You voted for: <span className="font-semibold text-gray-700 ml-1">{userVotedOptionText}</span>
+                You voted for: <span className="font-semibold text-gray-900 ml-1">{userVotedOptionText}</span>
               </p>
             )}
             <p className="flex items-center">
               <TrendingUp size={14} className="text-gray-400 mr-1.5" />
-              Total Votes: <span className="font-semibold text-gray-700 ml-1">{displayTotalVotes}</span>
+              Total Votes: <span className="font-semibold text-gray-900 ml-1">{displayTotalVotes}</span>
             </p>
           </div>
         </div>

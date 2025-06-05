@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { createBrowserClient } from '@supabase/ssr'; // Changed import
 import { useRouter } from 'next/navigation';
-import type { Database } from '@/lib/database.types';
+import type { Database } from '@/types/supabase';
+import { Eye, EyeOff } from 'lucide-react';
 
 // Define a simple interface for our form values
 interface LoginFormValues {
@@ -26,7 +27,10 @@ interface LoginFormValues {
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [showDeclinedModal, setShowDeclinedModal] = useState(false);
   const router = useRouter();
+  const [showPin, setShowPin] = useState(false);
 
   // Initialize Supabase client for client component
   const supabase = createBrowserClient<Database>(
@@ -53,29 +57,40 @@ export default function LoginPage() {
       // Fetch email, is_admin, and community_id from profiles
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .select('email, is_admin, community_id, role') // Added role
+        .select('email, is_admin, community_id, role, approval_status')
         .eq('username', data.username)
-        .single();
+        .maybeSingle();
 
-      if (profileError || !profileData) {
+      // If profile not found, show appropriate error
+      if (profileError) {
         setErrorMessage("Username not found or invalid PIN. Please try again.");
-        // It's good to log the actual Supabase error for debugging if profileError exists
-        console.error("Profile lookup error:", profileError?.message);
-        throw new Error(profileError?.message || "User profile not found for username lookup");
+        console.error("Profile lookup error:", profileError.message);
+        setIsLoading(false);
+        return;
       }
 
-      // Ensure email exists before proceeding, as it's crucial for signInWithPassword
+      // If no profile data found, handle gracefully
+      if (!profileData) {
+        setErrorMessage("Username not found or invalid PIN. Please try again.");
+        console.error("No profile found for username:", data.username);
+        setIsLoading(false);
+        return;
+      }
+
       if (!profileData.email) {
         setErrorMessage("User profile is incomplete (missing email). Please contact support.");
         console.error("User profile for:", data.username, "is missing an email.");
-        throw new Error("User profile incomplete, missing email.");
+        setIsLoading(false);
+        return;
       }
       
       const userEmail = profileData.email;
-      const userIsAdmin = profileData.is_admin === true;
+      const userIsAdmin = profileData.role === 'community admin' || profileData.role === 'superadmin';
       const userCommunityId = profileData.community_id;
       const userRole = profileData.role;
+      const approvalStatus = profileData.approval_status;
 
+      // Try to sign in first
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: userEmail,
         password: data.pin,
@@ -87,31 +102,42 @@ export default function LoginPage() {
         } else {
           setErrorMessage(signInError.message);
         }
-        throw signInError;
+        setIsLoading(false);
+        return;
       }
 
-      // Successful login, now redirect based on role and community_id
-      if (userRole === "community admin" && userCommunityId) {
-        console.log(`Community admin logged in, redirecting to /community/${userCommunityId}/admin`);
-        router.push(`/community/${userCommunityId}/admin`);
-      } else if (userIsAdmin) {
-        console.log('Super admin logged in, redirecting to /superadmin');
-        router.push('/superadmin');
-      } else if (userCommunityId) {
-        console.log(`User belongs to community ${userCommunityId}, redirecting to /community/${userCommunityId}`);
-        router.push(`/community/${userCommunityId}`);
-      } else {
-        console.log('Regular user (no specific community) logged in, redirecting to /');
-        router.push('/');
+      // Only after successful sign in, check approval_status
+      if (approvalStatus === 'declined') {
+        setShowDeclinedModal(true);
+        setIsLoading(false);
+        await supabase.auth.signOut();
+        return;
       }
+      if (approvalStatus !== 'approved') {
+        setShowPendingModal(true);
+        setIsLoading(false);
+        await supabase.auth.signOut();
+        return;
+      }
+      // If approved, redirect immediately (no popup)
+      if (userRole === "community admin" && userCommunityId) {
+        router.push(`/community/${userCommunityId}/admin`);
+        window.location.href = `/community/${userCommunityId}/admin`;
+      } else if (userCommunityId) {
+        router.push(`/community/${userCommunityId}`);
+        window.location.href = `/community/${userCommunityId}`;
+      } else {
+        router.push('/');
+        window.location.href = '/';
+      }
+      setIsLoading(false);
+      return;
 
     } catch (error) {
       console.error("Login error:", error);
-      // Error message is likely already set by the specific error handling above
       if (!errorMessage && error instanceof Error) { 
         setErrorMessage(error.message || "An unexpected error occurred during login.");
       }
-    } finally {
       setIsLoading(false);
     }
   };
@@ -120,9 +146,6 @@ export default function LoginPage() {
     <div className="min-h-screen bg-sky-50 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-block mb-4">
-            <Waves className="h-12 w-12 text-cyan-600" />
-          </Link>
           <h1 className="text-3xl sm:text-4xl font-bold text-sky-700">
             Login to <span className="text-cyan-600">Coastline</span><span className="text-rose-500">Vibe</span>
           </h1>
@@ -156,8 +179,9 @@ export default function LoginPage() {
             <label htmlFor="pin" className="block text-sm font-medium text-slate-700 mb-1">
               6-Digit PIN
             </label>
+            <div className="relative">
             <input
-              type="password"
+                type={showPin ? "text" : "password"}
               id="pin"
               disabled={isLoading}
               maxLength={6}
@@ -166,10 +190,25 @@ export default function LoginPage() {
                 minLength: { value: 6, message: "PIN must be 6 digits" },
                 maxLength: { value: 6, message: "PIN must be 6 digits" }
               })}
-              className={`w-full px-4 py-2 border ${errors.pin ? 'border-red-500' : 'border-slate-300'} rounded-md shadow-sm focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed`}
+                className={`w-full px-4 py-2 border ${errors.pin ? 'border-red-500' : 'border-slate-300'} rounded-md shadow-sm focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed pr-10`}
               placeholder="••••••"
             />
+              <button
+                type="button"
+                tabIndex={-1}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                onClick={() => setShowPin((v) => !v)}
+                aria-label={showPin ? "Hide PIN" : "Show PIN"}
+              >
+                {showPin ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
             {errors.pin && <p className="mt-1 text-xs text-red-600">{errors.pin.message}</p>}
+            <div className="mt-2">
+              <Link href="/reset-password" className="text-xs text-cyan-600 underline hover:text-cyan-800">
+                Forgot PIN?
+              </Link>
+            </div>
           </div>
 
           <button
@@ -187,6 +226,34 @@ export default function LoginPage() {
           </Link>
         </p>
       </div>
+      {showPendingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm flex flex-col items-center border border-slate-100">
+            <h2 className="text-xl font-bold text-sky-700 mb-4 text-center">Account Pending Approval</h2>
+            <p className="text-slate-700 text-center mb-6">Your account is still pending approval. You will be notified via email once approved.</p>
+            <button
+              className="px-6 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-semibold shadow-md transition"
+              onClick={() => setShowPendingModal(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+      {showDeclinedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm flex flex-col items-center border border-slate-100">
+            <h2 className="text-xl font-bold text-rose-700 mb-4 text-center">Account Declined</h2>
+            <p className="text-slate-700 text-center mb-6">Your account has been declined. Please contact support if you believe this is a mistake.</p>
+            <button
+              className="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold shadow-md transition"
+              onClick={() => setShowDeclinedModal(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

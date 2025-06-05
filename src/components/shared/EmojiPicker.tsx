@@ -33,8 +33,8 @@ export default function EmojiPicker({ onEmojiSelect, className = '' }: EmojiPick
       </button>
       
       {isOpen && (
-        <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border border-slate-200 p-2 z-50">
-          <div className="grid grid-cols-10 gap-1 max-h-48 overflow-y-auto">
+        <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border border-slate-200 p-2 z-50 min-w-[320px] w-80">
+          <div className="grid grid-cols-10 gap-2 max-h-48 overflow-y-auto">
             {EMOJI_LIST.map((emoji, index) => (
               <button
                 key={index}

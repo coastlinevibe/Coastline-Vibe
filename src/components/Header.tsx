@@ -14,6 +14,7 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
 
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const fetchUserAndProfile = async () => {
@@ -21,7 +22,7 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
       setUser(user);
 
       if (user) {
-        const { data: profileData, error } = await supabase
+        const { data: profileData } = await supabase
           .from('profiles')
           .select('username, avatar_url, role')
           .eq('id', user.id)
@@ -30,24 +31,41 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
         if (profileData) {
           setProfile(profileData);
         }
+      } else {
+        setProfile(null);
       }
     };
 
     fetchUserAndProfile();
+
+    // Listen for auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      fetchUserAndProfile();
+    });
+
+    return () => {
+      listener?.subscription.unsubscribe();
+    };
   }, [supabase]);
 
-  if (pathname === '/login' || pathname === '/create-profile' || pathname.startsWith('/superadmin')) return null;
+  if ((pathname ?? '') === '/create-profile') return null;
+
+  // Check if we're in a business profile view (but not in the directory)
+  const isBusinessProfileView = (pathname ?? '').includes(`/community/${communityId}/business/`) && 
+                               !(pathname ?? '').includes('/directory');
 
   const baseNavLinks = [
-    { label: 'Dashboard', href: `/community/${communityId}` },
+    { label: 'Coastline Chatter', href: `/community/${communityId}/feed` },
     { label: 'Properties', href: '/properties' },
     { label: 'Coastline Market', href: '/market' },
-    { label: 'Chatter', href: `/community/${communityId}/feed` },
   ];
+  
+  // Only add Local Directory link if not in business profile view
+  if (!isBusinessProfileView) {
+    baseNavLinks.push({ label: 'Local Directory', href: `/community/${communityId}/business/directory` });
+  }
 
-  const navLinks = profile?.role === 'business'
-    ? [...baseNavLinks, { label: 'Business Dashboard', href: '/business/dashboard' }]
-    : baseNavLinks;
+  const navLinks = [...baseNavLinks];
 
   const isHome = pathname === '/';
 
@@ -57,51 +75,99 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur border-b border-cyan-100 shadow-sm">
-      <div className="w-full flex items-center h-16 gap-6 px-6">
+    <header className="sticky top-0 z-40 w-full bg-offWhite/90 backdrop-blur border-b border-seafoam/30 shadow-subtle">
+      <div className="w-full max-w-content mx-auto flex items-center h-16 px-4 md:px-8 justify-between gap-8">
         {/* Logo */}
-        <div className="flex items-center gap-2 font-extrabold text-2xl text-cyan-900 tracking-tight">
+        <div className="flex items-center gap-2 font-heading font-bold text-2xl text-primaryTeal tracking-tight min-w-max">
           <span className="text-3xl">🌴</span>
           <span>CoastlineVibe</span>
         </div>
-        {/* Only show nav on non-home pages */}
-        {!isHome && user && <>
-          <nav className="flex-1 flex items-center gap-2 ml-8">
+        {/* Desktop nav (centered if space) */}
+        {!isHome && user && (
+          <nav className="hidden md:flex items-center gap-8 flex-grow justify-center">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className={`relative px-3 py-2 rounded-md font-medium text-cyan-800 transition-all duration-200
-                  hover:bg-cyan-100 hover:text-teal-700
-                  ${pathname === link.href ? 'bg-teal-100 text-teal-700 shadow-sm' : ''}
+                className={`relative px-4 py-2 rounded-md font-medium text-darkCharcoal transition-all duration-200
+                  hover:bg-seafoam/20 hover:text-primaryTeal
+                  ${(pathname ?? '') === link.href ? 'bg-seafoam/30 text-primaryTeal font-semibold' : ''}
                 `}
               >
                 {link.label}
-                {pathname === link.href && (
-                  <span className="absolute left-1/2 -bottom-1.5 -translate-x-1/2 w-2 h-2 bg-teal-400 rounded-full animate-pulse" />
+                {(pathname ?? '') === link.href && (
+                  <span className="absolute left-0 right-0 -bottom-1 mx-auto w-12 h-1 bg-primaryTeal rounded-full" />
                 )}
               </Link>
             ))}
           </nav>
-          {/* User Info and Dashboard/Logout Buttons */}
-          <div className="flex items-center gap-4">
+        )}
+        {/* User Info and Dashboard/Logout Buttons (desktop, always right) */}
+        {!isHome && user && (
+          <div className="hidden md:flex items-center gap-4 ml-4 min-w-max">
             {profile && (
-              <Link href="/profile" className="flex items-center gap-2 cursor-pointer">
-                <img src={profile.avatar_url || '/placeholder-avatar.png'} alt={profile.username} className="w-8 h-8 rounded-full object-cover" />
-                <span className="font-semibold text-cyan-900 hidden md:inline">{profile.username}</span>
+              <Link href="/community/miami" className="flex items-center gap-2 cursor-pointer">
+                <img src={profile.avatar_url || '/placeholder-avatar.png'} alt={profile.username} className="w-8 h-8 rounded-full object-cover border border-seafoam" />
+                <span className="font-medium text-darkCharcoal hidden md:inline">{profile.username}</span>
               </Link>
             )}
             <Link href={`/community/${communityId}`} passHref legacyBehavior>
-              <a className={`px-4 py-2 rounded font-bold text-white bg-teal-500 hover:bg-teal-600 transition shadow ${pathname === `/community/${communityId}` ? 'ring-2 ring-teal-300' : ''}`}>Dashboard</a>
+              <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communityId}` ? 'ring-2 ring-seafoam' : ''}`}>Dashboard</a>
             </Link>
-            <button onClick={handleLogout} className="px-4 py-2 rounded font-bold bg-red-100 text-red-700 hover:bg-red-200 transition">Logout</button>
+            <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
           </div>
-        </>}
+        )}
+        {/* Hamburger for mobile (always right) */}
+        {!isHome && user && (
+          <button
+            className="ml-auto md:hidden p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-seafoam"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Toggle navigation menu"
+          >
+            <span className="block w-6 h-0.5 bg-primaryTeal mb-1.5"></span>
+            <span className="block w-6 h-0.5 bg-primaryTeal mb-1.5"></span>
+            <span className="block w-6 h-0.5 bg-primaryTeal"></span>
+          </button>
+        )}
+        {/* Mobile menu dropdown */}
+        {!isHome && user && menuOpen && (
+          <div className="absolute top-16 left-0 w-full bg-offWhite border-b border-seafoam/30 shadow-elevated flex flex-col md:hidden z-50">
+            <nav className="flex flex-col gap-1 p-4">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`px-4 py-2 rounded-md font-medium text-darkCharcoal transition-all duration-200
+                    hover:bg-seafoam/20 hover:text-primaryTeal
+                    ${(pathname ?? '') === link.href ? 'bg-seafoam/30 text-primaryTeal font-semibold' : ''}
+                  `}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+            <div className="flex flex-col gap-2 px-4 pb-4 border-t border-seafoam/30">
+              {profile && (
+                <Link href="/community/miami" className="flex items-center gap-2 cursor-pointer py-2" onClick={() => setMenuOpen(false)}>
+                  <img src={profile.avatar_url || '/placeholder-avatar.png'} alt={profile.username} className="w-8 h-8 rounded-full object-cover border border-seafoam" />
+                  <span className="font-medium text-darkCharcoal">{profile.username}</span>
+                </Link>
+              )}
+              <Link href={`/community/${communityId}`} passHref legacyBehavior>
+                <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communityId}` ? 'ring-2 ring-seafoam' : ''}`}
+                  onClick={() => setMenuOpen(false)}
+                >Dashboard</a>
+              </Link>
+              <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
+            </div>
+          </div>
+        )}
         {/* On home, show login button on right */}
         {isHome && (
           <div className="flex-1 flex justify-end">
             <Link href="/login">
-              <button className="px-4 py-2 rounded-lg font-semibold bg-cyan-200 hover:bg-cyan-300 text-cyan-800 transition-colors shadow-sm text-sm">
+              <button className="px-4 py-2 rounded-md font-semibold bg-offWhite hover:bg-seafoam text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle">
                 Login
               </button>
             </Link>

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 
 const supabase = createBrowserClient(
@@ -11,11 +11,39 @@ const supabase = createBrowserClient(
 
 export default function MarketItemDetailPage() {
   const params = useParams();
-  const { id } = params;
+  const router = useRouter();
+  const id = params && typeof params.id !== 'undefined' ? (Array.isArray(params.id) ? params.id[0] : params.id) : '';
   const [item, setItem] = useState<any>(null);
   const [sellerProfile, setSellerProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isInWishlist, setIsInWishlist] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
+
+  useEffect(() => {
+    // Check if user is logged in
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+      if (user && id) {
+        // Check if item is in user's wishlist
+        const { data, error } = await supabase
+          .from('wishlists')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('item_id', id)
+          .single();
+        
+        if (data && !error) {
+          setIsInWishlist(true);
+        }
+      }
+    };
+    
+    checkUser();
+  }, [id]);
+
   useEffect(() => {
     const fetchItem = async () => {
       setLoading(true);
@@ -44,6 +72,52 @@ export default function MarketItemDetailPage() {
     };
     fetchItem();
   }, [id]);
+
+  const toggleWishlist = async () => {
+    if (!currentUser) {
+      alert("Please login to add items to your wishlist");
+      return;
+    }
+
+    if (currentUser.id === item.user_id) {
+      alert("You cannot add your own items to your wishlist");
+      return;
+    }
+
+    setWishlistLoading(true);
+    
+    try {
+      if (isInWishlist) {
+        // Remove from wishlist
+        const { error } = await supabase
+          .from('wishlists')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('item_id', id);
+        
+        if (error) throw error;
+        setIsInWishlist(false);
+      } else {
+        // Add to wishlist
+        const { error } = await supabase
+          .from('wishlists')
+          .insert({
+            user_id: currentUser.id,
+            item_id: id,
+            created_at: new Date().toISOString()
+          });
+        
+        if (error) throw error;
+        setIsInWishlist(true);
+      }
+    } catch (error) {
+      console.error('Error updating wishlist:', error);
+      alert('Failed to update wishlist. Please try again.');
+    } finally {
+      setWishlistLoading(false);
+    }
+  };
+
   const [mainIdx, setMainIdx] = useState(0);
   const thumbsPerPage = 4;
   const [thumbPage, setThumbPage] = useState(0);
@@ -131,9 +205,9 @@ export default function MarketItemDetailPage() {
             </div>
             {/* Seller Info */}
             <div className="flex items-center gap-4 bg-cyan-50 rounded-lg p-3 border border-cyan-100">
-              <img src={sellerProfile?.avatar || 'https://randomuser.me/api/portraits/men/32.jpg'} alt={sellerProfile?.name || 'Seller'} className="w-12 h-12 rounded-full border-2 border-cyan-200" />
+              <img src={sellerProfile?.avatar_url || 'https://randomuser.me/api/portraits/men/32.jpg'} alt={sellerProfile?.username || sellerProfile?.name || 'Seller'} className="w-12 h-12 rounded-full border-2 border-cyan-200" />
               <div>
-                <div className="font-semibold text-cyan-900">{sellerProfile?.name || 'Seller'}</div>
+                <div className="font-semibold text-cyan-900">{sellerProfile?.username || sellerProfile?.name || 'Seller'}</div>
                 {sellerProfile?.email && <div className="text-xs text-cyan-700">{sellerProfile.email}</div>}
                 {sellerProfile?.phone && <div className="text-xs text-cyan-700">{sellerProfile.phone}</div>}
                 {sellerProfile?.bio && <div className="text-xs text-cyan-700 italic">{sellerProfile.bio}</div>}
@@ -141,15 +215,38 @@ export default function MarketItemDetailPage() {
               <button className="ml-auto px-3 py-1 rounded bg-teal-500 text-white text-xs font-semibold hover:bg-teal-600 transition">Contact Seller</button>
             </div>
             <div className="flex gap-2 mt-4">
-              <Link href={`/market/${item.id}/edit`} className="flex-1 px-4 py-2 rounded bg-cyan-100 text-cyan-700 font-semibold hover:bg-cyan-200 transition text-center">
-                Edit Item
-              </Link>
-              <button className="flex-1 px-4 py-2 rounded bg-sky-100 text-sky-700 font-semibold hover:bg-sky-200 transition">
-                Add to Wishlist
+              {currentUser && currentUser.id === item.user_id && (
+                <Link href={`/market/${item.id}/edit`} className="flex-1 px-4 py-2 rounded bg-cyan-100 text-cyan-700 font-semibold hover:bg-cyan-200 transition text-center">
+                  Edit Item
+                </Link>
+              )}
+              <button 
+                onClick={toggleWishlist}
+                disabled={wishlistLoading}
+                className={`flex-1 px-4 py-2 rounded font-semibold transition ${
+                  isInWishlist 
+                    ? 'bg-pink-100 text-pink-700 hover:bg-pink-200' 
+                    : 'bg-sky-100 text-sky-700 hover:bg-sky-200'
+                }`}
+              >
+                {wishlistLoading ? 'Processing...' : isInWishlist ? 'Remove from Wishlist' : 'Add to Wishlist'}
               </button>
             </div>
           </div>
         </div>
+        <button
+          className="mt-8 px-6 py-2 rounded bg-gray-200 text-cyan-900 font-semibold hover:bg-gray-300 transition"
+          onClick={() => {
+            const communityId = item?.community_id || sellerProfile?.community_id;
+            if (communityId) {
+              router.push(`/community/${communityId}/admin`);
+            } else {
+              router.push('/dashboard');
+            }
+          }}
+        >
+          Close
+        </button>
       </div>
     </div>
   );

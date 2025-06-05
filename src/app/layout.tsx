@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
-import { Inter, Roboto_Mono } from "next/font/google";
+import { Montserrat, Open_Sans } from "next/font/google";
 import './globals.css';
 import Header from '../components/Header';
+import PointerModeToggle from '../components/PointerModeToggle';
 
-const inter = Inter({
+const montserrat = Montserrat({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-montserrat",
 });
 
-const robotoMono = Roboto_Mono({
+const openSans = Open_Sans({
   subsets: ["latin"],
-  variable: "--font-roboto-mono",
+  variable: "--font-open-sans",
 });
 
 export const metadata: Metadata = {
@@ -26,8 +27,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${inter.variable} ${robotoMono.variable} font-sans antialiased bg-gradient-to-br from-sky-100 to-cyan-100 min-h-screen`}
+        className={`${montserrat.variable} ${openSans.variable} font-body antialiased bg-sand min-h-screen`}
       >
+        {/* Show PointerModeToggle only on mobile, top left */}
+        <div className="fixed top-4 left-4 z-[10000] block md:hidden">
+          <PointerModeToggle />
+        </div>
         <Header />
         {children}
       </body>

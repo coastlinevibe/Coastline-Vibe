@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { 
   Heart, MessageCircle, Share2, MoreHorizontal, UserCircle2, Send, Loader2, Trash2, Edit3, XSquare, CheckSquare, 
-  Megaphone, CalendarDays, HelpCircle, BarChart3, Pin, PinOff, Flag // Added Flag
+  Megaphone, CalendarDays, HelpCircle, BarChart3, Pin, PinOff, Flag, Smile, ShieldCheck,
+  Sailboat, ChevronLeft, ChevronRight
 } from 'lucide-react'; 
 import CommentItem, { type CommentItemProps } from './CommentItem';
 import { formatDistanceToNow } from 'date-fns';
@@ -17,36 +18,45 @@ import PollCard from './PollCard'; // Removed PollCardProps, PollOption
 import Link from 'next/link';
 import PostImage from './PostImage';
 import CommentForm from './CommentForm';
+import { CommentsList, CommentData } from './CommentsList';
+import { createBrowserClient } from '@supabase/ssr'; // Ensure this is the correct import path
+import { supabase } from '@/lib/supabaseClient'; // Corrected import path for Supabase client
+import UserTooltipWrapper from '@/components/user/UserTooltipWrapper';
+import { type UserTooltipProfileData } from '@/components/user/UserTooltipDisplay'; // Corrected import path for the type
 
 // Interface for props passed to FeedPostItem
 export interface FeedPostItemProps {
   id: string;
   postAuthorUserId: string;
-  currentUserId?: string | null; // Single definition of currentUserId
+  currentUserId?: string | null;
+  currentUserRole?: string | null;
   authorName: string;
+  authorFullName?: string | null;
+  authorRole?: string | null;
+  authorIsLocationVerified?: boolean;
   authorAvatarUrl?: string | null;
+  authorIsOnline?: boolean;
   timestamp: string;
   title?: string | null;
   textContent: string;
   updated_at?: string | null;
   imageUrl?: string | null;
   poll_id?: string | null; 
-  is_pinned?: boolean; // <<< Added is_pinned
+  is_pinned?: boolean;
   likeCount: number;
   commentCount: number;
   isLikedByCurrentUser: boolean;
   onToggleLike: (postId: string) => Promise<void>;
   fetchComments: (postId: string) => Promise<CommentItemProps[]>;
-  onCommentSubmit: (postId: string, commentText: string) => Promise<boolean>;
+  onCommentSubmit: (postId: string, commentText: string, files?: File[]) => Promise<boolean>;
   onDeletePost?: (postId: string) => Promise<void>;
   onUpdatePost?: (postId: string, newContent: string) => Promise<boolean>;
-  onTogglePin?: (postId: string, currentPinStatus: boolean) => Promise<boolean>; // <<< Added onTogglePin
+  onTogglePin?: (postId: string, currentPinStatus: boolean) => Promise<boolean>;
   onActualDeleteComment?: (commentId: string) => Promise<boolean>;
   onActualUpdateComment?: (commentId: string, newContent: string) => Promise<boolean>;
-  onReplySubmit?: (parentCommentId: string, replyText: string, parentDepth: number) => Promise<boolean>;
+  onReplySubmit?: (parentCommentId: string, replyText: string, parentDepth: number, files?: File[]) => Promise<boolean>;
   onLikeComment?: (commentId: string) => Promise<void>;
   onUnlikeComment?: (commentId: string) => Promise<void>;
-  supabaseClient: SupabaseClient<Database>;
   post_type: PostType;
   event_start_time?: string | null; 
   event_end_time?: string | null;
@@ -54,20 +64,35 @@ export interface FeedPostItemProps {
   event_description?: string | null;
   images?: string[] | null;
   video_url?: string | null;
+  openCommentsByDefault?: boolean;
+  onOpenCommentsModal?: () => void;
+  onCloseModal?: () => void;
+  canPin?: boolean;
+  documents?: string[];
+  onRsvpAction?: (postId: string, rsvpStatus: 'yes' | 'no' | 'maybe') => Promise<boolean>;
+  communityId: string;
+  authorEmail?: string | null;
+  authorBio?: string | null;
+  authorProfileCreatedAt?: string | null;
+}
+
+// NEW: Interface for RSVP data
+interface RsvpData {
+  user_id: string;
+  status: 'yes' | 'no' | 'maybe';
+  profile: {
+    username: string | null;
+    avatar_url: string | null;
+  } | null; 
 }
 
 // For comment hierarchy
-export type CommentItemPropsWithReplies = CommentItemProps & {
+type CommentItemPropsWithReplies = CommentItemProps & {
   replies: CommentItemPropsWithReplies[];
 };
 
 // Utility to build comment hierarchy
 const buildCommentHierarchy = (comments: CommentItemProps[], rootPostId: string): CommentItemPropsWithReplies[] => {
-  // Debug: print all comment ids and parent_ids
-  console.log('[buildCommentHierarchy] rootPostId:', rootPostId);
-  comments.forEach(c => {
-    console.log(`[buildCommentHierarchy] comment id: ${c.id}, parent_id: ${c.parent_id}, depth: ${c.depth}, text: ${c.textContent}`);
-  });
   const commentsById: { [key: string]: CommentItemPropsWithReplies } = {};
   const nestedComments: CommentItemPropsWithReplies[] = [];
   comments.forEach(comment => { commentsById[comment.id] = { ...comment, replies: [] }; });
@@ -85,12 +110,43 @@ const buildCommentHierarchy = (comments: CommentItemProps[], rootPostId: string)
   return nestedComments;
 };
 
+// NEW: Utility to map CommentItemPropsWithReplies to CommentData for CommentsList
+const mapToCommentDataStructure = (commentsToMap: CommentItemPropsWithReplies[]): CommentData[] => {
+  return commentsToMap.map((comment) => ({
+    id: comment.id,
+    authorName: comment.authorName,
+    authorAvatarUrl: comment.authorAvatarUrl || '',
+    content: comment.textContent, // Map textContent to content
+    timestamp: comment.timestamp,
+    likeCount: comment.likeCount,
+    isLikedByCurrentUser: comment.isLikedByCurrentUser,
+    replies: comment.replies ? mapToCommentDataStructure(comment.replies) : [],
+    commentAuthorId: comment.commentAuthorId, 
+    updated_at: comment.updated_at,
+    depth: comment.depth,
+    parent_id: comment.parent_id,
+  }));
+};
+
 // For Poll data structure within FeedPostItem state
 interface PollOptionWithVotes { id: string; text: string; votes: number; isVotedByUser?: boolean; }
 interface PollFullDetails {
   question: string;
   options: PollOptionWithVotes[];
   totalVotesDistinctUsers?: number;
+}
+
+// NEW: Interface for author tooltip data to ensure structure
+interface AuthorTooltipInfo {
+  id: string;
+  username: string;
+  avatar_url: string;
+  email?: string | null;
+  bio?: string | null;
+  created_at?: string; // Join date
+  role?: string | null;
+  is_location_verified?: boolean;
+  is_online?: boolean; // Added for online status
 }
 
 // Helper component for type-specific rendering
@@ -101,13 +157,13 @@ const PostTypeSpecificElements: React.FC<{
   event_end_time?: string | null;
   event_location_text?: string | null;
   event_description?: string | null;
-  poll_id?: string | null; // The ID of the poll itself (from posts.poll_id)
-  postIdForPollCard: string; // The ID of the main post (for PollCard keying)
+  poll_id?: string | null;
+  postIdForPollCard: string;
   pollDetails: PollFullDetails | null;
   isLoadingPoll: boolean;
   pollError: string | null;
-  onVote: (pollOptionId: string) => Promise<void>; // The vote handler function
-  userVote: string | null; // The current user's vote option ID
+  onVote: (pollOptionId: string) => Promise<void>;
+  userVote: string | null;
   currentUserId?: string | null;
 }> = ({
   post_type,
@@ -127,7 +183,10 @@ const PostTypeSpecificElements: React.FC<{
 }) => {
   let indicatorStyle: React.CSSProperties = {};
   let icon: React.ReactNode | null = null;
-  let headerContent = title ? <h3 className={`text-lg font-semibold mb-1 ${post_type === 'announce' ? 'text-yellow-700 dark:text-yellow-500' : 'text-gray-800 dark:text-gray-200'}`}>{title}</h3> : null;
+  let headerContent = title ? <h3 className={`text-lg font-semibold mb-1 ${post_type === 'announce' ? 'text-yellow-700' : 'text-gray-800'}`}>{title}</h3> : null;
+
+  // Create supabase client instance here if PostTypeSpecificElements needs it directly
+  // OR pass supabase client as a prop if it's created in FeedPostItem main body
 
   switch (post_type) {
     case 'ask':
@@ -136,37 +195,37 @@ const PostTypeSpecificElements: React.FC<{
       headerContent = (
         <div className="flex items-center mb-1">
           {icon}
-          {title && <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{title}</h3>}
+          {title && <h3 className="text-lg font-semibold text-gray-900">{title}</h3>}
         </div>
       );
       break;
     case 'announce':
       indicatorStyle = { borderLeft: '4px solid #f59e0b', paddingLeft: '12px', background: 'rgba(245, 158, 11, 0.05)' };
-      icon = <Megaphone className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mr-2" />;
+      icon = <Megaphone className="w-5 h-5 text-yellow-600 mr-2" />;
        headerContent = (
         <div className="flex items-center mb-1">
           {icon}
-          {title && <h3 className="text-xl font-bold text-yellow-700 dark:text-yellow-500">{title}</h3>}
+          {title && <h3 className="text-xl font-bold text-yellow-700">{title}</h3>}
         </div>
       );
       break;
     case 'event':
       indicatorStyle = { borderLeft: '4px solid #8b5cf6', paddingLeft: '12px' };
-      icon = <CalendarDays className="w-5 h-5 text-purple-500 mr-2" />; // Corrected icon
+      icon = <CalendarDays className="w-5 h-5 text-purple-500 mr-2" />;
       headerContent = (
          <div className="flex items-center mb-1">
           {icon}
-          {title && <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{title}</h3>}
+          {title && <h3 className="text-lg font-semibold text-gray-900">{title}</h3>}
         </div>
       );
       break;
     case 'poll':
       indicatorStyle = { borderLeft: '4px solid #10b981', paddingLeft: '12px' };
-      icon = <BarChart3 className="w-5 h-5 text-green-500 mr-2" />; // Corrected icon
+      icon = <BarChart3 className="w-5 h-5 text-green-500 mr-2" />;
       headerContent = (
         <div className="flex items-center mb-1">
           {icon}
-          {title && <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{title}</h3>}
+          {title && <h3 className="text-lg font-semibold text-gray-900">{title}</h3>}
         </div>
       );
       break;
@@ -180,11 +239,17 @@ const PostTypeSpecificElements: React.FC<{
     <div style={indicatorStyle} className="mb-2">
       {headerContent}
       {post_type === 'event' && (
-        <div className="text-sm text-purple-600 dark:text-purple-400 mb-2 bg-purple-50 rounded p-2">
+        <div className="text-sm text-purple-600 mb-2 bg-purple-50 rounded p-2">
           {event_start_time && (
             <p>
               <strong>Event Date:</strong>{' '}
               {new Date(event_start_time).toLocaleDateString()} {new Date(event_start_time).toLocaleTimeString()}
+            </p>
+          )}
+          {event_end_time && (
+            <p>
+              <strong>Ends:</strong>{' '}
+              {new Date(event_end_time).toLocaleDateString()} {new Date(event_end_time).toLocaleTimeString()}
             </p>
           )}
           {event_location_text && (
@@ -199,106 +264,160 @@ const PostTypeSpecificElements: React.FC<{
           )}
         </div>
       )}
-      {post_type === 'poll' && poll_id && ( // Ensure poll_id (from post) exists
+      {post_type === 'poll' && poll_id && (
         isLoadingPoll ? (
-          <div className="flex justify-center items-center py-4"><Loader2 className="animate-spin text-blue-500" size={24} /><span className="ml-2 text-gray-600 dark:text-gray-300">Loading poll...</span></div>
+          <div className="flex justify-center items-center py-4"><Loader2 className="animate-spin text-blue-500" size={24} /><span className="ml-2 text-gray-600">Loading poll...</span></div>
         ) : pollError ? (
           <p className="text-xs text-red-500 mb-2">Error loading poll: {pollError}</p>
-        ) : pollDetails ? (
+        ) : pollDetails && (
           <PollCard
-            postId={postIdForPollCard} // Main post ID for unique radio names
+            key={postIdForPollCard}
+            postId={poll_id!}
             question={pollDetails.question}
-            options={pollDetails.options.map(opt => ({ id: opt.id, text: opt.text, votes: opt.votes }))} // Map to PollCard's expected PollOption structure
+            options={pollDetails.options.map(opt => ({ id: opt.id, text: opt.text, votes: opt.votes }))}
             userVote={userVote}
-            onVote={onVote} // Pass the handler from FeedPostItem
+            onVote={onVote}
             totalVotesOverall={pollDetails.totalVotesDistinctUsers}
           />
-        ) : <p className="text-xs text-gray-500 dark:text-gray-400">Poll data not available.</p>
+        )
       )}
     </div>
   );
 };
 
-const EMOJI_REACTIONS = [
-  { key: 'like', emoji: '👍', label: 'Like' },
-  { key: 'heart', emoji: '❤️', label: 'Heart' },
-  { key: 'angry', emoji: '😡', label: 'Angry' },
-  { key: 'cry', emoji: '😢', label: 'Cry' },
-];
+const defaultAvatar = 'https://ui-avatars.com/api/?name=?&background=random';
+
+// Helper function to count total comments including replies
+const countTotalComments = (commentsToCount: CommentItemProps[]): number => {
+  let count = 0;
+  for (const comment of commentsToCount) {
+    count++; // Count the comment itself
+    if (comment.replies && comment.replies.length > 0) {
+      // Recursively call with comment.replies, which is CommentItemProps[]
+      count += countTotalComments(comment.replies);
+    }
+  }
+  return count;
+};
+
+function filterProfanity(text: string): string {
+  // Basic profanity filter example (replace with a more robust solution if needed)
+  const badWords = ['examplebadword', 'anotherone']; // Add more words
+  let filteredText = text;
+  badWords.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'gi');
+    filteredText = filteredText.replace(regex, '*'.repeat(word.length));
+  });
+  return filteredText;
+}
 
 export default function FeedPostItem({ 
-  id, postAuthorUserId, currentUserId, authorName, authorAvatarUrl, timestamp, title, textContent: initialTextContent,
+  id, postAuthorUserId, currentUserId, currentUserRole, authorName, authorFullName, authorRole, authorIsLocationVerified, authorAvatarUrl, authorIsOnline, timestamp, title, textContent: initialTextContent,
   updated_at, imageUrl, poll_id, is_pinned = false, likeCount, commentCount: initialCommentCount, isLikedByCurrentUser,
   onToggleLike, fetchComments, onCommentSubmit, onDeletePost, onUpdatePost, onTogglePin,
-  onActualDeleteComment, 
-  onActualUpdateComment, onReplySubmit, onLikeComment, onUnlikeComment, supabaseClient, post_type,
+  onActualDeleteComment, onActualUpdateComment, onReplySubmit, onLikeComment, onUnlikeComment, post_type,
   event_start_time, event_end_time, event_location_text, event_description,
-  images,
-  video_url,
+  images, video_url, openCommentsByDefault, onOpenCommentsModal, onCloseModal, canPin,
+  documents, onRsvpAction, communityId,
+  authorEmail, authorBio, authorProfileCreatedAt,
 }: FeedPostItemProps) {
-  const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState<CommentItemProps[]>([]);
-  const [displayedCommentsHierarchy, setDisplayedCommentsHierarchy] = useState<CommentItemPropsWithReplies[]>([]);
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  const [textContent, setTextContent] = useState(initialTextContent);
+  const [editMode, setEditMode] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const [optimisticIsLiked, setOptimisticIsLiked] = useState(isLikedByCurrentUser);
+  const [optimisticLikeCount, setOptimisticLikeCount] = useState(likeCount);
+  const [isLiking, setIsLiking] = useState(false); // For like button loading
+
+  const [showComments, setShowComments] = useState(openCommentsByDefault || false);
+  const [comments, setComments] = useState<CommentItemPropsWithReplies[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [newCommentText, setNewCommentText] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  const [currentCommentCount, setCurrentCommentCount] = useState(initialCommentCount);
-  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
-  const optionsMenuRef = useRef<HTMLDivElement>(null);
-  const [commentInputValue, setCommentInputValue] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedText, setEditedText] = useState(initialTextContent); 
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const [displayedTextContent, setDisplayedTextContent] = useState(initialTextContent);
-  
-  // State for Poll Data - Restored
-  const [pollDetails, setPollDetails] = useState<PollFullDetails | null>(null);
-  const [userPollVote, setUserPollVote] = useState<string | null>(null);
-  const [isLoadingPoll, setIsLoadingPoll] = useState(false);
-  const [pollError, setPollError] = useState<string | null>(null);
-  
-  const commentInputRef = useRef<HTMLTextAreaElement>(null);
+  const [optimisticCommentCount, setOptimisticCommentCount] = useState(initialCommentCount);
+  const [showCommentInput, setShowCommentInput] = useState(true);
 
-  const [optimisticLikeCount, setOptimisticLikeCount] = useState(likeCount);
-  const [optimisticIsLiked, setOptimisticIsLiked] = useState(isLikedByCurrentUser);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const moreOptionsRef = useRef<HTMLDivElement>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isPinning, setIsPinning] = useState(false);
 
-  const [isProcessingPin, setIsProcessingPin] = useState(false); // <<< State for pin processing
+  const [showAuthorTooltip, setShowAuthorTooltip] = useState(false);
 
-  // --- Emoji Reaction State ---
-  const [emojiCounts, setEmojiCounts] = useState<{ [key: string]: number }>({});
-  const [userReaction, setUserReaction] = useState<string | null>(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const MAX_CHARS = 300; // Max characters before truncating
+  const shouldTruncate = textContent.length > MAX_CHARS;
+  const truncatedText = shouldTruncate ? textContent.substring(0, MAX_CHARS) + '...' : textContent;
 
-  // Gallery modal state
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [galleryIndex, setGalleryIndex] = useState(0);
-
-  // Report modal state
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState('');
-  const [reportError, setReportError] = useState<string | null>(null);
+  const [reactionError, setReactionError] = useState<string | null>(null); // General purpose error for reactions/reporting
 
   const [showCopied, setShowCopied] = useState(false);
 
-  useEffect(() => {
-    setDisplayedTextContent(initialTextContent);
-    if (!isEditing) setEditedText(initialTextContent);
-  }, [initialTextContent, isEditing]);
+  const [pollDetails, setPollDetails] = useState<PollFullDetails | null>(null);
+  const [isLoadingPoll, setIsLoadingPoll] = useState(false);
+  const [userPollVote, setUserPollVote] = useState<string | null>(null);
+  const [pollFetchError, setPollFetchError] = useState<string | null>(null);
 
-  useEffect(() => { setCurrentCommentCount(initialCommentCount); }, [initialCommentCount]);
-  useEffect(() => { setOptimisticLikeCount(likeCount); }, [likeCount]);
-  useEffect(() => { setOptimisticIsLiked(isLikedByCurrentUser); }, [isLikedByCurrentUser]);
+  const [rsvps, setRsvps] = useState<RsvpData[]>([]);
+  const [isLoadingRsvps, setIsLoadingRsvps] = useState(false);
+  const [rsvpError, setRsvpError] = useState<string | null>(null);
+  const [currentUserRsvpStatus, setCurrentUserRsvpStatus] = useState<'yes' | 'no' | 'maybe' | null>(null);
+  const [isSubmittingRsvp, setIsSubmittingRsvp] = useState(false);
+
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+
+  const [showShareOptions, setShowShareOptions] = useState(false);
+  const shareOptionsRef = useRef<HTMLDivElement>(null);
+
+  const handleAuthorMouseEnter = () => {
+    setShowAuthorTooltip(true);
+  };
+
+  const handleAuthorMouseLeave = () => {
+    setShowAuthorTooltip(false);
+  };
+
+  const handleTooltipMouseEnter = () => {
+    setShowAuthorTooltip(true); // Keep tooltip shown when mouse is over it
+  };
+
+  const handleTooltipMouseLeave = () => {
+    setShowAuthorTooltip(false); // Hide when mouse leaves tooltip
+  };
+
+  useEffect(() => {
+    setTextContent(initialTextContent);
+  }, [initialTextContent]);
+
+  useEffect(() => {
+    setOptimisticIsLiked(isLikedByCurrentUser);
+  }, [isLikedByCurrentUser]);
+
+  useEffect(() => {
+    setOptimisticLikeCount(likeCount);
+  }, [likeCount]);
+
+  useEffect(() => {
+    setOptimisticCommentCount(initialCommentCount);
+  }, [initialCommentCount]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target as Node)) {
-        setShowOptionsMenu(false);
+      if (moreOptionsRef.current && !moreOptionsRef.current.contains(event.target as Node)) {
+        setShowMoreOptions(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const loadComments = useCallback(async () => {
@@ -306,708 +425,867 @@ export default function FeedPostItem({
     setIsLoadingComments(true);
     setCommentError(null);
     try {
-      const fetched = await fetchComments(id);
-      setComments(fetched || []); 
-      setDisplayedCommentsHierarchy(buildCommentHierarchy(fetched || [], id)); 
-    } catch (error) {
-      console.error("Error fetching comments for post", id, error);
-      setCommentError("Failed to load comments.");
-      setDisplayedCommentsHierarchy([]);
+      const fetchedComments = await fetchComments(id);
+      setComments(fetchedComments as CommentItemPropsWithReplies[]);
+      // Update optimisticCommentCount with the total number of comments and replies
+      setOptimisticCommentCount(countTotalComments(fetchedComments));
+    } catch (err) {
+      console.error("Error loading comments:", err);
+      setCommentError('Failed to load comments.');
     } finally {
       setIsLoadingComments(false);
     }
   }, [id, fetchComments]);
 
   useEffect(() => {
-    if (showComments) loadComments();
-  }, [showComments, loadComments]);
-
-  const fetchPollData = useCallback(async () => {
-    if (post_type !== 'poll' || !id || !poll_id) return; 
-    setIsLoadingPoll(true); // Restored
-    setPollError(null); // Restored
-    try {
-      const { data: pollDataFromDb, error: pollErrorFromDb } = await supabaseClient
-        .from('polls')
-        .select(`question, poll_options (id, option_text, poll_votes (user_id))`)
-        .eq('post_id', poll_id)
-        .single();
-      if (pollErrorFromDb) throw pollErrorFromDb;
-      if (!pollDataFromDb) throw new Error('Poll data not found.');
-
-      const optionsWithCounts: PollOptionWithVotes[] = pollDataFromDb.poll_options.map((opt: any) => ({
-        id: opt.id,
-        text: opt.option_text,
-        votes: opt.poll_votes.length,
-        isVotedByUser: currentUserId ? opt.poll_votes.some((vote: any) => vote.user_id === currentUserId) : false,
-      }));
-
-      let currentUserVoteOptionId: string | null = null;
-      optionsWithCounts.forEach(opt => { if (opt.isVotedByUser) currentUserVoteOptionId = opt.id; });
-      
-      const allVoterIds = new Set<string>();
-      pollDataFromDb.poll_options.forEach((opt: any) => {
-        opt.poll_votes.forEach((vote: any) => allVoterIds.add(vote.user_id));
-      });
-      const totalVotesDistinctUsers = allVoterIds.size;
-
-      setPollDetails({ question: pollDataFromDb.question, options: optionsWithCounts, totalVotesDistinctUsers });
-      if (currentUserVoteOptionId) setUserPollVote(currentUserVoteOptionId); // Restored
-
-    } catch (e) {
-      const err = e as Error;
-      console.error(`Poll data error for post ${id}:`, err);
-      setPollError(err.message || 'Failed to load poll details.'); // Restored
-      setPollDetails(null);
-    } finally {
-      setIsLoadingPoll(false); // Restored
+    if (showComments && comments.length === 0 && initialCommentCount > 0) {
+      loadComments();
     }
-  }, [id, poll_id, post_type, supabaseClient, currentUserId]); // Added currentUserId
+  }, [showComments, comments.length, initialCommentCount, loadComments]);
+  
+  const debouncedSetTextContent = useCallback(
+    debounce((value: string) => setTextContent(value), 300),
+    []
+  );
 
-  useEffect(() => { if (post_type === 'poll') fetchPollData(); }, [post_type, fetchPollData]);
+  function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    return (...args: Parameters<F>): Promise<ReturnType<F>> =>
+      new Promise(resolve => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+        timeout = setTimeout(() => resolve(func(...args)), waitFor);
+      });
+  }
+
+  // Fetch Poll Data
+  useEffect(() => {
+    const fetchPoll = async () => {
+      if (!poll_id || !supabase) return;
+    setIsLoadingPoll(true);
+    setPollFetchError(null);
+    try {
+        const { data: pollQuestionData, error: pollError } = await supabase
+        .from('polls')
+          .select('question, poll_options ( id, option_text, poll_votes (user_id) )')
+          .eq('id', poll_id)
+          .single();
+
+        if (pollError) throw pollError;
+
+        if (pollQuestionData) {
+          let userVoteOptionId: string | null = null;
+          const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
+            const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
+            if (isVoted) userVoteOptionId = opt.id;
+            return {
+              id: opt.id,
+              text: opt.option_text,
+              votes: opt.poll_votes.length,
+              isVotedByUser: isVoted,
+            };
+          });
+          
+          const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+
+        setPollDetails({ 
+            question: pollQuestionData.question,
+          options: optionsWithVotes, 
+            totalVotesDistinctUsers: totalDistinctVotes
+        });
+          if (userVoteOptionId) setUserPollVote(userVoteOptionId);
+
+      } else {
+          setPollFetchError('Poll not found.');
+        }
+      } catch (err: any) {
+        console.error("Error fetching poll data:", err);
+        if (err.message === "JSON object requested, multiple (or no) rows returned") {
+          console.log(`[FeedPostItem] Poll data retrieval failed for poll_id: ${poll_id}. This ID may be incorrect, the poll deleted, or inaccessible due to RLS.`);
+          setPollFetchError('Poll data not found or is invalid for this post. The poll might have been deleted or the ID is incorrect.');
+        } else {
+          setPollFetchError(err.message || 'Failed to load poll data.');
+        }
+        // Fallback fetch logic (can be reviewed if it's problematic for this error)
+        const { data: pollQuestionDataFallback } = await supabase.from('polls').select('question, poll_options ( id, option_text, poll_votes (user_id) )').eq('id', poll_id).single();
+        if (pollQuestionDataFallback) {
+            let userVoteOptionId: string | null = null;
+            const optionsWithVotes: PollOptionWithVotes[] = pollQuestionDataFallback.poll_options.map(opt => {
+                const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
+                if (isVoted) userVoteOptionId = opt.id;
+                return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
+            });
+            const totalDistinctVotes = new Set(pollQuestionDataFallback.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+            setPollDetails({ question: pollQuestionDataFallback.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
+            if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+        } // No explicit setReactionError here as it's about fetching initial poll data.
+    } finally {
+      setIsLoadingPoll(false);
+    }
+    };
+
+    if (post_type === 'poll' && poll_id) {
+      fetchPoll();
+    }
+  }, [poll_id, post_type, supabase, currentUserId]);
+
+  const handleVoteOnPoll = async (optionId: string) => {
+    if (!currentUserId || !poll_id || userPollVote) return; // Prevent voting if not logged in, no poll, or already voted
+    try {
+      // Optimistically update UI
+      const previousVote = userPollVote;
+      setUserPollVote(optionId);
+      setPollDetails(prev => {
+        if (!prev) return null;
+        let newTotalVotes = prev.totalVotesDistinctUsers || 0;
+        const newOptions = prev.options.map(opt => {
+          let newVoteCount = opt.votes;
+          // If this is the new vote
+          if (opt.id === optionId) {
+            if (!opt.isVotedByUser) newVoteCount++; // Increment if not previously voted by user
+            if (!previousVote) newTotalVotes++; // Increment total if user hadn't voted before at all
+            return { ...opt, votes: newVoteCount, isVotedByUser: true };
+          }
+          // If this was a previous vote by the user, and it's not the current one
+          if (opt.id === previousVote && opt.id !== optionId) {
+            // newVoteCount--; // Don't decrement here, backend handles single vote
+            return { ...opt, isVotedByUser: false }; // Just unmark as voted
+          }
+          return opt;
+        });
+        return { ...prev, options: newOptions, totalVotesDistinctUsers: newTotalVotes };
+      });
+
+      const { error } = await supabase.rpc('vote_on_poll', {
+        _poll_id: poll_id,
+        _poll_option_id: optionId,
+        _user_id: currentUserId
+      });
+
+      if (error) {
+        console.error("Error voting on poll:", error);
+        // Revert optimistic update
+        setUserPollVote(previousVote);
+        // Re-fetch to be sure (or implement more granular revert)
+        // Ideally, pollDetails should also be reverted carefully.
+        // For simplicity, a re-fetch might be easier here.
+        const { data: pollQuestionData } = await supabase.from('polls').select('question, poll_options ( id, option_text, poll_votes (user_id) )').eq('id', poll_id).single();
+        if (pollQuestionData) {
+            let userVoteOptionId: string | null = null;
+            const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
+                const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
+                if (isVoted) userVoteOptionId = opt.id;
+                return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
+            });
+            const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+            setPollDetails({ question: pollQuestionData.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
+            if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+        }
+        setReactionError('Failed to cast vote. Please try again.');
+        setTimeout(() => setReactionError(null), 3000);
+
+      } else {
+        // Vote successful, re-fetch to confirm and get latest counts from all users
+         const { data: pollQuestionData } = await supabase.from('polls').select('question, poll_options ( id, option_text, poll_votes (user_id) )').eq('id', poll_id).single();
+        if (pollQuestionData) {
+            let userVoteOptionId: string | null = null;
+            const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
+                const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
+                if (isVoted) userVoteOptionId = opt.id;
+                return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
+            });
+            const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+            setPollDetails({ question: pollQuestionData.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
+            if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+        }
+      }
+    } catch (err: any) {
+      console.error("Error in handleVoteOnPoll:", err);
+      setReactionError(err.message || 'An unexpected error occurred while voting.');
+      setTimeout(() => setReactionError(null), 3000);
+      // Re-fetch on general error too
+      const { data: pollQuestionData } = await supabase.from('polls').select('question, poll_options ( id, option_text, poll_votes (user_id) )').eq('id', poll_id).single();
+        if (pollQuestionData) {
+            let userVoteOptionId: string | null = null;
+            const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
+                const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
+                if (isVoted) userVoteOptionId = opt.id;
+                return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
+            });
+            const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+            setPollDetails({ question: pollQuestionData.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
+            if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+        }
+    }
+  };
+
+  useEffect(() => { 
+    const fetchRsvps = async () => {
+      if (post_type !== 'event' || !id || !supabase) return;
+      setIsLoadingRsvps(true);
+      setRsvpError(null);
+      try {
+        const { data, error } = await supabase
+          .from('event_rsvps')
+          .select('user_id, status, profile:profiles(username, avatar_url)')
+          .eq('event_post_id', id);
+        if (error) throw error;
+        const transformedData = data.map(rsvp => ({
+          ...rsvp,
+          profile: rsvp.profile && Array.isArray(rsvp.profile) && rsvp.profile.length > 0 ? rsvp.profile[0] : null
+        }));
+        setRsvps(transformedData as RsvpData[]);
+        const currentUserRsvp = transformedData.find(rsvp => rsvp.user_id === currentUserId);
+        setCurrentUserRsvpStatus(currentUserRsvp ? currentUserRsvp.status : null);
+      } catch (err: any) {
+        console.error('Error fetching RSVPs:', err);
+        setRsvpError(err.message || 'Failed to load RSVP information.');
+      } finally {
+        setIsLoadingRsvps(false);
+      }
+    };
+    fetchRsvps();
+  }, [id, post_type, supabase, currentUserId]);
 
   const handleOptimisticLike = async () => {
-    if (!onToggleLike) return;
-    const originalLiked = optimisticIsLiked;
-    const originalCount = optimisticLikeCount;
-    setOptimisticIsLiked(!originalLiked);
-    setOptimisticLikeCount(prev => originalLiked ? Math.max(0, prev - 1) : prev + 1);
-    try { await onToggleLike(id); } 
-    catch { setOptimisticIsLiked(originalLiked); setOptimisticLikeCount(originalCount); }
+    if (!currentUserId || !onToggleLike) return;
+    setIsLiking(true);
+    const previousIsLiked = optimisticIsLiked;
+    const previousLikeCount = optimisticLikeCount;
+
+    setOptimisticIsLiked(!previousIsLiked);
+    setOptimisticLikeCount(previousIsLiked ? previousLikeCount - 1 : previousLikeCount + 1);
+
+    try {
+      await onToggleLike(id);
+    } catch (error) {
+      console.error("Failed to toggle like:", error);
+      setOptimisticIsLiked(previousIsLiked);
+      setOptimisticLikeCount(previousLikeCount);
+      setReactionError("Couldn't update like. Please try again.");
+      setTimeout(() => setReactionError(null), 3000);
+    } finally {
+      setIsLiking(false);
+    }
   };
 
-  const handleCommentSubmitInternal = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const commentText = commentInputValue.trim();
-    if (!commentText || !onCommentSubmit) return;
+  const handleCommentSubmitInternal = async (data: { commentText: string; files?: File[] }) => {
+    const { commentText, files } = data;
+    if (!commentText.trim() && (!files || files.length === 0)) return false;
+    if (!currentUserId || !onCommentSubmit) return false;
+
     setIsSubmittingComment(true);
-    setCommentError(null);
     try {
-      const success = await onCommentSubmit(id, commentText);
+      const success = await onCommentSubmit(id, commentText, files);
       if (success) {
-        setCommentInputValue('');
-        setCurrentCommentCount(prev => prev + 1);
-        if (showComments) loadComments(); 
-        if (commentInputRef.current) commentInputRef.current.style.height = 'auto';
-        // Refetch the post to get the latest comment count
-        try {
-          const { data: postData, error: postError } = await supabaseClient
-            .from('community_feed_view')
-            .select('comment_count')
-            .eq('id', id)
-            .single();
-          if (!postError && postData && typeof postData.comment_count === 'number') {
-            setCurrentCommentCount(postData.comment_count);
-          }
-        } catch (e) { /* ignore error, keep optimistic count */ }
-      } else { setCommentError("Failed to submit comment."); }
-    } catch (e) {
-      const err = e as Error;
-      console.error("Error submitting comment:", err);
-      setCommentError(err.message || "An error occurred.");
-    } finally { setIsSubmittingComment(false); }
-  };
-
-  const handleDeleteInternal = async () => {
-    if (onDeletePost && window.confirm("Are you sure you want to delete this post?")) {
-      setShowOptionsMenu(false);
-      try { 
-        await onDeletePost(id); 
-        // If successful, the post should disappear from the feed. 
-        // No explicit 'if(success)' needed if onDeletePost is Promise<void>
-      } catch (e) { 
-        console.error("Error deleting post:", e); 
-        // Optionally, show an error to the user
-        alert("Failed to delete post.");
-      }
-    }
-  };
-
-  const handleEditInternal = () => { setEditedText(displayedTextContent); setIsEditing(true); setShowOptionsMenu(false); setEditError(null); };
-  const handleCancelEditInternal = () => { setIsEditing(false); setEditedText(displayedTextContent); setEditError(null); };
-  
-  const handleSaveEditInternal = async () => {
-    if (!onUpdatePost || !editedText.trim() || editedText.trim() === displayedTextContent.trim()) {
-      if (!editedText.trim()) setEditError("Content cannot be empty.");
-      else if (editedText.trim() === displayedTextContent.trim()) setIsEditing(false); 
-      return;
-    }
-    setIsSavingEdit(true); setEditError(null);
-    try {
-      const success = await onUpdatePost(id, editedText.trim());
-      if (success) { setIsEditing(false); setDisplayedTextContent(editedText.trim()); }
-      else { setEditError("Failed to save. Please try again."); }
-    } catch (e) { const err = e as Error; setEditError(err.message || "Save failed."); }
-    finally { setIsSavingEdit(false); }
-  };
-  
-  const handlePollVoteInternal = async (optionId: string) => {
-    if (!poll_id || !currentUserId) {
-      console.warn("Poll ID or User ID missing for voting.");
-      setPollError("Login to vote or poll ID is missing."); // User-facing error
-      return;
-    }
-    
-    const previousVote = userPollVote;
-    setUserPollVote(optionId); // Optimistic update
-
-    try {
-      const { data: existingVote, error: fetchVoteError } = await supabaseClient
-        .from('poll_votes')
-        .select('id, poll_option_id')
-        .eq('poll_post_id', poll_id) 
-        .eq('user_id', currentUserId)
-        .single();
-
-      if (fetchVoteError && fetchVoteError.code !== 'PGRST116') { 
-        // PGRST116 means "single row not found", which is fine for a new vote
-        console.error('[PollVoteInternal] Error fetching existing vote:', fetchVoteError);
-        throw fetchVoteError;
-      }
-
-      if (existingVote) {
-        if (existingVote.poll_option_id === optionId) {
-          // Unvoting: User clicked the same option again
-          console.log(`[PollVoteInternal] User ${currentUserId} is UNVOTING. Poll ID: ${poll_id}, Option ID: ${optionId}. Existing vote ID: ${existingVote.id}`);
-          const { error: deleteError } = await supabaseClient
-            .from('poll_votes')
-            .delete()
-            .match({ id: existingVote.id });
-          if (deleteError) {
-            console.error('[PollVoteInternal] Error deleting vote:', deleteError);
-            throw deleteError;
-          }
-          setUserPollVote(null); // Clear optimistic vote, was successful
-          console.log(`[PollVoteInternal] Successfully DELETED vote for user ${currentUserId}, poll ${poll_id}`);
-        } else {
-          // Changing vote: User clicked a different option
-          console.log(`[PollVoteInternal] User ${currentUserId} is CHANGING VOTE. Poll ID: ${poll_id}, From Option ID: ${existingVote.poll_option_id}, To Option ID: ${optionId}. Existing vote ID: ${existingVote.id}`);
-          const { error: updateError } = await supabaseClient
-            .from('poll_votes')
-            .update({ poll_option_id: optionId, voted_at: new Date().toISOString() })
-            .match({ id: existingVote.id });
-          if (updateError) {
-            console.error('[PollVoteInternal] Error updating vote:', updateError);
-            throw updateError;
-          }
-          console.log(`[PollVoteInternal] Successfully UPDATED vote for user ${currentUserId}, poll ${poll_id} to option ${optionId}`);
-        }
+        setNewCommentText('');
+        setOptimisticCommentCount(prev => prev + 1); // Optimistic update
+        setShowCommentInput(true); // Keep input open or re-open if it was closed
+        // Comments will be reloaded by the parent page or via loadComments() if triggered
+        // Potentially trigger a direct reload here too if needed:
+            loadComments(); 
+        return true;
       } else {
-        // New vote
-        console.log(`[PollVoteInternal] User ${currentUserId} is CASTING NEW VOTE. Poll ID: ${poll_id}, Option ID: ${optionId}`);
-        const votePayload = {
-          poll_option_id: optionId,
-          user_id: currentUserId,
-          poll_post_id: poll_id, 
-          voted_at: new Date().toISOString(),
-        };
-        console.log('[PollVoteInternal] New vote payload:', votePayload);
-        const { error: insertError } = await supabaseClient
-          .from('poll_votes')
-          .insert(votePayload);
-        if (insertError) {
-          console.error('[PollVoteInternal] Error inserting new vote:', insertError);
-          throw insertError;
-        }
-        console.log(`[PollVoteInternal] Successfully INSERTED new vote for user ${currentUserId}, poll ${poll_id}, option ${optionId}`);
+        setReactionError("Failed to submit comment. Please try again.");
+        setTimeout(() => setReactionError(null), 3000);
+        return false;
       }
-      fetchPollData(); // Refresh poll data, which includes vote counts and user's vote
-    } catch (error: any) { // Changed to any to access error properties
-      console.error(`[PollVoteInternal_Catch] Error processing poll vote for poll ${poll_id}, option ${optionId}. Error Code: ${error?.code}, Message: ${error?.message}, Details: ${error?.details}, Hint: ${error?.hint}`, error);
-      setPollError('Failed to record vote. Please try again.'); // Set user-facing error
-      // Revert optimistic update if there was an error
-      if (previousVote !== undefined) { 
-         setUserPollVote(previousVote);
-      } else {
-         setUserPollVote(null); 
-      }
+    } catch (error) {
+      console.error("Error submitting comment:", error);
+      setReactionError("An error occurred while submitting your comment.");
+      setTimeout(() => setReactionError(null), 3000);
+      return false;
+    } finally {
+      setIsSubmittingComment(false);
     }
+  };
+
+  const handleCommentFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    // Assuming newCommentText holds the current comment input value
+    // Files are not explicitly handled by this CommentForm instance in FeedPostItem
+    // but handleCommentSubmitInternal can accept them if CommentForm is updated.
+    await handleCommentSubmitInternal({ commentText: newCommentText }); 
   };
 
   const handleTogglePinInternal = async () => {
     if (!onTogglePin) return;
-    setIsProcessingPin(true);
+    setIsPinning(true); // For visual feedback if any
     try {
       const success = await onTogglePin(id, is_pinned);
-      if (!success) {
-        // Error is handled by the parent component
-        setShowOptionsMenu(false);
+      if (success) {
+        // is_pinned prop will be updated by parent, this component will re-render
+        setShowMoreOptions(false);
+    } else {
+         setReactionError("Failed to update pin status.");
+         setTimeout(() => setReactionError(null), 3000);
       }
-    } catch (e) {
-      console.error("Error toggling pin status:", e);
+    } catch (error) {
+      console.error("Error toggling pin:", error);
+      setReactionError("An error occurred while updating pin status.");
+      setTimeout(() => setReactionError(null), 3000);
     } finally {
-      setIsProcessingPin(false);
-    }
-  };
-
-  useEffect(() => {
-    const textarea = commentInputRef.current;
-    if (textarea) {
-      const adjustHeight = () => {
-        textarea.style.height = 'auto';
-        textarea.style.height = `${textarea.scrollHeight}px`;
-      };
-      textarea.addEventListener('input', adjustHeight);
-      adjustHeight(); 
-      return () => textarea.removeEventListener('input', adjustHeight);
-    }
-  }, [commentInputValue]);
-
-  // Fetch emoji reactions for this post
-  useEffect(() => {
-    let isMounted = true;
-    const fetchReactions = async () => {
-      const { data, error } = await supabaseClient
-        .from('feed_post_likes')
-        .select('reaction, user_id')
-        .eq('post_id', id);
-      if (!isMounted) return;
-      if (error) return;
-      const counts: { [key: string]: number } = {};
-      let userReact: string | null = null;
-      data?.forEach(row => {
-        if (typeof row.reaction === 'string') {
-          counts[row.reaction] = (counts[row.reaction] || 0) + 1;
-          if (row.user_id === currentUserId) userReact = row.reaction;
-        }
-      });
-      setEmojiCounts(counts);
-      setUserReaction(userReact);
-    };
-    fetchReactions();
-    return () => { isMounted = false; };
-  }, [id, supabaseClient, currentUserId]);
-
-  // Handle emoji reaction
-  const handleEmojiReaction = async (reactionKey: string) => {
-    if (!currentUserId) return;
-    setShowEmojiPicker(false);
-    setUserReaction(reactionKey);
-    // Upsert reaction
-    await supabaseClient.from('feed_post_likes').upsert({
-      user_id: currentUserId,
-      post_id: id,
-      reaction: reactionKey,
-      created_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,post_id' });
-    // Refetch reactions
-    const { data, error } = await supabaseClient
-      .from('feed_post_likes')
-      .select('reaction, user_id')
-      .eq('post_id', id);
-    if (error) return;
-    const counts: { [key: string]: number } = {};
-    let userReact: string | null = null;
-    data?.forEach(row => {
-      if (typeof row.reaction === 'string') {
-        counts[row.reaction] = (counts[row.reaction] || 0) + 1;
-        if (row.user_id === currentUserId) userReact = row.reaction;
-      }
-    });
-    setEmojiCounts(counts);
-    setUserReaction(userReact);
-  };
-
-  // Modal keyboard navigation
-  useEffect(() => {
-    if (!galleryOpen) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setGalleryOpen(false);
-      if (e.key === 'ArrowLeft') setGalleryIndex(i => Math.max(0, i - 1));
-      if (e.key === 'ArrowRight' && images && galleryIndex < images.length - 1) setGalleryIndex(i => i + 1);
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [galleryOpen, images, galleryIndex]);
-
-  // Gallery grid layout logic
-  const renderGallery = () => {
-    if (!images || images.length === 0) return null;
-    const imgs = images.slice(0, 5);
-    const extra = images.length > 5 ? images.length - 5 : 0;
-
-    // 1 image: full width
-    if (imgs.length === 1) {
-      return (
-        <div className="mt-3 w-full aspect-[4/3] rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(0); setGalleryOpen(true); }}>
-          <PostImage src={imgs[0]} alt={title || 'Post image'} />
-        </div>
-      );
-    }
-
-    // 2 images: side by side
-    if (imgs.length === 2) {
-      return (
-        <div className="mt-3 grid grid-cols-2 gap-1">
-          {imgs.map((src, i) => (
-            <div key={i} className="aspect-[4/3] rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(i); setGalleryOpen(true); }}>
-              <PostImage src={src} alt={title || `Image ${i+1}`} />
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // 3 images: one large left, two stacked right
-    if (imgs.length === 3) {
-      return (
-        <div className="mt-3 grid grid-cols-3 gap-1 h-56">
-          <div className="col-span-2 row-span-2 h-full rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(0); setGalleryOpen(true); }}>
-            <PostImage src={imgs[0]} alt={title || 'Image 1'} className="h-full w-full object-cover" />
-          </div>
-          <div className="flex flex-col gap-1 h-full">
-            <div className="flex-1 rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(1); setGalleryOpen(true); }}>
-              <PostImage src={imgs[1]} alt={title || 'Image 2'} className="h-full w-full object-cover" />
-            </div>
-            <div className="flex-1 rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(2); setGalleryOpen(true); }}>
-              <PostImage src={imgs[2]} alt={title || 'Image 3'} className="h-full w-full object-cover" />
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // 4 images: 2x2 grid
-    if (imgs.length === 4) {
-      return (
-        <div className="mt-3 grid grid-cols-2 grid-rows-2 gap-1">
-          {imgs.map((src, i) => (
-            <div key={i} className="aspect-[4/3] rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(i); setGalleryOpen(true); }}>
-              <PostImage src={src} alt={title || `Image ${i+1}`} />
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // 5 images: 2 on top, 3 below (quilted)
-    if (imgs.length === 5) {
-      return (
-        <div className="mt-3 flex flex-col gap-1">
-          <div className="flex gap-1">
-            <div className="flex-1 aspect-[4/3] rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(0); setGalleryOpen(true); }}>
-              <PostImage src={imgs[0]} alt={title || 'Image 1'} />
-            </div>
-            <div className="flex-1 aspect-[4/3] rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(1); setGalleryOpen(true); }}>
-              <PostImage src={imgs[1]} alt={title || 'Image 2'} />
-            </div>
-          </div>
-          <div className="flex gap-1">
-            <div className="flex-1 aspect-[4/3] rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(2); setGalleryOpen(true); }}>
-              <PostImage src={imgs[2]} alt={title || 'Image 3'} />
-            </div>
-            <div className="flex-1 aspect-[4/3] rounded-lg overflow-hidden cursor-pointer" onClick={() => { setGalleryIndex(3); setGalleryOpen(true); }}>
-              <PostImage src={imgs[3]} alt={title || 'Image 4'} />
-            </div>
-            <div className="flex-1 aspect-[4/3] rounded-lg overflow-hidden cursor-pointer relative" onClick={() => { setGalleryIndex(4); setGalleryOpen(true); }}>
-              <PostImage src={imgs[4]} alt={title || 'Image 5'} />
-              {extra > 0 && (
-                <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center text-white text-xl font-bold rounded-lg">
-                  +{extra}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      );
+      setIsPinning(false);
     }
   };
 
   const handleReport = async () => {
-    setReportError(null);
-    if (!reportReason.trim()) {
-      setReportError('Please provide a reason for reporting.');
+    if (!reportReason.trim() || !currentUserId) {
+      setReactionError("Please provide a reason for reporting.");
       return;
     }
+    setReactionError(null);
     try {
-      await supabaseClient.from('post_reports').insert({
-        post_id: id,
-        reporter_id: currentUserId,
-        reason: reportReason.trim(),
+      const { error } = await supabase.from('post_reports').insert({
+        reported_content_id: id,
+        content_type: 'post',
+        reason: reportReason,
+        reporter_user_id: currentUserId,
+        // community_id: communityId, // TODO: Uncomment this line after adding 'community_id' column to 'post_reports' table
       });
+      if (error) throw error;
       setShowReportModal(false);
       setReportReason('');
-      alert('Report submitted. Thank you!');
-    } catch (e) {
-      setReportError('Failed to submit report. Please try again.');
+      // Show some success feedback, e.g. using a toast notification library
+      alert('Post reported successfully. Our team will review it.'); 
+    } catch (error) {
+      console.error("Error reporting post:", error);
+      setReactionError("Failed to submit report. Please try again.");
     }
   };
 
-  // Share handler
   const handleShare = () => {
-    const url = `${window.location.origin}/community/${post_type === 'general' ? 'miami' : post_type}/feed#post-${id}`;
-    navigator.clipboard.writeText(url);
+    const postUrl = `${window.location.origin}/community/${communityId}/feed?postId=${id}`;
+    navigator.clipboard.writeText(postUrl)
+      .then(() => {
     setShowCopied(true);
-    setTimeout(() => setShowCopied(false), 1500);
+        setTimeout(() => setShowCopied(false), 2000);
+      })
+      .catch(err => console.error('Failed to copy link:', err));
   };
 
-  // Main Render
-  return (
-    <div className="max-w-3xl w-full mx-auto bg-white dark:bg-gray-800 shadow-md rounded-lg p-4 mb-6 ${is_pinned ? 'border-2 border-yellow-400 dark:border-yellow-500' : ''}">
-      {/* Post Header */}
-      <div className="flex items-start justify-between mb-3">
+  const renderAuthorInfo = () => {
+    // Determine online status for direct display
+    let displayOnline: boolean | undefined = authorIsOnline; // Prioritize prop from parent
+
+    const profileDataForTooltip: UserTooltipProfileData = {
+      id: postAuthorUserId,
+      username: authorName,
+      avatar_url: authorAvatarUrl,
+      email: authorEmail,
+      bio: authorBio,
+      created_at: authorProfileCreatedAt,
+      role: authorRole,
+      is_location_verified: authorIsLocationVerified,
+    };
+
+    if (displayOnline === undefined && postAuthorUserId === currentUserId) {
+      // If prop is undefined and it's the current user's post, mark as online for direct display
+      displayOnline = true;
+    }
+
+    return (
+    <div className="flex items-center relative"> {/* Removed 'group' class as UserTooltipWrapper handles hover individually */}
+      <UserTooltipWrapper profileData={profileDataForTooltip}>
+        <Link href={`/profile/${postAuthorUserId}`} legacyBehavior>
+          <a 
+            className="flex-shrink-0"
+            // onMouseEnter={handleAuthorMouseEnter} -- Removed
+            // onMouseLeave={handleAuthorMouseLeave} -- Removed
+          >
+            <Image
+              src={authorAvatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=random`}
+              alt={authorName}
+              width={40}
+              height={40}
+              className="rounded-full mr-3"
+            />
+          </a>
+        </Link>
+      </UserTooltipWrapper>
+      <div className="text-sm">
         <div className="flex items-center">
-          {is_pinned && <Pin size={16} className="text-yellow-500 dark:text-yellow-400 mr-2 flex-shrink-0" />}
-          {authorAvatarUrl ? (
-            <Image src={authorAvatarUrl} alt={`${authorName}'s avatar`} width={40} height={40} className="rounded-full mr-3" />
-          ) : (
-            <UserCircle2 className="w-10 h-10 text-gray-400 dark:text-gray-500 mr-3" />
-          )}
-          <div>
-            <p className="font-semibold text-gray-700 dark:text-gray-300 hover:underline">
-                <Link href={`/user/${postAuthorUserId}`}>{authorName}</Link>
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {formatDistanceToNow(new Date(timestamp), { addSuffix: true })}
-              {updated_at && new Date(updated_at).getTime() > new Date(timestamp).getTime() + 60000 && ( // Only show edited if significant diff
-                <span title={`Original: ${new Date(timestamp).toLocaleString()}, Edited: ${new Date(updated_at).toLocaleString()}`}> (edited)</span>
-              )}
-            </p>
-          </div>
-        </div>
-        {currentUserId && currentUserId === postAuthorUserId && (onDeletePost || onUpdatePost || onTogglePin) && (
-          <div className="relative" ref={optionsMenuRef}>
-            <button 
-              onClick={() => setShowOptionsMenu(!showOptionsMenu)} 
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 p-1 rounded-full"
-              disabled={isProcessingPin}
+          <UserTooltipWrapper profileData={profileDataForTooltip}>
+            <span
+              className="font-semibold text-black cursor-pointer hover:underline"
+              // onMouseEnter={handleAuthorMouseEnter} -- Removed
+              // onMouseLeave={handleAuthorMouseLeave} -- Removed
             >
-              {isProcessingPin ? <Loader2 size={20} className="animate-spin" /> : <MoreHorizontal size={20} />}
-            </button>
-            {showOptionsMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 rounded-md shadow-lg py-1 z-20 border dark:border-gray-600">
-                {onUpdatePost && (
-                  <button 
-                    onClick={handleEditInternal} 
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-600 flex items-center"
-                  >
-                    <Edit3 size={16} className="mr-2" /> Edit Post
-                  </button>
-                )}
-                {onDeletePost && (
-                  <button 
-                    onClick={handleDeleteInternal} 
-                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-700 dark:hover:text-red-300 flex items-center"
-                  >
-                    <Trash2 size={16} className="mr-2" /> Delete Post
-                  </button>
-                )}
-                {onTogglePin && (
-                  <button
-                    onClick={handleTogglePinInternal}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-600 flex items-center"
-                  >
-                    {is_pinned ? <PinOff size={16} className="mr-2 text-yellow-600" /> : <Pin size={16} className="mr-2 text-yellow-500" />}
-                    {is_pinned ? 'Unpin Post' : 'Pin Post'}
-                  </button>
-                )}
+              {authorFullName || authorName}
+            </span>
+          </UserTooltipWrapper>
+
+          {/* Online Status Indicator for the main post display */}
+          {displayOnline !== undefined ? (
+            displayOnline ? (
+              <span title="Online"><Sailboat size={14} className="ml-1.5 text-green-500" /></span>
+            ) : (
+              <span title="Offline"><Sailboat size={14} className="ml-1.5 text-slate-400" /></span>
+            )
+          ) : authorIsOnline !== undefined ? ( // Use direct prop for fallback if available
+            authorIsOnline ? (
+              <span title="Online"><Sailboat size={14} className="ml-1.5 text-green-500" /></span>
+            ) : (
+              <span title="Offline"><Sailboat size={14} className="ml-1.5 text-slate-400" /></span>
+            )
+          ) : (
+             // Default if no prop and no tooltip data yet
+             <span title="Offline (status pending)"><Sailboat size={14} className="ml-1.5 text-slate-400 opacity-50" /></span>
+          )}
+
+          {authorIsLocationVerified &&
+            <span title="Location Verified"><ShieldCheck className="ml-1.5 h-4 w-4 text-blue-500" /></span>
+          }
+          {authorRole && authorRole !== 'member' && (
+            <span className="ml-1.5 px-1.5 py-0.5 text-xs font-semibold bg-orange-100 text-orange-700 rounded-full capitalize">
+              {authorRole.replace(/_/g, ' ')}
+            </span>
+            )}
+        </div>
+        <Link href={`/community/${communityId}/feed#post-${id}`} legacyBehavior>
+          <a className="text-xs text-gray-500 hover:underline">
+            {formatDistanceToNow(new Date(timestamp), { addSuffix: true })}
+            {updated_at && new Date(updated_at) > new Date(timestamp) && " (edited)"}
+          </a>
+        </Link>
+      </div>
+
+      {/* Tooltip Content - Render based on showAuthorTooltip - REMOVED */}
+      {/* {showAuthorTooltip && ( ... old tooltip code ... )} */}
+    </div>
+  );
+};
+
+const handleRsvpButtonClick = async (status: 'yes' | 'no' | 'maybe') => {
+  if (!currentUserId || !onRsvpAction || !id) return;
+  setIsSubmittingRsvp(true);
+  const previousStatus = currentUserRsvpStatus;
+  setCurrentUserRsvpStatus(status); // Optimistic update
+
+  try {
+    const success = await onRsvpAction(id, status);
+    if (!success) {
+      setCurrentUserRsvpStatus(previousStatus); // Revert on failure
+      setRsvpError('Failed to update RSVP. Please try again.');
+      setTimeout(() => setRsvpError(null), 3000);
+    } else {
+      // Re-fetch RSVPs to get accurate counts and other users' data
+      const { data, error } = await supabase
+      .from('event_rsvps')
+        .select('user_id, status, profile:profiles(username, avatar_url)')
+      .eq('event_post_id', id);
+      if (error) throw error;
+      const transformedDataAfterRsvp = data.map(rsvp => ({
+        ...rsvp,
+        profile: rsvp.profile && Array.isArray(rsvp.profile) && rsvp.profile.length > 0 ? rsvp.profile[0] : null
+      }));
+      setRsvps(transformedDataAfterRsvp as RsvpData[]);
+    }
+  } catch (err: any) {
+    console.error('Error submitting RSVP:', err);
+    setCurrentUserRsvpStatus(previousStatus); // Revert on error
+    setRsvpError(err.message || 'An error occurred while updating your RSVP.');
+    setTimeout(() => setRsvpError(null), 3000);
+  } finally {
+    setIsSubmittingRsvp(false);
+  }
+};
+
+const rsvpCounts = useMemo(() => {
+  const counts = { yes: 0, no: 0, maybe: 0 };
+  rsvps.forEach(rsvp => {
+    if (rsvp.status) counts[rsvp.status]++;
+  });
+  return counts;
+}, [rsvps]);
+
+const totalRsvps = rsvps.length;
+
+const handleReplySubmitWrapper = async (parentCommentId: string, replyText: string, parentDepth: number, files?: File[]) => {
+  if (onReplySubmit) {
+    setIsSubmittingComment(true); // Consider a specific state for reply submitting if needed
+    try {
+      const success = await onReplySubmit(parentCommentId, replyText, parentDepth, files);
+    if (success) {
+        loadComments(); // Reload all comments to show the new reply
+    } else {
+         setReactionError('Failed to submit reply.');
+         setTimeout(() => setReactionError(null), 3000);
+    }
+      return success;
+  } catch (error) {
+      console.error("Error submitting reply:", error);
+      setReactionError('An error occurred while submitting your reply.');
+      setTimeout(() => setReactionError(null), 3000);
+      return false;
+  } finally {
+      setIsSubmittingComment(false);
+    }
+  }
+  return false;
+};
+
+const handleAddToCalendar = () => {
+  if (!event_start_time || !title) return;
+  // Basic iCalendar link generation
+  const formatICalDate = (dateStr: string) => new Date(dateStr).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  
+  const icsContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//YourApp//EN',
+    'BEGIN:VEVENT',
+    `UID:${id}@yourapp.com`,
+    `DTSTAMP:${formatICalDate(new Date().toISOString())}`,
+    `DTSTART:${formatICalDate(event_start_time)}`,
+    event_end_time ? `DTEND:${formatICalDate(event_end_time)}` : '',
+    `SUMMARY:${title}`,
+    event_description ? `DESCRIPTION:${event_description.replace(/\n/g, '\\\\n')}` : '',
+    event_location_text ? `LOCATION:${event_location_text}` : '',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].filter(Boolean).join('\r\n');
+
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.ics`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+};
+
+const renderGallery = () => {
+  if (!images || images.length === 0) return null;
+
+  const openImageModal = (index: number) => {
+    setGalleryIndex(index);
+    setGalleryOpen(true);
+  };
+  
+  const closeImageModal = () => {
+    setGalleryOpen(false);
+  };
+
+  const nextImage = () => {
+    setGalleryIndex((prevIndex) => (prevIndex + 1) % images.length);
+  };
+
+  const prevImage = () => {
+    setGalleryIndex((prevIndex) => (prevIndex - 1 + images.length) % images.length);
+  };
+
+    return (
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 my-2">
+        {images.slice(0, 6).map((src, i) => (
+          <div key={i} className="aspect-square relative cursor-pointer group bg-slate-100" onClick={() => openImageModal(i)}>
+            <Image src={src} alt={title || `Image ${i + 1}`} layout="fill" objectFit="cover" className="rounded"/>
+            {i === 5 && images.length > 6 && (
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xl font-bold">
+                +{images.length - 6}
               </div>
             )}
           </div>
-        )}
+        ))}
       </div>
 
-      {/* Post Type Specific Elements */}
-      <PostTypeSpecificElements 
-        post_type={post_type}
-        title={title}
-        event_start_time={event_start_time}
-        event_end_time={event_end_time}
-        event_location_text={event_location_text}
-        event_description={event_description}
-        poll_id={poll_id} // Pass the actual poll_id from the post
-        postIdForPollCard={id} // Pass the main post ID
-        pollDetails={pollDetails}
-        isLoadingPoll={isLoadingPoll}
-        pollError={pollError}
-        onVote={handlePollVoteInternal}
-        userVote={userPollVote}
-        currentUserId={currentUserId}
-      />
-
-      {/* Post Content */}
-      {!isEditing && displayedTextContent && post_type !== 'poll' && (
-        <div className="prose prose-sm sm:prose dark:prose-invert max-w-none break-words whitespace-pre-wrap mt-2 text-gray-800 dark:text-gray-200">
-          {renderFormattedText(displayedTextContent)}
-        </div>
-      )}
-      {isEditing && (
-        <div className="mb-3">
-          <textarea
-            value={editedText}
-            onChange={(e) => setEditedText(e.target.value)}
-            className="w-full p-2 border rounded-md dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 focus:ring-1 focus:ring-blue-500"
-            rows={Math.max(3, editedText.split('\n').length)} // Auto-adjust rows based on content
-          />
-          {editError && <p className="text-xs text-red-500 mt-1">{editError}</p>}
-          <div className="flex justify-end space-x-2 mt-2">
-            <button 
-              onClick={handleCancelEditInternal}
-              className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 rounded-md"
-              disabled={isSavingEdit}
-            >
-              Cancel
-            </button>
-            <button 
-              onClick={handleSaveEditInternal}
-              className="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-md flex items-center disabled:opacity-70"
-              disabled={isSavingEdit || !editedText.trim()}
-            >
-              {isSavingEdit ? <Loader2 size={16} className="animate-spin mr-1" /> : <CheckSquare size={16} className="mr-1" />} 
-              Save
-            </button>
-          </div>
-        </div>
-      )}
-      {/* Video Player (if present) */}
-      {!isEditing && video_url && (
-        <div className="mb-3 rounded-lg overflow-hidden flex justify-center bg-gray-100 dark:bg-gray-750">
-          <video src={video_url} controls className="rounded-md max-h-96 w-full" />
-        </div>
-      )}
-
-      {/* Post Image */}
-      {!isEditing && !video_url && images && images.length > 0 && renderGallery()}
-      {/* Fallback for legacy single image */}
-      {!isEditing && !video_url && (!images || images.length === 0) && imageUrl && (
-        <div className="mb-3 rounded-lg overflow-hidden flex justify-center bg-gray-100 dark:bg-gray-750">
-          <PostImage src={imageUrl} alt={title || "Post image"} />
-        </div>
-      )}
-      {/* Gallery Modal */}
-      {galleryOpen && images && images.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" onClick={() => setGalleryOpen(false)}>
-          <div className="relative max-w-3xl w-full flex flex-col items-center" onClick={e => e.stopPropagation()}>
-            <button className="absolute top-2 right-2 text-white text-3xl" onClick={() => setGalleryOpen(false)}>&times;</button>
-            <div className="flex items-center justify-center w-full h-[60vh]">
-              <button className="text-white text-4xl px-4" onClick={() => setGalleryIndex(i => Math.max(0, i - 1))} disabled={galleryIndex === 0}>&#8592;</button>
-              <img src={images[galleryIndex]} alt={title || `Image ${galleryIndex+1}`} className="max-h-[55vh] max-w-full rounded-lg object-contain" />
-              <button className="text-white text-4xl px-4" onClick={() => setGalleryIndex(i => Math.min(images.length - 1, i + 1))} disabled={galleryIndex === images.length - 1}>&#8594;</button>
-            </div>
-            <div className="flex gap-2 mt-4">
-              {images.map((src, i) => (
-                <img key={i} src={src} alt={title || `Thumb ${i+1}`} className={`w-16 h-16 object-cover rounded cursor-pointer border-2 ${i === galleryIndex ? 'border-cyan-500' : 'border-transparent'}`} onClick={() => setGalleryIndex(i)} />
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-      
-
-      {/* Action Bar */}
-      <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
-        {/* Emoji Reaction Picker */}
-        <div className="relative">
-          <button
-            onClick={() => setShowEmojiPicker(v => !v)}
-            className="flex items-center hover:text-cyan-600 transition-colors px-2 py-1 rounded"
-            disabled={!currentUserId}
-            aria-label="React to post"
-          >
-            <span className="text-2xl mr-1">
-              {userReaction
-                ? EMOJI_REACTIONS.find(e => e.key === userReaction)?.emoji || '🙂'
-                : '🙂'}
-            </span>
-            <span className="text-sm font-medium">
-              {userReaction
-                ? EMOJI_REACTIONS.find(e => e.key === userReaction)?.label
-                : 'Add emoji'}
-            </span>
-          </button>
-          {showEmojiPicker && (
-            <div ref={emojiPickerRef} className="absolute z-30 left-0 mt-2 flex space-x-2 bg-white border border-cyan-200 rounded-xl shadow-lg p-2">
-              {EMOJI_REACTIONS.map(e => (
-        <button 
-                  key={e.key}
-                  onClick={() => handleEmojiReaction(e.key)}
-                  className={`flex flex-col items-center px-2 py-1 rounded hover:bg-cyan-50 focus:bg-cyan-100 transition-colors ${userReaction === e.key ? 'bg-cyan-100' : ''}`}
-                  disabled={!currentUserId}
+      {galleryOpen && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" 
+          onClick={closeImageModal}
         >
-                  <span className="text-2xl">{e.emoji}</span>
-                  <span className="text-xs font-medium mt-0.5">{emojiCounts[e.key] || 0}</span>
-        </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <button onClick={() => setShowComments(!showComments)} className="flex items-center hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
-          <MessageCircle size={20} className="mr-1.5" /> 
-          <span className="text-sm">{currentCommentCount} {currentCommentCount === 1 ? 'Comment' : 'Comments'}</span>
-        </button>
-        <button className="flex items-center hover:text-green-500 dark:hover:text-green-400 transition-colors" onClick={handleShare}>
-          <Share2 size={20} className="mr-1.5" /> <span className="text-sm">Share</span>
-        </button>
-        {showCopied && <span className="ml-2 text-xs text-green-600">Link copied!</span>}
-        <button className="flex items-center hover:text-red-500 dark:hover:text-red-400 transition-colors ml-2" onClick={() => setShowReportModal(true)}>
-          <Flag size={20} className="mr-1.5" /> <span className="text-sm">Report</span>
-        </button>
-      </div>
-
-      {/* Comments Section */}
-      {showComments && (
-        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-          <CommentForm
-            value={commentInputValue}
-            onChange={setCommentInputValue}
-            isSubmitting={isSubmittingComment}
-            onSubmit={handleCommentSubmitInternal}
-          />
-          {commentError && <p className="text-xs text-red-500 mb-2">{commentError}</p>}
-
-          {isLoadingComments ? (
-            <div className="flex justify-center items-center py-4">
-              <Loader2 className="animate-spin text-blue-500" size={24} /> 
-              <span className="ml-2 text-gray-600 dark:text-gray-300">Loading comments...</span>
-            </div>
-          ) : displayedCommentsHierarchy.length > 0 ? (
-            <div className="space-y-3">
-              {displayedCommentsHierarchy.map(comment => (
-                <CommentItem 
-                  key={comment.id}
-                  {...comment} 
-                  currentUserId={currentUserId}
-                  onDeleteComment={onActualDeleteComment} 
-                  onUpdateComment={onActualUpdateComment}
-                  onReplySubmit={onReplySubmit}
-                  onLikeComment={onLikeComment}
-                  onUnlikeComment={onUnlikeComment}
-                  supabaseClient={supabaseClient} 
-                  depth={comment.depth || 1} 
-                  replies={comment.replies} 
-                />
-              ))}
-            </div>
-          ) : (
-            !isLoadingComments && !commentError && <p className="text-sm text-center text-gray-500 dark:text-gray-400 py-3">No comments yet. Be the first to share your thoughts!</p>
-          )}
+          <div 
+            className="relative bg-white p-2 sm:p-4 rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              onClick={closeImageModal} 
+              className="absolute top-2 right-2 sm:top-3 sm:right-3 z-50 text-gray-400 hover:text-gray-600"
+              aria-label="Close gallery"
+            >
+              <XSquare size={20} />
+            </button>
+            <div className="flex-grow flex items-center justify-center overflow-hidden">
+               <img src={images[galleryIndex]} alt={title || `Image ${galleryIndex + 1}`} className="max-h-[calc(90vh-100px)] max-w-full object-contain rounded-md" />
+          </div>
+            {images.length > 1 && (
+              <div className="flex items-center justify-between mt-2 sm:mt-3">
+                <button 
+                  onClick={prevImage} 
+                  className="text-white bg-black/30 hover:bg-black/60 rounded-full p-2 sm:p-3 transition-colors"
+                  aria-label="Previous image"
+                >
+                  <ChevronLeft size={24} />
+                </button>
+                <p className="text-xs sm:text-sm text-white mx-2">{galleryIndex + 1} / {images.length}</p>
+                <button 
+                  onClick={nextImage} 
+                  className="text-white bg-black/30 hover:bg-black/60 rounded-full p-2 sm:p-3 transition-colors"
+                  aria-label="Next image"
+                >
+                  <ChevronRight size={24} />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
+    </>
+  );
+};
 
-      {/* Report Modal */}
-      {showReportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-xs flex flex-col items-center">
-            <Flag size={32} className="text-red-500 mb-2" />
-            <h3 className="text-lg font-semibold mb-2">Report Post?</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-2 text-center">Please provide a reason for reporting this post.</p>
-            <textarea
-              className="w-full border rounded px-2 py-1 text-sm mb-2"
-              placeholder="Reason for reporting..."
-              value={reportReason}
-              onChange={e => setReportReason(e.target.value)}
-              rows={3}
-              maxLength={300}
-              autoFocus
-            />
-            {reportError && <div className="text-xs text-red-500 mb-2">{reportError}</div>}
-            <div className="flex gap-3">
-              <button onClick={() => { setShowReportModal(false); setReportReason(''); setReportError(null); }} className="px-4 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-              <button onClick={handleReport} className="px-4 py-2 rounded bg-red-500 text-white hover:bg-red-600">Report</button>
+return (
+  <div className={`max-w-3xl w-full mx-auto bg-white shadow-md rounded-lg p-4 mb-6${is_pinned ? ' border-2 border-teal-400' : ''}`}>
+    <div className="flex items-start justify-between mb-3">
+      {renderAuthorInfo()}
+      {(currentUserId && (currentUserId === postAuthorUserId || currentUserRole === 'community admin') && (onDeletePost || onUpdatePost || onTogglePin)) && (
+        <div className="relative" ref={moreOptionsRef}>
+          <button onClick={(e) => { e.preventDefault(); setShowMoreOptions(!showMoreOptions); }} className="text-gray-500 hover:text-gray-700 p-1 rounded-full">
+            <MoreHorizontal size={20} />
+          </button>
+          {showMoreOptions && (
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 border border-gray-200">
+              {onUpdatePost && currentUserId === postAuthorUserId &&(
+                <button onClick={(e) => { e.preventDefault(); setEditMode(true); setShowMoreOptions(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                  <Edit3 size={16} className="mr-2" /> Edit Post
+                </button>
+              )}
+              {onDeletePost && (currentUserId === postAuthorUserId || currentUserRole === 'community admin') && (
+                <button onClick={(e) => { e.preventDefault(); setIsDeleting(true); setShowMoreOptions(false); }} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
+                  <Trash2 size={16} className="mr-2" /> Delete Post
+                </button>
+              )}
+              {onTogglePin && canPin && (currentUserRole === 'community admin' ) && (
+                <button onClick={(e) => { e.preventDefault(); handleTogglePinInternal(); setShowMoreOptions(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center" disabled={isPinning}>
+                  {isPinning ? <Loader2 size={16} className="mr-2 animate-spin"/> : (is_pinned ? <PinOff size={16} className="mr-2 text-yellow-600" /> : <Pin size={16} className="mr-2 text-yellow-500" />)}
+                  {is_pinned ? 'Unpin Post' : 'Pin Post'}
+                </button>
+              )}
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
-  );
+
+    <PostTypeSpecificElements 
+      post_type={post_type}
+      title={title}
+      event_start_time={event_start_time}
+      event_end_time={event_end_time}
+      event_location_text={event_location_text} event_description={event_description}
+      poll_id={poll_id} postIdForPollCard={id} pollDetails={pollDetails} isLoadingPoll={isLoadingPoll}
+      pollError={pollFetchError} onVote={handleVoteOnPoll} userVote={userPollVote} currentUserId={currentUserId}
+    />
+
+    {!editMode && textContent && post_type !== 'poll' && post_type !== 'event' && (
+      <div className="prose prose-sm sm:prose max-w-none break-words whitespace-pre-wrap mt-2 text-black">
+        {renderFormattedText(filterProfanity(expanded || !shouldTruncate ? textContent : truncatedText))}
+        {shouldTruncate && !expanded && (
+          <button className="ml-1 text-cyan-700 font-semibold hover:underline text-xs" onClick={(e) => { e.preventDefault(); setExpanded(true); }}>Read More</button>
+        )}
+        {shouldTruncate && expanded && (
+          <button className="ml-1 text-cyan-700 font-semibold hover:underline text-xs" onClick={(e) => { e.preventDefault(); setExpanded(false); }}>Read Less</button>
+        )}
+      </div>
+    )}
+    {!editMode && documents && documents.length > 0 && (
+      <div className="mt-2">
+        <p className="text-xs text-slate-500 mb-1">Attached document(s):</p>
+        <ul className="space-y-1">
+          {documents.map((url, idx) => (
+            <li key={idx}>
+              <a href={url} target="_blank" rel="noopener noreferrer" download className="text-cyan-700 underline hover:text-cyan-600 text-sm break-all flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-cyan-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                {decodeURIComponent(url.split('/').pop()?.split('?')[0] || 'Document')}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {editMode && (
+      <div className="mb-3">
+        <textarea
+          value={textContent}
+          onChange={(e) => setTextContent(e.target.value)} // Using direct setTextContent for responsiveness in textarea
+          className="w-full p-2 border rounded-md focus:ring-1 focus:ring-blue-500 bg-white text-black"
+          rows={Math.max(3, textContent.split('\n').length)}
+        />
+        {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+        <div className="flex justify-end space-x-2 mt-2">
+          <button onClick={(e) => { e.preventDefault(); setEditMode(false); setTextContent(initialTextContent); /* Reset text on cancel */ }} className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded-md" disabled={isSavingEdit}>
+            Cancel
+          </button>
+          <button onClick={async (e) => { e.preventDefault(); setIsSavingEdit(true); setError(null); if (onUpdatePost) { const success = await onUpdatePost(id, textContent.trim()); if (success) setEditMode(false); else setError("Failed to save post.");} setIsSavingEdit(false); }} className="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-md flex items-center disabled:opacity-70" disabled={isSavingEdit || !textContent.trim()}>
+            {isSavingEdit ? <Loader2 size={16} className="animate-spin mr-1" /> : <CheckSquare size={16} className="mr-1" />} 
+            Save
+          </button>
+        </div>
+      </div>
+    )}
+
+    {!editMode && video_url && (
+      <div className="my-3 rounded-lg overflow-hidden flex justify-center bg-gray-100">
+        <video src={video_url} controls className="rounded-md max-h-[400px] w-full" />
+      </div>
+    )}
+
+    {!editMode && !video_url && images && images.length > 0 && renderGallery()}
+    {!editMode && !video_url && (!images || images.length === 0) && imageUrl && (
+      <div className="my-3 rounded-lg overflow-hidden flex justify-center bg-gray-100">
+        <img src={imageUrl} alt={title || "Post image"} className="rounded-md w-full max-h-[400px] object-contain" />
+      </div>
+    )}
+
+    {post_type === 'event' && (
+      <div className="mt-4 pt-3 border-t border-gray-200">
+        <h4 className="text-sm font-semibold text-gray-700 mb-2">RSVP to this Event:</h4>
+        {isLoadingRsvps && <div className="text-sm text-gray-500"><Loader2 className="inline animate-spin mr-2" size={16}/>Loading RSVP info...</div>}
+        {rsvpError && <p className="text-xs text-red-500 mb-2">{rsvpError}</p>}
+        {!isLoadingRsvps && !rsvpError && (
+          <div className="flex space-x-2 mb-3">
+            {(['yes', 'maybe', 'no'] as const).map(status => (
+            <button
+                key={status}
+                onClick={() => handleRsvpButtonClick(status)}
+              disabled={isSubmittingRsvp || !currentUserId}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                  ${currentUserRsvpStatus === status 
+                    ? status === 'yes' ? 'bg-green-600 text-white ring-2 ring-green-400' 
+                    : status === 'maybe' ? 'bg-yellow-500 text-white ring-2 ring-yellow-400' 
+                    : 'bg-red-600 text-white ring-2 ring-red-400'
+                    : status === 'yes' ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                    : status === 'maybe' ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                    : 'bg-red-100 text-red-700 hover:bg-red-200'
+                  }
+                `}
+              >
+                {isSubmittingRsvp && currentUserRsvpStatus !== status && (rsvps.find(r=>r.user_id === currentUserId && r.status === status)) === undefined ? <Loader2 className="inline animate-spin mr-1" size={12}/> : null}
+                {status === 'yes' ? 'Going' : status === 'maybe' ? 'Maybe' : 'Not Going'}
+            </button>
+            ))}
+          </div>
+        )}
+        {event_start_time && (
+          <div className="mt-3 flex items-center justify-between">
+            <button onClick={handleAddToCalendar} className="text-xs text-blue-600 hover:text-blue-500 flex items-center">
+              <CalendarDays size={14} className="mr-1"/> Add to Calendar
+            </button>
+            {totalRsvps > 0 && <p className="text-xs text-slate-500">{rsvpCounts.yes} Going, {rsvpCounts.maybe} Maybe, {rsvpCounts.no} Not Going</p>}
+          </div>
+        )}
+        {rsvpError && <p className="text-xs text-red-500 mt-1">{rsvpError}</p>}
+      </div>
+    )}
+
+    <div className="flex items-center justify-between text-gray-500 border-t border-gray-200 pt-3 mt-4">
+      <button onClick={handleOptimisticLike} className={`flex items-center transition-colors px-2 py-1 rounded disabled:opacity-60 ${optimisticIsLiked ? 'text-red-500 hover:text-red-600' : 'text-gray-500 hover:text-red-500'}`} disabled={!currentUserId || isLiking}>
+        {isLiking ? <Loader2 className="animate-spin w-4 h-4 mr-1" /> : <Heart className={`w-4 h-4 mr-1 ${optimisticIsLiked ? 'fill-current' : ''}`} />}
+        <span className="text-sm font-medium tabular-nums">{optimisticLikeCount}</span>
+            </button>
+      <button onClick={() => onOpenCommentsModal ? onOpenCommentsModal() : setShowComments(!showComments)} className="flex items-center hover:text-blue-500">
+        <MessageCircle size={20} className="mr-1.5" /> 
+        <span className="text-sm tabular-nums">{optimisticCommentCount}</span>
+      </button>
+      <button onClick={handleShare} className="flex items-center hover:text-green-500">
+        <Share2 size={20} className="mr-1.5" /> <span className="text-sm">Share</span>
+      </button>
+      {showCopied && <span className="text-xs text-green-600 absolute right-0 -bottom-5 bg-slate-100 px-2 py-0.5 rounded shadow">Link copied!</span>}
+      {currentUserId && currentUserId !== postAuthorUserId && (
+          <button onClick={(e) => { e.preventDefault(); setShowReportModal(true); }} className="flex items-center hover:text-red-500" title="Report post">
+              <Flag size={18} className="mr-1" />
+      </button>
+      )}
+    </div>
+    {reactionError && <p className="text-xs text-red-500 mt-2 text-center">{reactionError}</p>}
+
+    {showComments && (
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        {isLoadingComments && !comments.length ? (
+          <div className="flex justify-center items-center py-4"><Loader2 className="animate-spin text-blue-500" size={24} /> <span className="ml-2 text-gray-600">Loading comments...</span></div>
+        ) : commentError ? (
+          <p className="text-xs text-red-500 mb-2">{commentError}</p>
+        ) : comments.length > 0 ? (
+          <CommentsList 
+            comments={mapToCommentDataStructure(comments)}
+                currentUserId={currentUserId}
+            onReplySubmit={handleReplySubmitWrapper}
+            onLikeComment={onLikeComment}
+            onUnlikeComment={onUnlikeComment}
+            onActualUpdateComment={onActualUpdateComment}
+            onActualDeleteComment={onActualDeleteComment}
+            communityId={communityId}
+          />
+        ) : (
+          <p className="text-sm text-center text-gray-500 py-3">No comments yet.</p>
+        )}
+        {currentUserId && !editMode && showCommentInput && (
+          <div className="mt-4">
+            <CommentForm
+              onSubmit={handleCommentFormSubmit}
+              value={newCommentText}
+              onChange={setNewCommentText}
+              isSubmitting={isSubmittingComment}
+              placeholder="Write a comment..."
+              communityId={communityId}
+            />
+          </div>
+        )}
+      </div>
+    )}
+
+    {showReportModal && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowReportModal(false)}>
+        <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Report Post</h3>
+            <button onClick={() => setShowReportModal(false)} className="text-gray-400 hover:text-gray-600">
+              <XSquare size={20}/>
+            </button>
+          </div>
+          <textarea
+            className="w-full p-2 border rounded mb-4 bg-white text-black border-gray-300 placeholder-gray-400"
+            rows={3}
+            placeholder="Please provide a reason for reporting this post..."
+            value={reportReason}
+            onChange={(e) => setReportReason(e.target.value)}
+            autoFocus
+          />
+          {reactionError && <p className="text-xs text-red-500 mb-3">{reactionError}</p>}
+          <div className="flex justify-end space-x-3">
+            <button onClick={() => { setShowReportModal(false); setReportReason(''); setReactionError(null); }} className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-md text-gray-800">Cancel</button>
+            <button onClick={handleReport} className="px-4 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-md flex items-center" disabled={!reportReason.trim()}>
+              Submit Report
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {isDeleting && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setIsDeleting(false)}>
+        <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="flex justify-between items-center mb-1">
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Deletion</h3>
+              <button onClick={() => setIsDeleting(false)} className="text-gray-400 hover:text-gray-600">
+                  <XSquare size={20}/>
+              </button>
+          </div>
+          <p className="text-sm text-gray-600 mb-6">Are you sure you want to delete this post? This action cannot be undone.</p>
+          <div className="flex justify-end space-x-3">
+            <button onClick={() => setIsDeleting(false)} className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-md text-gray-800">Cancel</button>
+            <button onClick={async () => { setIsDeleting(false); setShowMoreOptions(false); if (onDeletePost) await onDeletePost(id); }} className="px-4 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-md flex items-center">
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+  </div>
+);
 } 

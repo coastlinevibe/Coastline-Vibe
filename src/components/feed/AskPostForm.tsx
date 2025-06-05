@@ -33,7 +33,7 @@ export default function AskPostForm({ onSubmit }: { onSubmit: (values: AskPostFo
           {...register('title', { required: true })} 
           type="text" 
           className="w-full border border-slate-300 rounded px-3 py-2" 
-          placeholder="Title" 
+          placeholder="What's on your mind…?" 
           disabled={isSubmitting} 
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2">

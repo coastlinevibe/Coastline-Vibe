@@ -219,7 +219,7 @@ export default function PropertyViewPage({ params }: { params: { id: string } })
             <div className="md:sticky md:top-24">
               <div className="flex flex-col gap-3 bg-cyan-50 rounded-lg p-4 border border-cyan-100 shadow">
                 <div className="flex items-center gap-4">
-                  <img src={sellerProfile?.avatar || 'https://randomuser.me/api/portraits/men/32.jpg'} alt={sellerProfile?.name || 'Seller'} className="w-14 h-14 rounded-full border-2 border-cyan-200" />
+                  <img src={sellerProfile?.avatar_url || 'https://randomuser.me/api/portraits/men/32.jpg'} alt={sellerProfile?.name || 'Seller'} className="w-14 h-14 rounded-full border-2 border-cyan-200" />
                   <div>
                     <div className="font-semibold text-cyan-900">{sellerProfile?.name || 'Property Lister'}</div>
                     {sellerProfile?.email && <div className="text-xs text-cyan-700">{sellerProfile.email}</div>}

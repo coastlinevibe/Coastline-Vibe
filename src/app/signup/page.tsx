@@ -5,8 +5,8 @@ import { Waves, UserCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { createBrowserClient } from '@supabase/ssr';
-import type { Database } from '@/lib/database.types';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 const AVATARS_BUCKET_NAME = 'avatars';
 
@@ -23,8 +23,6 @@ interface SignupFormValues {
   community: string;
   role: "user" | "business";
   avatarFile?: FileList | null;
-  bio?: string;
-  selectedOptions?: string[];
 }
 
 export default function SignupPage() {
@@ -32,8 +30,17 @@ export default function SignupPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const router = useRouter();
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [qAnswers, setQAnswers] = useState(['', '', '', '']);
+  const [rules, setRules] = useState([false, false, false, false]);
+  const [qError, setQError] = useState('');
+  const [qLoading, setQLoading] = useState(false);
+  const [pendingSignup, setPendingSignup] = useState<SignupFormValues | null>(null);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [showUserExistsModal, setShowUserExistsModal] = useState(false);
 
-  const supabase = createBrowserClient<Database>(
+  const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
@@ -52,8 +59,6 @@ export default function SignupPage() {
       community: "",
       role: "user",
       avatarFile: null,
-      bio: "",
-      selectedOptions: [],
     },
   });
 
@@ -75,121 +80,149 @@ export default function SignupPage() {
   }, [avatarFileWatcher]);
 
   const onSubmit: SubmitHandler<SignupFormValues> = async (data) => {
-    setIsLoading(true);
     setErrorMessage(null);
     setSuccessMessage(null);
-    console.log("Attempting Supabase auth.signUp with data (excluding avatar file details):", 
-      { ...data, avatarFile: data.avatarFile && data.avatarFile.length > 0 ? `${data.avatarFile[0].name} (${data.avatarFile[0].size} bytes)` : 'No file' }
-    );
+    setPendingSignup(data);
+    setShowQuestionnaire(true);
+    setAvatarPreview(null); // Optionally clear preview
+  };
 
+  const handleQuestionnaireSubmit = async () => {
+    setQError('');
+    if (qAnswers.some(a => !a.trim())) {
+      setQError('Please answer all questions.');
+      return;
+    }
+    if (rules.some(r => !r)) {
+      setQError('You must agree to all rules.');
+      return;
+    }
+    if (!pendingSignup) {
+      setQError('Missing signup info. Please refresh and try again.');
+      return;
+    }
+    setQLoading(true);
+    setIsLoading(true);
     let createdUserId: string | null = null;
     let uploadedAvatarUrl: string | null = null;
-
     try {
+      // Map community slug to UUID
+      let communityUuid = null;
+      const { data: communityData, error: communityError } = await supabase
+        .from('communities')
+        .select('id')
+        .eq('slug', pendingSignup.community)
+        .single();
+      if (communityError || !communityData) {
+        setQError('Could not find the selected community.');
+        setQLoading(false);
+        setIsLoading(false);
+        return;
+      }
+      communityUuid = communityData.id;
+      // 1. Create user in Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
+        email: pendingSignup.email,
+        password: pendingSignup.password,
         options: {
           data: {
-            username: data.username,
-            display_name: data.username, 
-            community_id: data.community,
-            role: data.role,
+            username: pendingSignup.username,
+            display_name: pendingSignup.username,
+            community_id: communityUuid,
+            role: pendingSignup.role,
             status: 'pending_approval',
-            bio: data.bio,
-            signup_options: data.selectedOptions,
           }
         }
       });
-
       if (authError) {
-        console.error("Supabase auth.signUp error:", authError);
-        if (authError.message.includes("User already registered")) {
-          throw new Error("This email address is already registered. Please try logging in or use a different email.");
+        if (authError.message && authError.message.toLowerCase().includes('already registered')) {
+          setShowUserExistsModal(true);
+          setQLoading(false);
+          setIsLoading(false);
+          return;
         }
-        throw new Error(`Auth error: ${authError.message}`);
+        setQError(authError.message);
+        setQLoading(false);
+        setIsLoading(false);
+        return;
       }
-
       if (!authData.user) {
-        console.error("Auth successful, but no user object returned.");
-        throw new Error("User registration did not complete successfully (no user object). Please try again.");
+        setQError('User registration did not complete successfully.');
+        setQLoading(false);
+        setIsLoading(false);
+        return;
       }
-
       createdUserId = authData.user.id;
-      console.log("Supabase auth.signUp successful, user pending approval:", authData.user);
-
       // Force is_approved to false for new users
-      if (createdUserId) {
-        await supabase
-          .from('profiles')
-          .update({ is_approved: false })
-          .eq('id', createdUserId);
-      }
-
-      // --- Avatar Upload Step ---
-      if (data.avatarFile && data.avatarFile.length > 0 && createdUserId) {
-        const avatar = data.avatarFile[0];
+      await supabase.from('profiles').update({ is_approved: false }).eq('id', createdUserId);
+      // 2. Avatar upload (if any)
+      if (pendingSignup.avatarFile && pendingSignup.avatarFile.length > 0 && createdUserId) {
+        const avatar = pendingSignup.avatarFile[0];
         const fileExt = avatar.name.split('.').pop();
-        // Using a generic name like 'avatar' for simplicity, as it's user-specific folder.
         const avatarFileName = `avatar.${fileExt}`;
-        // Path: public/[user_id]/avatar.[ext]. Consider if 'public' prefix is desired for bucket structure.
-        // If avatars bucket is not public, or if you want direct non-public URLs, adjust accordingly.
-        // For now, let's assume a path structure like: avatars_bucket/USER_ID/avatar.png
         const avatarFilePath = `${createdUserId}/${avatarFileName}`;
-
-        console.log(`Attempting to upload avatar to: ${AVATARS_BUCKET_NAME}/${avatarFilePath}`);
-
         const { error: uploadError } = await supabase.storage
           .from(AVATARS_BUCKET_NAME)
-          .upload(avatarFilePath, avatar, { upsert: true }); // upsert:true is useful if user retries
-
-        if (uploadError) {
-          console.error("Supabase avatar upload error:", uploadError);
-          // Don't fail the whole signup, but notify user. Profile will be created without avatar.
-          // Or, you could throw and rollback, but that's more complex.
-          setErrorMessage(
-            `Account created, but avatar upload failed: ${uploadError.message}. You can set your avatar later.`
-          );
-        } else {
+          .upload(avatarFilePath, avatar, { upsert: true });
+        if (!uploadError) {
           const { data: publicUrlData } = supabase.storage
             .from(AVATARS_BUCKET_NAME)
             .getPublicUrl(avatarFilePath);
-          
           if (publicUrlData && publicUrlData.publicUrl) {
             uploadedAvatarUrl = publicUrlData.publicUrl;
-            console.log("Avatar uploaded successfully, public URL:", uploadedAvatarUrl);
-
-            // Update the user's profile with the avatar URL
-            const { error: profileUpdateError } = await supabase
-              .from('profiles')
-              .update({ avatar_url: uploadedAvatarUrl, updated_at: new Date().toISOString() })
-              .eq('id', createdUserId);
-
-            if (profileUpdateError) {
-              console.error("Error updating profile with avatar URL:", profileUpdateError);
-              setErrorMessage(
-                `Account created, avatar uploaded, but failed to link to profile: ${profileUpdateError.message}. You may need to set it again later.`
-              );
-            }
-          } else {
-             console.error("Avatar uploaded, but failed to get public URL.");
-             setErrorMessage(
-                `Account created, avatar uploaded, but failed to retrieve its URL. You may need to set it again later.`
-              );
+            await supabase.from('profiles').update({ avatar_url: uploadedAvatarUrl, updated_at: new Date().toISOString() }).eq('id', createdUserId);
           }
         }
       }
-      // --- End Avatar Upload Step ---
-
+      // 3. Wait for profile to exist before saving questionnaire answers
+      let profile = null;
+      for (let i = 0; i < 10; i++) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', createdUserId)
+          .single();
+        if (data) {
+          profile = data;
+          break;
+        }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      if (!profile) {
+        setQError('Profile was not created. Please try again.');
+        setQLoading(false);
+        setIsLoading(false);
+        return;
+      }
+      // 4. Save questionnaire answers
+      const { error: qErrorInsert } = await supabase.from('user_questionnaire').insert({
+        user_id: createdUserId,
+        answer1: qAnswers[0],
+        answer2: qAnswers[1],
+        answer3: qAnswers[2],
+        answer4: qAnswers[3],
+        agreed_rule1: rules[0],
+        agreed_rule2: rules[1],
+        agreed_rule3: rules[2],
+        agreed_rule4: rules[3],
+      });
+      if (qErrorInsert) {
+        setQError('Failed to save your answers. Please try again.');
+        setQLoading(false);
+        setIsLoading(false);
+        return;
+      }
       setSuccessMessage(`Account created successfully! ${uploadedAvatarUrl ? 'Avatar also uploaded.' : ''} Your account is pending admin approval.`);
-      reset();
-      setAvatarPreview(null); // Clear preview on successful reset
-
+      setShowQuestionnaire(false);
+      setPendingSignup(null);
+      setQAnswers(['', '', '', '']);
+      setRules([false, false, false, false]);
+      await supabase.auth.signOut();
+      setShowPendingModal(true);
     } catch (error) {
-      const e = error as Error;
-      console.error("Detailed signup error:", e);
-      setErrorMessage(e.message || "An unexpected error occurred during signup.");
+      setQError('An unexpected error occurred.');
     } finally {
+      setQLoading(false);
       setIsLoading(false);
     }
   };
@@ -321,81 +354,6 @@ export default function SignupPage() {
             {errors.role && <p className="mt-1 text-xs text-red-600">{errors.role.message}</p>}
           </div>
 
-          {/* New Questions Section - Now a single question with options */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium text-slate-700">Tell Us About Yourself</h3>
-
-            {/* Bio Field (kept from previous iteration) */}
-            <div>
-              <label htmlFor="bio" className="block text-sm font-medium text-slate-700 mb-1">
-                Bio
-              </label>
-              <textarea
-                id="bio"
-                rows={3}
-                disabled={isLoading}
-                {...register("bio")}
-                className={`w-full px-4 py-2 border ${errors.bio ? 'border-red-500' : 'border-slate-300'} rounded-md shadow-sm focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm bg-white disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed`}
-                placeholder="A little something about you..."
-              />
-              {errors.bio && <p className="mt-1 text-xs text-red-600">{errors.bio.message}</p>}
-            </div>
-
-            {/* Single Question with Checkbox Options */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                How would you describe your interest in CoastlineVibe?
-              </label>
-              <div className="space-y-2">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="option-networking"
-                    value="Networking"
-                    disabled={isLoading}
-                    {...register("selectedOptions")}
-                    className={`rounded border-slate-300 text-cyan-600 shadow-sm focus:ring-cyan-500 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed mr-2`}
-                  />
-                  <label htmlFor="option-networking" className="text-sm text-slate-700">Networking</label>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="option-buying-selling"
-                    value="Buying/Selling"
-                    disabled={isLoading}
-                    {...register("selectedOptions")}
-                    className={`rounded border-slate-300 text-cyan-600 shadow-sm focus:ring-cyan-500 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed mr-2`}
-                  />
-                  <label htmlFor="option-buying-selling" className="text-sm text-slate-700">Buying/Selling</label>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="option-community-events"
-                    value="Community Events"
-                    disabled={isLoading}
-                    {...register("selectedOptions")}
-                    className={`rounded border-slate-300 text-cyan-600 shadow-sm focus:ring-cyan-500 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed mr-2`}
-                  />
-                  <label htmlFor="option-community-events" className="text-sm text-slate-700">Community Events</label>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="option-general-browsing"
-                    value="General Browsing"
-                    disabled={isLoading}
-                    {...register("selectedOptions")}
-                    className={`rounded border-slate-300 text-cyan-600 shadow-sm focus:ring-cyan-500 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed mr-2`}
-                  />
-                  <label htmlFor="option-general-browsing" className="text-sm text-slate-700">General Browsing</label>
-                </div>
-              </div>
-              {errors.selectedOptions && <p className="mt-1 text-xs text-red-600">{errors.selectedOptions.message}</p>}
-            </div>
-          </div>
-
           <div>
             <label htmlFor="avatarFile" className="block text-sm font-medium text-slate-700 mb-1">
               Profile Picture (Optional)
@@ -440,6 +398,84 @@ export default function SignupPage() {
             Log In
           </Link>
         </p>
+        {showQuestionnaire && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-full max-w-md flex flex-col items-center border border-slate-100">
+              <h3 className="text-2xl font-bold mb-4 text-sky-700 text-center">Welcome! Please answer a few questions</h3>
+              <form className="w-full space-y-4" onSubmit={async e => {
+                e.preventDefault();
+                await handleQuestionnaireSubmit();
+              }}>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">1. Why do you want to join CoastlineVibe?</label>
+                    <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500 transition" value={qAnswers[0]} onChange={e => setQAnswers(a => [e.target.value, a[1], a[2], a[3]])} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">2. What is your favorite coastal activity?</label>
+                    <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500 transition" value={qAnswers[1]} onChange={e => setQAnswers(a => [a[0], e.target.value, a[2], a[3]])} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">3. How did you hear about us?</label>
+                    <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500 transition" value={qAnswers[2]} onChange={e => setQAnswers(a => [a[0], a[1], e.target.value, a[3]])} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">4. What do you hope to get from this community?</label>
+                    <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500 transition" value={qAnswers[3]} onChange={e => setQAnswers(a => [a[0], a[1], a[2], e.target.value])} />
+                  </div>
+                </div>
+                <div className="mt-6 bg-sky-50 rounded-lg p-4 space-y-3 border border-sky-100">
+                  <div className="flex items-center">
+                    <input type="checkbox" checked={rules[0]} onChange={e => setRules(r => [e.target.checked, r[1], r[2], r[3]])} className="mr-3 accent-cyan-600 w-5 h-5 rounded" />
+                    <span className="text-slate-700 text-sm">I agree to be respectful to all members.</span>
+                  </div>
+                  <div className="flex items-center">
+                    <input type="checkbox" checked={rules[1]} onChange={e => setRules(r => [r[0], e.target.checked, r[2], r[3]])} className="mr-3 accent-cyan-600 w-5 h-5 rounded" />
+                    <span className="text-slate-700 text-sm">I will not post spam or advertisements.</span>
+                  </div>
+                  <div className="flex items-center">
+                    <input type="checkbox" checked={rules[2]} onChange={e => setRules(r => [r[0], r[1], e.target.checked, r[3]])} className="mr-3 accent-cyan-600 w-5 h-5 rounded" />
+                    <span className="text-slate-700 text-sm">I understand my account may be reviewed by admins.</span>
+                  </div>
+                  <div className="flex items-center">
+                    <input type="checkbox" checked={rules[3]} onChange={e => setRules(r => [r[0], r[1], r[2], e.target.checked])} className="mr-3 accent-cyan-600 w-5 h-5 rounded" />
+                    <span className="text-slate-700 text-sm">I agree to follow all community guidelines.</span>
+                  </div>
+                </div>
+                {qError && <div className="text-red-500 text-sm mt-2 text-center">{qError}</div>}
+                <button type="submit" className="mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-semibold w-full shadow-md transition disabled:opacity-60" disabled={qLoading}>{qLoading ? 'Saving...' : 'Submit'}</button>
+              </form>
+            </div>
+          </div>
+        )}
+        {showPendingModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm flex flex-col items-center border border-slate-100">
+              <h2 className="text-xl font-bold text-sky-700 mb-4 text-center">Account Pending Approval</h2>
+              <p className="text-slate-700 text-center mb-6">Your account has been created and is pending admin approval. You will be notified by email once approved.</p>
+              <button
+                className="px-6 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-semibold shadow-md transition"
+                onClick={() => setShowPendingModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+        {showUserExistsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm flex flex-col items-center border border-slate-100">
+              <h2 className="text-xl font-bold text-rose-700 mb-4 text-center">User Already Exists</h2>
+              <p className="text-slate-700 text-center mb-6">An account with this email already exists. Please log in or use a different email.</p>
+              <button
+                className="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold shadow-md transition"
+                onClick={() => setShowUserExistsModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

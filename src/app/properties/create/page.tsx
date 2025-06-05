@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
@@ -57,6 +57,12 @@ const CreatePropertyPage = () => {
     lifestyleTags: '',
     map_location: '',
   });
+  
+  // AI Assistant for description
+  const [keywords, setKeywords] = useState<string>('');
+  const [generatedDescription, setGeneratedDescription] = useState<string>('');
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState<boolean>(false);
+  
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imageUploadProgress, setImageUploadProgress] = useState<number[]>([]);
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -70,6 +76,87 @@ const CreatePropertyPage = () => {
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+
+  // Function to generate property description
+  const generateDescription = () => {
+    if (!formData.title) {
+      // If no title, continue but log a message
+      console.log("No title provided, using generic description");
+    }
+    
+    setIsGeneratingDescription(true);
+    console.log("Generating description for property type:", formData.propertyType);
+    console.log("Keywords:", keywords);
+    
+    // Sample descriptions based on property type and keywords
+    const propertyTypeTemplates: {[key: string]: string[]} = {
+      'Apartment': [
+        "This stylish apartment offers a perfect blend of comfort and convenience. {keywords}. Ideal for those seeking a modern living space in a vibrant neighborhood.",
+        "Experience urban living at its finest in this thoughtfully designed apartment. {keywords}. A perfect place to call home in the heart of the city.",
+        "Welcome to this exceptional apartment that combines style with functionality. {keywords}. An ideal choice for urban dwellers looking for quality living."
+      ],
+      'House': [
+        "This charming house provides a warm and inviting atmosphere for family living. {keywords}. Perfect for those seeking a comfortable home with character.",
+        "Discover the perfect family home in this well-maintained house. {keywords}. Offering the ideal balance of comfort and style for modern living.",
+        "This beautiful house offers spacious living in a desirable location. {keywords}. A rare opportunity to own a distinctive property in this sought-after area."
+      ],
+      'Studio': [
+        "This contemporary studio apartment offers efficient living in a prime location. {keywords}. Perfect for professionals or students seeking a modern, low-maintenance home.",
+        "Compact yet thoughtfully designed, this studio apartment maximizes every inch of space. {keywords}. Ideal for those seeking a streamlined lifestyle without compromising on quality.",
+        "This stylish studio provides the perfect urban retreat. {keywords}. A smart investment for those seeking convenience and comfort in a central location."
+      ],
+      'Townhouse': [
+        "This elegant townhouse combines the convenience of apartment living with the space of a house. {keywords}. Perfect for those seeking a low-maintenance lifestyle without compromising on space.",
+        "Experience modern living in this well-designed townhouse. {keywords}. Offering the perfect balance of privacy and community in a desirable location.",
+        "This spacious townhouse provides an ideal living environment for families or professionals. {keywords}. A perfect blend of style, comfort, and convenience."
+      ],
+      'Other': [
+        "This unique property offers distinctive features rarely found on the market. {keywords}. A special opportunity for those seeking something truly different.",
+        "Discover the exceptional qualities of this outstanding property. {keywords}. Perfect for those with discerning taste looking for something special.",
+        "This remarkable property stands out with its unique character and appeal. {keywords}. An exciting opportunity to secure a one-of-a-kind living space."
+      ]
+    };
+    
+    // Choose a random template for the property type
+    const propertyType = formData.propertyType;
+    const templates = propertyTypeTemplates[propertyType] || propertyTypeTemplates['Other'];
+    const template = templates[Math.floor(Math.random() * templates.length)];
+    
+    // Process keywords
+    let keywordText = "";
+    if (keywords.trim()) {
+      const keywordArray = keywords.split(',').map(k => k.trim()).filter(k => k);
+      if (keywordArray.length > 0) {
+        keywordText = `Featuring ${keywordArray.join(', ')}`;
+      }
+    }
+    
+    // Generate description by replacing placeholders
+    let description = template.replace('{keywords}', keywordText || "Featuring all the amenities you need for comfortable living");
+    
+    // Add title-based content
+    if (formData.title) {
+      description = `${formData.title}: ${description}`;
+    }
+    
+    console.log("Generated description:", description);
+    
+    // Simulate a delay for a more realistic "AI" generation experience
+    setTimeout(() => {
+      setGeneratedDescription(description);
+      setIsGeneratingDescription(false);
+    }, 1000);
+  };
+  
+  // Use generated description
+  const useGeneratedDescription = () => {
+    if (generatedDescription) {
+      console.log("Using generated description:", generatedDescription);
+      setFormData(prev => ({ ...prev, description: generatedDescription }));
+    } else {
+      console.log("No description to use");
+    }
+  };
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -278,8 +365,78 @@ const CreatePropertyPage = () => {
             <div className="space-y-4">
               <div>
                 <label className="block font-medium mb-1">Title</label>
-                <input type="text" name="title" value={formData.title} onChange={handleChange} className="w-full border rounded px-2 py-1" required placeholder="e.g. Lake-View 2 Bedroom Apartment" />
+                <input 
+                  type="text" 
+                  name="title" 
+                  value={formData.title} 
+                  onChange={handleChange} 
+                  className="w-full border rounded px-2 py-1" 
+                  required 
+                  placeholder="e.g. Lake-View 2 Bedroom Apartment" 
+                />
               </div>
+              
+              {/* AI Description Assistant */}
+              <div className="border border-cyan-100 rounded-lg p-4 bg-cyan-50">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-cyan-700">
+                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="currentColor"/>
+                    <path d="M13 7H11V13H17V11H13V7Z" fill="currentColor"/>
+                  </svg>
+                  <h3 className="text-sm font-bold text-cyan-900">AI Description Assistant</h3>
+                </div>
+                
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-cyan-800 mb-1">Enter 3 keywords about your property:</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={keywords}
+                      onChange={(e) => setKeywords(e.target.value)}
+                      className="flex-1 border rounded px-2 py-1 text-sm"
+                      placeholder="e.g. quiet, spacious, fully furnished"
+                    />
+                    <button
+                      type="button"
+                      onClick={generateDescription}
+                      disabled={isGeneratingDescription}
+                      className="px-4 py-1 bg-teal-500 text-white rounded text-sm hover:bg-teal-600 transition shadow-sm"
+                    >
+                      {isGeneratingDescription ? (
+                        <div className="flex items-center gap-1">
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Generating...
+                        </div>
+                      ) : (
+                        'Generate'
+                      )}
+                    </button>
+                  </div>
+                </div>
+                
+                {generatedDescription && (
+                  <div className="mt-2">
+                    <div className="text-xs font-medium text-cyan-800 mb-1">Generated description:</div>
+                    <div className="bg-white p-3 rounded border border-cyan-200 text-sm mb-2 shadow-sm">
+                      {generatedDescription}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={useGeneratedDescription}
+                      className="px-4 py-1.5 bg-teal-100 text-teal-700 rounded text-xs font-medium hover:bg-teal-200 transition flex items-center gap-1"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 6L9 17l-5-5"/>
+                      </svg>
+                      Use this description
+                    </button>
+                  </div>
+                )}
+              </div>
+              
               <div>
                 <label className="block font-medium mb-1">Description</label>
                 <textarea
@@ -288,10 +445,11 @@ const CreatePropertyPage = () => {
                   onChange={handleChange}
                   className="w-full border rounded px-2 py-1 whitespace-pre-line"
                   required
-                  placeholder="Describe the property, features, and highlights..."
+                  placeholder="Add 3 keywords (e.g. quiet, spacious, fully furnished) above to generate a description, or write your own description here..."
                   rows={5}
                 />
               </div>
+              
               <div>
                 <label className="block font-medium mb-1">Price</label>
                 <div className="relative">

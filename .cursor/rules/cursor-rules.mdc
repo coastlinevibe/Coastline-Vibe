@@ -1,0 +1,81 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Do only what I explicitly ask.
+
+Run MCP when needed — always.
+
+Never add features, fields, logic, styles, libraries, or structure unless requested.
+
+If unsure, ask. Never assume or guess.
+
+Do not auto-generate success/error messages, toasts, or redirects.
+
+Use only:
+
+React
+
+Tailwind CSS (basic only) — no animations or UI libraries
+
+Supabase (only auth and queries I approve)
+
+React Hook Form and Zod (only when I request validation)
+
+🧾 Form Rules
+Use only the fields I specify.
+
+No helper messages, extra spacing, placeholders, or tooltips unless requested.
+
+Just basic inputs, layout, and a submit button.
+
+Use Zod + React Hook Form only if I say so.
+
+🔐 Supabase Rules
+Use only the auth or queries I ask for.
+
+Never use .from('users'), .from('profiles'), or access other tables unless I tell you.
+
+Never assume schema — ask first.
+
+🧩 Project Section Awareness
+This project has 4 sections:
+
+Feed
+
+Properties
+
+Coastline Market
+
+Local Directory
+
+Always check whether a change in one section could affect the others.
+
+If there's any cross-section dependency, stop and ask before continuing.
+
+🧠 Cursor Memory Rules
+If memory is enabled, it must only store facts I approve.
+
+Do not recall or reuse suggestions, components, or patterns from older unrelated sessions.
+
+If Cursor memory starts generating unapproved behavior:
+→ Reset or clear memory immediately.
+
+No remembering of assumed database schemas, form structures, or logic.
+
+Cursor should always ask before making use of anything it's remembering.
+
+❌ Absolutely Do Not
+Add unused or helper logic (e.g. formatting functions, hooks).
+
+Use UI libraries, animations, Framer Motion, or third-party components.
+
+Add mock APIs, dummy data, or extra layouts.
+
+Try to "help" or "optimize" anything unless I say so.
+
+Guess field names, relationships, or routes.
+
+
+Assume a feature should exist because it's common — I define what exists.

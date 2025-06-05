@@ -11,7 +11,9 @@ import {
   XSquare,
   Loader2,
   Send,
-  Heart
+  Heart,
+  ShieldCheck,
+  Sailboat
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { renderFormattedText } from '@/utils/textProcessing';
@@ -19,6 +21,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 import HashtagInput from '@/components/shared/HashtagInput';
 import EmojiPicker from '@/components/shared/EmojiPicker';
+import CommentForm from './CommentForm';
+import Link from 'next/link';
+import UserTooltipWrapper from '@/components/user/UserTooltipWrapper';
+import { type UserTooltipProfileData } from '@/components/user/UserTooltipDisplay';
 
 export interface CommentItemProps {
   id: string;
@@ -31,19 +37,23 @@ export interface CommentItemProps {
   updated_at?: string | null;
   onUpdateComment?: (commentId: string, newContent: string) => Promise<boolean>;
   onDeleteComment?: (commentId: string) => Promise<boolean>;
-  onReplySubmit?: (parentCommentId: string, replyText: string, parentDepth: number) => Promise<boolean>;
+  onReplySubmit?: (parentCommentId: string, replyText: string, parentDepth: number, files?: File[]) => Promise<boolean>;
   depth: number;
   parent_id?: string | null;
   likeCount?: number;
   isLikedByCurrentUser?: boolean;
   onLikeComment?: (commentId: string) => Promise<void>;
   onUnlikeComment?: (commentId: string) => Promise<void>;
-  supabaseClient: SupabaseClient<Database>;
   replies?: CommentItemProps[];
-}
+  communityId: string;
+  files?: { name: string, url: string, type: string }[];
 
-export interface CommentItemPropsWithRecursiveReplies extends CommentItemProps {
-  replies?: CommentItemPropsWithRecursiveReplies[];
+  authorEmail?: string | null;
+  authorBio?: string | null;
+  authorProfileCreatedAt?: string | null;
+  authorRole?: string | null;
+  authorIsLocationVerified?: boolean | null;
+  authorLastSeenAt?: string | null;
 }
 
 export default function CommentItem({
@@ -64,9 +74,16 @@ export default function CommentItem({
   isLikedByCurrentUser = false,
   onLikeComment,
   onUnlikeComment,
-  supabaseClient,
   replies,
-}: CommentItemPropsWithRecursiveReplies) {
+  communityId,
+  files,
+  authorEmail,
+  authorBio,
+  authorProfileCreatedAt,
+  authorRole,
+  authorIsLocationVerified,
+  authorLastSeenAt,
+}: CommentItemProps) {
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const optionsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +103,18 @@ export default function CommentItem({
 
   // Add state for showing/hiding replies
   const [showReplies, setShowReplies] = useState(false);
+
+  const profileDataForTooltip: UserTooltipProfileData | null = commentAuthorId ? {
+    id: commentAuthorId,
+    username: authorName,
+    avatar_url: authorAvatarUrl,
+    email: authorEmail,
+    bio: authorBio,
+    created_at: authorProfileCreatedAt,
+    role: authorRole,
+    is_location_verified: authorIsLocationVerified,
+    last_seen_at: authorLastSeenAt,
+  } : null;
 
   useEffect(() => {
     setDisplayedTextContent(initialTextContent);
@@ -153,13 +182,11 @@ export default function CommentItem({
   };
 
   const handleSaveEdit = async () => {
-    console.log('[CommentItem_SaveEdit] Called. onUpdateComment available?', !!onUpdateComment);
     if (!onUpdateComment) {
       setIsEditing(false);
       return;
     }
     if (editedText.trim() === displayedTextContent.trim()) {
-      console.log('[CommentItem_SaveEdit] Text unchanged, exiting edit mode.');
       setIsEditing(false);
       return;
     }
@@ -171,19 +198,14 @@ export default function CommentItem({
     setIsSavingEdit(true);
     setEditError(null);
     try {
-      console.log(`[CommentItem_SaveEdit] Calling onUpdateComment with id: ${id}, newContent: '${editedText.trim()}'`);
       const success = await onUpdateComment(id, editedText.trim());
-      console.log('[CommentItem_SaveEdit] onUpdateComment success status:', success);
       if (success) {
         setIsEditing(false);
         setDisplayedTextContent(editedText.trim());
-        console.log('[CommentItem_SaveEdit] Successfully updated, displayed text set.');
       } else {
         setEditError("Failed to save comment. Please try again.");
-        console.warn('[CommentItem_SaveEdit] onUpdateComment returned false.');
       }
     } catch (error) {
-      console.error("[CommentItem_SaveEdit] Error saving comment edit:", error);
       setEditError("An unexpected error occurred while saving.");
     } finally {
       setIsSavingEdit(false);
@@ -207,10 +229,6 @@ export default function CommentItem({
     setReplyError(null);
   };
 
-  const handleReplyTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setReplyText(event.target.value);
-  };
-
   const handleSubmitReply = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!onReplySubmit || !replyText.trim()) {
@@ -218,16 +236,15 @@ export default function CommentItem({
       return;
     }
 
-    // Check if we've reached max reply depth
     if (depth >= 3) {
-      setReplyError("Maximum reply depth reached. You cannot reply to this comment.");
+      setReplyError("Maximum reply depth reached.");
       return;
     }
 
     setIsSubmittingReply(true);
     setReplyError(null);
     try {
-      const success = await onReplySubmit(id, replyText.trim(), depth);
+      const success = await onReplySubmit(id, replyText.trim(), depth + 1);
       if (success) {
         setShowReplyForm(false);
         setReplyText("");
@@ -279,52 +296,72 @@ export default function CommentItem({
   };
 
   return (
-    <div className={`comment-item-depth-${depth} group relative`} style={indentStyle}>
-      {/* Vertical Thread Lines - Experimental - May need refinement */}
-      {depth > 1 && parent_id && (
-        <>
-          {/* Trunk line connecting to parent */}
-          <div 
-            className="absolute bg-gray-300 dark:bg-gray-600"
-            style={{
-              width: '2px',
-              left: `${ABSOLUTE_TRUNK_X_PX}px`, 
-              top: '-16px', // Adjust to connect from above comment to mid-avatar of parent roughly
-              height: 'calc(1.25rem + 8px)' // Height to reach approx mid-avatar (h-10/2 + space-x-3/2 roughly)
-            }}
-          ></div>
-          {/* Horizontal line connecting this comment to the trunk */}
-          <div 
-            className="absolute bg-gray-300 dark:bg-gray-600"
-            style={{
-              width: `${(REPLY_INDENTATION_BASE_PX / 2) - ABSOLUTE_TRUNK_X_PX + 4}px`, // Width from trunk to comment content edge
-              height: '2px',
-              left: `${ABSOLUTE_TRUNK_X_PX + 2}px`, 
-              top: 'calc(1.25rem - 1px)' // Vertically align with avatar center
-            }}
-          ></div>
-        </>
-      )}
+    <div className={`py-3 flex flex-col ${depth > 0 ? (depth === 1 ? 'ml-6 pl-3 border-l-2 border-gray-100' : 'ml-10 pl-3 border-l-2 border-gray-100') : '' }`}>
+      <div className="flex items-start space-x-3">
+        <UserTooltipWrapper profileData={profileDataForTooltip}>
+          <Link href={`/profile/${commentAuthorId}`} legacyBehavior>
+            <a className="flex-shrink-0">
+              <Image
+                src={authorAvatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=random&size=32`}
+                alt={authorName}
+                width={32}
+                height={32}
+                className="rounded-full object-cover cursor-pointer"
+              />
+            </a>
+          </Link>
+        </UserTooltipWrapper>
 
-      <div className={`flex items-start space-x-2.5 w-full`}>
-        {authorAvatarUrl ? (
-          <Image
-            src={authorAvatarUrl}
-            alt={`${authorName}'s avatar`}
-            width={32}
-            height={32}
-            className="rounded-full"
-          />
-        ) : (
-          <UserCircle2 className="w-8 h-8 text-slate-400" />
-        )}
         <div className="flex-1">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center">
+              <UserTooltipWrapper profileData={profileDataForTooltip}>
+                <Link href={`/profile/${commentAuthorId}`} legacyBehavior>
+                  <a className="font-semibold text-sm text-gray-800 hover:underline">
+                    {authorName}
+                  </a>
+                </Link>
+              </UserTooltipWrapper>
+              {authorIsLocationVerified && (
+                <span title="Verified Resident">
+                  <ShieldCheck size={14} className="ml-1 text-primaryTeal" />
+                </span>
+              )}
+            </div>
+            {canModify && onUpdateComment && onDeleteComment && !isEditing && !showReplyForm && (
+              <div className="ml-auto relative self-start" ref={optionsMenuRef}>
+                <button
+                  onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+                  aria-label="Comment options"
+                  aria-expanded={showOptionsMenu}
+                >
+                  <MoreHorizontal size={16} />
+                </button>
+                {showOptionsMenu && (
+                  <div className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
+                    <button
+                      onClick={handleEdit}
+                      className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 flex items-center"
+                    >
+                      <Edit3 size={14} className="mr-2" /> Edit
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center"
+                    >
+                      <Trash2 size={14} className="mr-2" /> Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex items-center space-x-2 mb-0.5">
-            <p className="font-semibold text-slate-800 text-xs">{authorName}</p>
-            <p className="text-xxs text-slate-400">
+            <p className="text-xxs text-gray-500">
               {formattedTimestamp}
-              {isActuallyEdited && formattedUpdatedAt && <span className="text-slate-500 ml-1 text-xxs">(edited {formattedUpdatedAt})</span>}
-              {isActuallyEdited && !formattedUpdatedAt && <span className="text-slate-500 ml-1 text-xxs">(edited)</span>}
+              {isActuallyEdited && formattedUpdatedAt && <span className="text-gray-500 ml-1 text-xxs">(edited {formattedUpdatedAt})</span>}
+              {isActuallyEdited && !formattedUpdatedAt && <span className="text-gray-500 ml-1 text-xxs">(edited)</span>}
             </p>
           </div>
           {isEditing ? (
@@ -332,7 +369,7 @@ export default function CommentItem({
               <textarea
                 value={editedText}
                 onChange={(e) => setEditedText(e.target.value)}
-                className="w-full p-2 border border-cyan-500 rounded-md focus:ring-cyan-500 focus:border-cyan-500 resize-y text-sm"
+                className="w-full p-2 border border-cyan-500 rounded-md focus:ring-cyan-500 focus:border-cyan-500 resize-y text-sm text-gray-900"
                 rows={2}
                 disabled={isSavingEdit}
                 autoFocus
@@ -361,7 +398,7 @@ export default function CommentItem({
               </div>
             </div>
           ) : (
-            <p className="text-slate-700 text-sm whitespace-pre-wrap">{renderFormattedText(displayedTextContent)}</p>
+            <p className="text-gray-900 text-sm whitespace-pre-wrap">{renderFormattedText(displayedTextContent)}</p>
           )}
           {!isEditing && (
             <div className="flex items-center space-x-3 mt-1">
@@ -387,95 +424,31 @@ export default function CommentItem({
             </div>
           )}
           {showReplyForm && !isEditing && onReplySubmit && (
-            <form onSubmit={handleSubmitReply} className="mt-2 w-full">
-              <div className="relative">
-              <HashtagInput 
+            <div className="mt-3 ml-4">
+              <CommentForm 
+                onSubmit={handleSubmitReply}
                 value={replyText}
                 onChange={setReplyText}
-                placeholder={`Replying to ${authorName}...`}
-                rows={2}
-                className="w-full text-sm bg-white focus:bg-white disabled:bg-slate-50"
-              />
-                <div className="absolute right-2 bottom-2">
-                  <EmojiPicker
-                    onEmojiSelect={(emoji) => {
-                      const textarea = document.querySelector('textarea');
-                      if (textarea) {
-                        const start = textarea.selectionStart;
-                        const end = textarea.selectionEnd;
-                        const newValue = replyText.substring(0, start) + emoji + replyText.substring(end);
-                        setReplyText(newValue);
-                        // Set cursor position after the inserted emoji
-                        setTimeout(() => {
-                          textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
-                          textarea.focus();
-                        }, 0);
-                      }
-                    }}
+                isSubmitting={isSubmittingReply}
+                placeholder="Write a reply..."
+                communityId={communityId}
                   />
-                </div>
-              </div>
               {replyError && <p className="text-xs text-red-500 mt-1">{replyError}</p>}
-              <div className="mt-1.5 flex justify-end">
-                <button
-                  type="submit"
-                  className="px-3 py-1 text-xs bg-rose-500 text-white rounded-md hover:bg-rose-600 flex items-center disabled:opacity-70"
-                  disabled={isSubmittingReply || !replyText.trim()}
-                >
-                  {isSubmittingReply ? (
-                    <Loader2 size={12} className="animate-spin mr-1" />
-                  ) : (
-                    <Send size={12} className="mr-1" />
-                  )}
-                  Post Reply
-                </button>
               </div>
-            </form>
           )}
         </div>
-        {canModify && onUpdateComment && onDeleteComment && !isEditing && !showReplyForm && (
-          <div className="ml-auto relative self-start" ref={optionsMenuRef}>
-            <button
-              onClick={() => setShowOptionsMenu(!showOptionsMenu)}
-              className="p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
-              aria-label="Comment options"
-              aria-expanded={showOptionsMenu}
-            >
-              <MoreHorizontal size={16} />
-            </button>
-            {showOptionsMenu && (
-              <div className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
-                <button
-                  onClick={handleEdit}
-                  className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 flex items-center"
-                >
-                  <Edit3 size={14} className="mr-2" /> Edit
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center"
-                >
-                  <Trash2 size={14} className="mr-2" /> Delete
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Render Replies */}
       {replies && replies.length > 0 && (
-        <div className="mt-2">
+        <div className={`mt-3 ${depth === 1 ? 'pl-4 border-l-2 border-gray-100' : ''}`}>
           <button
-            type="button"
-            className="text-xs text-blue-600 hover:text-blue-800 font-medium mb-2 ml-2"
-            onClick={() => setShowReplies(v => !v)}
+            onClick={() => setShowReplies(!showReplies)} 
+            className="text-xs text-blue-600 hover:underline mb-2"
           >
-            {showReplies ? `Hide Replies (${replies.length})` : `Show Replies (${replies.length})`}
+            {showReplies ? 'Hide' : `View ${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
           </button>
-          {showReplies && (
-            <div className="space-y-3 pl-5 border-l-2 border-gray-200 dark:border-gray-700 ml-5">
-          {replies.map(reply => (
+          {showReplies && replies.map(reply => (
             <CommentItem
               key={reply.id}
               {...reply}
@@ -485,11 +458,10 @@ export default function CommentItem({
               onReplySubmit={onReplySubmit}
               onLikeComment={onLikeComment}
               onUnlikeComment={onUnlikeComment}
-              supabaseClient={supabaseClient}
+              replies={reply.replies}
+              communityId={communityId}
             />
           ))}
-            </div>
-          )}
         </div>
       )}
     </div>
