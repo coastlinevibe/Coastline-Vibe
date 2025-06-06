@@ -26,7 +26,6 @@ export interface CommentData {
 
 interface CommentsListProps {
   comments: CommentData[];
-  onReplySubmit?: (parentCommentId: string, replyText: string, parentDepth: number) => Promise<boolean>;
   onLikeComment?: (commentId: string) => Promise<void>;
   onUnlikeComment?: (commentId: string) => Promise<void>;
   currentUserId?: string | null;
@@ -38,7 +37,6 @@ interface CommentsListProps {
 
 interface InternalCommentItemProps {
   comment: CommentData;
-  onReplySubmit?: (parentCommentId: string, replyText: string, parentDepth: number) => Promise<boolean>;
   onLikeComment?: (commentId: string) => Promise<void>;
   onUnlikeComment?: (commentId: string) => Promise<void>;
   currentUserId?: string | null;
@@ -60,7 +58,6 @@ interface CommenterTooltipDetails {
 
 const CommentItem: React.FC<InternalCommentItemProps> = ({ 
   comment, 
-  onReplySubmit, 
   onLikeComment, 
   onUnlikeComment,
   currentUserId, 
@@ -68,11 +65,6 @@ const CommentItem: React.FC<InternalCommentItemProps> = ({
   onActualDeleteComment,
   communityId,
 }) => {
-  const [showReplies, setShowReplies] = useState(false);
-  const [showReplyForm, setShowReplyForm] = useState(false);
-  const [replyText, setReplyText] = useState("");
-  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
-  const [replyError, setReplyError] = useState<string | null>(null);
   const [likeCount, setLikeCount] = useState(comment.likeCount || 0);
   const [isLiked, setIsLiked] = useState(comment.isLikedByCurrentUser || false);
 
@@ -167,38 +159,6 @@ const CommentItem: React.FC<InternalCommentItemProps> = ({
           console.error("Failed to unlike comment:", error);
         }
       }
-    }
-  };
-
-  const handleSubmitReply = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!replyText.trim() || !onReplySubmit) {
-      if(!replyText.trim()) setReplyError("Reply cannot be empty.");
-      return;
-    }
-    const currentCommentDepth = comment.depth || 1;
-    if (currentCommentDepth >= 3) {
-        setReplyError("Maximum reply depth reached.");
-        return;
-    }
-
-    setIsSubmittingReply(true);
-    setReplyError(null);
-    try {
-      const success = await onReplySubmit(comment.id, replyText.trim(), currentCommentDepth + 1);
-      if (success) {
-        setReplyText("");
-        setShowReplyForm(false);
-        // Ensure replies are shown if this is a new reply, might need to coordinate with parent
-        setShowReplies(true); 
-      } else {
-        setReplyError("Failed to submit reply. Please try again.");
-      }
-    } catch (err) {
-        console.error("Error submitting reply in internal CommentItem:", err);
-        setReplyError("An unexpected error occurred.");
-    } finally {
-        setIsSubmittingReply(false);
     }
   };
 
@@ -336,58 +296,16 @@ const CommentItem: React.FC<InternalCommentItemProps> = ({
                 <button onClick={handleLike} className={`flex items-center hover:text-red-500 ${isLiked ? 'text-red-500' : ''}`}>
                   <Heart size={14} className={`mr-1 ${isLiked ? 'fill-current' : ''}`} /> {likeCount}
                 </button>
-                <button onClick={() => setShowReplyForm(!showReplyForm)} className="hover:text-blue-500 flex items-center">
-                  <MessageSquare size={14} className="mr-1" /> Reply
-                </button>
-              </div>
-            )}
-
-            {showReplyForm && (
-              <div className="mt-2">
-                <CommentForm 
-                  onSubmit={handleSubmitReply} 
-                  value={replyText} 
-                  onChange={setReplyText} 
-                  isSubmitting={isSubmittingReply}
-                  placeholder={`Replying to ${comment.authorName}...`}
-                  communityId={communityId}
-                />
-                {replyError && <p className="text-xs text-red-500 mt-1">{replyError}</p>}
               </div>
             )}
           </div>
         </div>
       </div>
-
-      {comment.replies && comment.replies.length > 0 && (
-        <button 
-          onClick={() => setShowReplies(!showReplies)} 
-          className="text-xs text-blue-500 hover:underline mt-2 text-left ml-10 pl-1 focus:outline-none"
-        >
-          {showReplies ? 'Hide' : 'View'} {comment.replies.length} {comment.replies.length === 1 ? 'reply' : 'replies'}
-        </button>
-      )}
-
-      {showReplies && comment.replies && comment.replies.length > 0 && (
-        <div className="mt-2">
-          <CommentsList
-            comments={comment.replies}
-            onReplySubmit={onReplySubmit}
-            onLikeComment={onLikeComment}
-            onUnlikeComment={onUnlikeComment}
-            currentUserId={currentUserId}
-            parentDepth={(comment.depth || 1) + 1}
-            onActualUpdateComment={onActualUpdateComment}
-            onActualDeleteComment={onActualDeleteComment}
-            communityId={communityId}
-          />
-        </div>
-      )}
     </div>
   );
 };
 
-export const CommentsList: React.FC<CommentsListProps> = ({ comments, onReplySubmit, onLikeComment, onUnlikeComment, currentUserId, parentDepth = 1, onActualUpdateComment, onActualDeleteComment, communityId }) => {
+export const CommentsList: React.FC<CommentsListProps> = ({ comments, onLikeComment, onUnlikeComment, currentUserId, parentDepth = 1, onActualUpdateComment, onActualDeleteComment, communityId }) => {
   if (!comments || comments.length === 0) {
     return null;
   }
@@ -398,7 +316,6 @@ export const CommentsList: React.FC<CommentsListProps> = ({ comments, onReplySub
         <CommentItem
           key={comment.id}
           comment={comment}
-          onReplySubmit={onReplySubmit}
           onLikeComment={onLikeComment}
           onUnlikeComment={onUnlikeComment}
           currentUserId={currentUserId}

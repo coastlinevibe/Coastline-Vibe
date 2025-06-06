@@ -1,12 +1,11 @@
 "use client";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { ChevronDown, ChevronUp, List, HelpCircle, Megaphone, Calendar, BarChart3 } from "lucide-react";
 import PostLeaseIcon from '@/components/icons/PostLeaseIcon';
 import { UsersIcon, BuildingStorefrontIcon, HomeModernIcon, ShoppingCartIcon, ShieldExclamationIcon, UserPlusIcon, EyeIcon, CheckCircleIcon, XCircleIcon, TrashIcon, ArrowPathIcon,ChevronDownIcon, ChevronUpIcon, UserCircleIcon } from '@heroicons/react/24/outline';
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { User } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 import type { LocationVerificationRequest, VerificationRequestWithProfile } from "@/types/admin";
@@ -59,11 +58,7 @@ export default function CommunityAdminDashboard() {
   const params = useParams();
   const communityId = params?.communityId as string;
   const router = useRouter();
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-  const supabaseClient = createClientComponentClient<Database>();
+  const supabase = createClient();
   const [status, setStatus] = useState<"loading" | "unauthenticated" | "unauthorized" | "authorized">("loading");
   const [profile, setProfile] = useState<any>(null);
   const [users, setUsers] = useState<Array<{ 

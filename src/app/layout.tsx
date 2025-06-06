@@ -3,6 +3,7 @@ import { Montserrat, Open_Sans } from "next/font/google";
 import './globals.css';
 import Header from '../components/Header';
 import PointerModeToggle from '../components/PointerModeToggle';
+import { NotificationProvider } from '@/context/NotificationContext';
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -33,8 +34,10 @@ export default function RootLayout({
         <div className="fixed top-4 left-4 z-[10000] block md:hidden">
           <PointerModeToggle />
         </div>
-        <Header />
-        {children}
+        <NotificationProvider>
+          <Header />
+          {children}
+        </NotificationProvider>
       </body>
     </html>
   );

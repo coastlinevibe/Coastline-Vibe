@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
+import NotificationBell from './shared/NotificationBell';
 
 export default function Header({ communityId = 'miami' }: { communityId?: string }) {
   const pathname = usePathname();
@@ -105,6 +106,9 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
         {/* User Info and Dashboard/Logout Buttons (desktop, always right) */}
         {!isHome && user && (
           <div className="hidden md:flex items-center gap-4 ml-4 min-w-max">
+            {/* Notification Bell */}
+            <NotificationBell />
+            
             {profile && (
               <Link href="/community/miami" className="flex items-center gap-2 cursor-pointer">
                 <img src={profile.avatar_url || '/placeholder-avatar.png'} alt={profile.username} className="w-8 h-8 rounded-full object-cover border border-seafoam" />
@@ -119,15 +123,20 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
         )}
         {/* Hamburger for mobile (always right) */}
         {!isHome && user && (
-          <button
-            className="ml-auto md:hidden p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-seafoam"
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label="Toggle navigation menu"
-          >
-            <span className="block w-6 h-0.5 bg-primaryTeal mb-1.5"></span>
-            <span className="block w-6 h-0.5 bg-primaryTeal mb-1.5"></span>
-            <span className="block w-6 h-0.5 bg-primaryTeal"></span>
-          </button>
+          <div className="ml-auto md:hidden flex items-center gap-2">
+            {/* Mobile Notification Bell */}
+            <NotificationBell />
+            
+            <button
+              className="p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-seafoam"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label="Toggle navigation menu"
+            >
+              <span className="block w-6 h-0.5 bg-primaryTeal mb-1.5"></span>
+              <span className="block w-6 h-0.5 bg-primaryTeal mb-1.5"></span>
+              <span className="block w-6 h-0.5 bg-primaryTeal"></span>
+            </button>
+          </div>
         )}
         {/* Mobile menu dropdown */}
         {!isHome && user && menuOpen && (
@@ -146,6 +155,15 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
                   {link.label}
                 </Link>
               ))}
+              {/* Add Notifications link in mobile menu */}
+              <Link
+                href="/notifications"
+                className="px-4 py-2 rounded-md font-medium text-darkCharcoal transition-all duration-200
+                  hover:bg-seafoam/20 hover:text-primaryTeal"
+                onClick={() => setMenuOpen(false)}
+              >
+                Notifications
+              </Link>
             </nav>
             <div className="flex flex-col gap-2 px-4 pb-4 border-t border-seafoam/30">
               {profile && (

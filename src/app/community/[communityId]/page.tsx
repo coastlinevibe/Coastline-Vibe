@@ -371,11 +371,16 @@ export default function CommunityLandingPage() {
       }
       const userId = authUser.id;
 
-      const { data: communityData, error: communityError } = await supabase
-            .from('communities')
-        .select('id, name')
-        .eq('slug', communityId)
-            .single();
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUuid = uuidPattern.test(communityId);
+
+      let query = supabase.from('communities').select('id, name');
+      if (isUuid) {
+        query = query.eq('id', communityId);
+      } else {
+        query = query.eq('slug', communityId);
+      }
+      const { data: communityData, error: communityError } = await query.single();
 
       if (communityError) {
         console.error(`[CommunityPage] Error fetching community by slug '${communityId}':`, communityError);

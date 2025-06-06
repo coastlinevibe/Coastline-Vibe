@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Waves } from 'lucide-react';
 import Link from 'next/link';
 import { useForm, SubmitHandler } from 'react-hook-form';
-import { createBrowserClient } from '@supabase/ssr'; // Changed import
+import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import type { Database } from '@/types/supabase';
 import { Eye, EyeOff } from 'lucide-react';
@@ -31,12 +31,31 @@ export default function LoginPage() {
   const [showDeclinedModal, setShowDeclinedModal] = useState(false);
   const router = useRouter();
   const [showPin, setShowPin] = useState(false);
+  const supabase = createClient();
 
-  // Initialize Supabase client for client component
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // If there's a session, redirect the user.
+        // We can try to get community_id from the profile if needed,
+        // but a simple redirect to home is a safe default.
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('community_id')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile?.community_id) {
+          router.push(`/community/${profile.community_id}`);
+        } else {
+          router.push('/');
+        }
+      }
+    };
+
+    checkSession();
+  }, [router, supabase]);
 
   const {
     register,
@@ -122,13 +141,10 @@ export default function LoginPage() {
       // If approved, redirect immediately (no popup)
       if (userRole === "community admin" && userCommunityId) {
         router.push(`/community/${userCommunityId}/admin`);
-        window.location.href = `/community/${userCommunityId}/admin`;
       } else if (userCommunityId) {
         router.push(`/community/${userCommunityId}`);
-        window.location.href = `/community/${userCommunityId}`;
       } else {
         router.push('/');
-        window.location.href = '/';
       }
       setIsLoading(false);
       return;

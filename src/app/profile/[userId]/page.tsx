@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client'
 import type { Database } from '@/types/supabase';
 import { ShieldAlert, ShieldCheck } from 'lucide-react';
+import { useParams } from 'next/navigation';
 
 interface UserProfilePageProps {
   params: {
@@ -33,7 +34,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient();
 
   const [currentAdmin, setCurrentAdmin] = useState<CurrentAdminContext>({ 
     id: null, 
