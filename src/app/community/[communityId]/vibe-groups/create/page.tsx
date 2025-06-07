@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
@@ -18,7 +18,66 @@ export default function CreateVibeGroupPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
   const supabase = createClientComponentClient();
+
+  // Check authentication status on load
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        // Get auth session
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        
+        if (!sessionData?.session) {
+          setError('You must be logged in to create a group');
+          return;
+        }
+        
+        setIsAuthenticated(true);
+        const authUserId = sessionData.session.user.id;
+        setUserId(authUserId);
+        
+        // Get profile
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, username')
+          .eq('id', authUserId)
+          .single();
+          
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
+          
+          // Try to find profile by email
+          const userEmail = sessionData.session.user.email;
+          if (userEmail) {
+            const { data: emailProfileData } = await supabase
+              .from('profiles')
+              .select('id, username')
+              .eq('email', userEmail)
+              .single();
+              
+            if (emailProfileData) {
+              console.log('Found profile by email:', emailProfileData);
+              setProfileId(emailProfileData.id);
+            } else {
+              setError('Could not find your profile. Please contact support.');
+            }
+          }
+        } else if (profileData) {
+          console.log('Found profile:', profileData);
+          setProfileId(profileData.id);
+        }
+      } catch (err) {
+        console.error('Auth check error:', err);
+        setError('Authentication error. Please try logging in again.');
+      }
+    }
+    
+    checkAuth();
+  }, [supabase]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -38,13 +97,12 @@ export default function CreateVibeGroupPage() {
         throw new Error('Group name is required');
       }
 
-      // Get current user
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData.user) {
-        throw new Error('You must be logged in to create a group');
+      // Check if we have a profile ID
+      if (!profileId) {
+        throw new Error('Could not find your profile. Please contact support.');
       }
 
-      const userId = userData.user.id;
+      console.log('Creating group with profile ID:', profileId);
 
       // Create the group
       const { data: groupData, error: groupError } = await supabase
@@ -53,7 +111,7 @@ export default function CreateVibeGroupPage() {
           name: formData.name.trim(),
           description: formData.description?.trim() || null,
           visibility: formData.visibility,
-          captain_id: userId,
+          captain_id: profileId,
           community_id: communityId,
           icon_url: null, // Icon upload would be handled separately
           upgrade_level: 0,
@@ -63,25 +121,29 @@ export default function CreateVibeGroupPage() {
         .single();
 
       if (groupError) {
-        throw groupError;
+        console.error('Error creating group:', groupError);
+        throw new Error(groupError.message || 'Failed to create group');
       }
 
       if (!groupData) {
         throw new Error('Failed to create group');
       }
 
+      console.log('Group created:', groupData);
+
       // Add the creator as a captain member
       const { error: memberError } = await supabase
         .from('vibe_groups_members')
         .insert({
           group_id: groupData.id,
-          user_id: userId,
+          user_id: profileId,
           role: 'captain',
           status: 'active'
         });
 
       if (memberError) {
-        throw memberError;
+        console.error('Error adding member:', memberError);
+        throw new Error(memberError.message || 'Failed to add you as a member');
       }
 
       // Redirect to the new group
@@ -178,9 +240,9 @@ export default function CreateVibeGroupPage() {
               </Link>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !isAuthenticated || !profileId}
                 className={`bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded ${
-                  loading ? 'opacity-50 cursor-not-allowed' : ''
+                  (loading || !isAuthenticated || !profileId) ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
                 {loading ? 'Creating...' : 'Create Group'}
