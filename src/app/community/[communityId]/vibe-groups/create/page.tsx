@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { CreateVibeGroupParams } from '@/types/vibe-groups';
+import { CreateVibeGroupParams, VibeGroupVisibility } from '@/types/vibe-groups';
 
 export default function CreateVibeGroupPage() {
-  const { communityId } = useParams() as { communityId: string };
+  const params = useParams();
+  const communityId = params?.communityId as string;
   const router = useRouter();
   const [formData, setFormData] = useState<CreateVibeGroupParams>({
     name: '',
@@ -50,7 +51,7 @@ export default function CreateVibeGroupPage() {
         .from('vibe_groups')
         .insert({
           name: formData.name.trim(),
-          description: formData.description.trim() || null,
+          description: formData.description?.trim() || null,
           visibility: formData.visibility,
           captain_id: userId,
           community_id: communityId,

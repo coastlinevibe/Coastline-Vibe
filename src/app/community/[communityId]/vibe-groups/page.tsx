@@ -7,7 +7,8 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { VibeGroup } from '@/types/vibe-groups';
 
 export default function VibeGroupsPage() {
-  const { communityId } = useParams();
+  const params = useParams();
+  const communityId = params?.communityId as string;
   const [groups, setGroups] = useState<VibeGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +113,7 @@ export default function VibeGroupsPage() {
                       Captain: {group.captain?.username || 'Unknown'}
                     </span>
                     <span>
-                      {group.member_count?.[0]?.count || 1} members
+                      {group.member_count && group.member_count[0]?.count || 1} members
                     </span>
                   </div>
                   <div className="mt-2 text-xs inline-block px-2 py-1 rounded bg-gray-100">

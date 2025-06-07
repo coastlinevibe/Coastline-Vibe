@@ -1,5 +1,12 @@
 import { Database } from './supabase';
-import { Profile } from './user';
+
+// Define a Profile type if it doesn't exist in the project yet
+export type Profile = {
+  id: string;
+  username: string;
+  avatar_url?: string;
+  email?: string;
+};
 
 // Visibility types
 export type VibeGroupVisibility = 'public' | 'private' | 'secret';
@@ -248,9 +255,4 @@ export type UpdateMemberParams = {
   role?: MemberRole;
   status?: MemberStatus;
   nickname?: string;
-};
-
-// Database types
-export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
-export type InsertTables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
-export type UpdateTables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update']; 
+}; 

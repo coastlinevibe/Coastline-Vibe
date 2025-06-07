@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Format messages for AI processing
-    const formattedConversation = messages.map(msg => {
+    const formattedConversation = messages.map((msg: any) => {
       let content = msg.content || '';
       
       // Add media information if present
@@ -96,12 +96,9 @@ export async function POST(request: NextRequest) {
         content += ` [Voice note: ${msg.voice_note.transcription || 'No transcription available'}]`;
       }
       
-      return {
-        role: 'user',
-        name: msg.sender?.username || 'Unknown',
-        content
-      };
-    });
+      // Format as a conversation with usernames
+      return `${msg.sender?.username || 'Unknown'}: ${content}`;
+    }).join('\n\n');
 
     // Get group details for context
     const { data: groupData, error: groupError } = await supabase
@@ -136,7 +133,7 @@ Be conversational and use nautical/coastal language where appropriate, as this f
       model: "gpt-3.5-turbo",
       messages: [
         { role: "system", content: systemPrompt },
-        ...formattedConversation
+        { role: "user", content: formattedConversation }
       ],
       max_tokens: 500,
     });

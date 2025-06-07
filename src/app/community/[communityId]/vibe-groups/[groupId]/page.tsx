@@ -7,7 +7,9 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { VibeGroupWithDetails, VibeGroupMessage } from '@/types/vibe-groups';
 
 export default function VibeGroupDetailPage() {
-  const { communityId, groupId } = useParams() as { communityId: string; groupId: string };
+  const params = useParams();
+  const communityId = params?.communityId as string;
+  const groupId = params?.groupId as string;
   const [group, setGroup] = useState<VibeGroupWithDetails | null>(null);
   const [messages, setMessages] = useState<VibeGroupMessage[]>([]);
   const [loading, setLoading] = useState(true);
