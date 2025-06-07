@@ -33,6 +33,7 @@ interface CommentsListProps {
   onActualUpdateComment?: (commentId: string, newContent: string) => Promise<boolean>;
   onActualDeleteComment?: (commentId: string) => Promise<boolean>;
   communityId: string;
+  onReplySubmit?: (parentCommentId: string, replyText: string, parentDepth: number) => Promise<boolean>;
 }
 
 interface InternalCommentItemProps {
@@ -43,6 +44,7 @@ interface InternalCommentItemProps {
   onActualUpdateComment?: (commentId: string, newContent: string) => Promise<boolean>;
   onActualDeleteComment?: (commentId: string) => Promise<boolean>;
   communityId: string;
+  onReplySubmit?: (parentCommentId: string, replyText: string, parentDepth: number) => Promise<boolean>;
 }
 
 interface CommenterTooltipDetails {
@@ -64,6 +66,7 @@ const CommentItem: React.FC<InternalCommentItemProps> = ({
   onActualUpdateComment,
   onActualDeleteComment,
   communityId,
+  onReplySubmit,
 }) => {
   const [likeCount, setLikeCount] = useState(comment.likeCount || 0);
   const [isLiked, setIsLiked] = useState(comment.isLikedByCurrentUser || false);
@@ -75,6 +78,11 @@ const CommentItem: React.FC<InternalCommentItemProps> = ({
   const moreOptionsRef = useRef<HTMLDivElement>(null);
   const [currentContent, setCurrentContent] = useState(comment.content);
   const [currentUpdatedAt, setCurrentUpdatedAt] = useState(comment.updated_at);
+  
+  // Reply state
+  const [isReplying, setIsReplying] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
 
   // State for commenter's extended profile details for tooltip
   const [commenterTooltipDetails, setCommenterTooltipDetails] = useState<CommenterTooltipDetails | null>(null);
@@ -208,6 +216,29 @@ const CommentItem: React.FC<InternalCommentItemProps> = ({
   // isOnline calculation for inline sailboat icon (if needed separately from tooltip)
   const isOnlineForIcon = commenterTooltipDetails ? calculateIsOnline(commenterTooltipDetails.last_seen_at) : false;
 
+  const handleReply = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!replyText.trim() || !onReplySubmit) return;
+    
+    setIsSubmittingReply(true);
+    try {
+      const success = await onReplySubmit(
+        comment.id, 
+        replyText.trim(), 
+        (comment.depth || 1) + 1
+      );
+      
+      if (success) {
+        setReplyText('');
+        setIsReplying(false);
+      }
+    } catch (error) {
+      console.error('Failed to submit reply:', error);
+    } finally {
+      setIsSubmittingReply(false);
+    }
+  };
+
   return (
     <div className={`py-3 flex flex-col ${commentDepthForStyles > 1 ? (commentDepthForStyles === 2 ? 'ml-6 pl-3 border-l-2 border-gray-100' : 'ml-10 pl-3 border-l-2 border-gray-100') : '' }`}>
       <div className="flex items-start space-x-3">
@@ -228,6 +259,17 @@ const CommentItem: React.FC<InternalCommentItemProps> = ({
                 <UserTooltipWrapper profileData={profileDataForTooltip}>
                   <span className="font-semibold text-xs text-slate-700 hover:underline cursor-pointer">{comment.authorName}</span>
                 </UserTooltipWrapper>
+                
+                {/* Reply button directly next to username */}
+                {currentUserId && onReplySubmit && comment.depth && comment.depth < 3 && (
+                  <button 
+                    onClick={() => setIsReplying(!isReplying)} 
+                    className="ml-1 flex items-center text-xs text-blue-500 hover:text-blue-700 bg-transparent border-none p-0"
+                  >
+                    Reply
+                  </button>
+                )}
+                
                 {isOnlineForIcon && (
                    <span title="Online">
                      <Sailboat size={10} className="ml-1 text-green-500" />
@@ -299,13 +341,42 @@ const CommentItem: React.FC<InternalCommentItemProps> = ({
               </div>
             )}
           </div>
+          
+          {/* Reply form */}
+          {isReplying && currentUserId && (
+            <div className="mt-2 ml-2">
+              <CommentForm
+                onSubmit={handleReply}
+                value={replyText}
+                onChange={setReplyText}
+                isSubmitting={isSubmittingReply}
+                placeholder={`Reply to ${comment.authorName}...`}
+                communityId={communityId}
+                replyingTo={{
+                  id: comment.id,
+                  authorName: comment.authorName
+                }}
+                onCancelReply={() => setIsReplying(false)}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export const CommentsList: React.FC<CommentsListProps> = ({ comments, onLikeComment, onUnlikeComment, currentUserId, parentDepth = 1, onActualUpdateComment, onActualDeleteComment, communityId }) => {
+export const CommentsList: React.FC<CommentsListProps> = ({ 
+  comments, 
+  onLikeComment, 
+  onUnlikeComment, 
+  currentUserId, 
+  parentDepth = 1, 
+  onActualUpdateComment, 
+  onActualDeleteComment, 
+  communityId,
+  onReplySubmit
+}) => {
   if (!comments || comments.length === 0) {
     return null;
   }
@@ -313,16 +384,35 @@ export const CommentsList: React.FC<CommentsListProps> = ({ comments, onLikeComm
   return (
     <div className="space-y-3">
       {comments.map((comment) => (
-        <CommentItem
-          key={comment.id}
-          comment={comment}
-          onLikeComment={onLikeComment}
-          onUnlikeComment={onUnlikeComment}
-          currentUserId={currentUserId}
-          onActualUpdateComment={onActualUpdateComment}
-          onActualDeleteComment={onActualDeleteComment}
-          communityId={communityId}
-        />
+        <div key={comment.id} className="comment-thread">
+          <CommentItem
+            comment={comment}
+            onLikeComment={onLikeComment}
+            onUnlikeComment={onUnlikeComment}
+            currentUserId={currentUserId}
+            onActualUpdateComment={onActualUpdateComment}
+            onActualDeleteComment={onActualDeleteComment}
+            communityId={communityId}
+            onReplySubmit={onReplySubmit}
+          />
+          
+          {/* Render nested replies if they exist */}
+          {comment.replies && comment.replies.length > 0 && (
+            <div className="ml-6 mt-1">
+              <CommentsList
+                comments={comment.replies}
+                onLikeComment={onLikeComment}
+                onUnlikeComment={onUnlikeComment}
+                currentUserId={currentUserId}
+                parentDepth={(comment.depth || 1) + 1}
+                onActualUpdateComment={onActualUpdateComment}
+                onActualDeleteComment={onActualDeleteComment}
+                communityId={communityId}
+                onReplySubmit={onReplySubmit}
+              />
+            </div>
+          )}
+        </div>
       ))}
     </div>
   );

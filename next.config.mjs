@@ -29,6 +29,18 @@ const nextConfig = {
       },
     ],
   },
+  // Set the development server port to 3001 explicitly
+  devIndicators: {
+    buildActivity: true,
+  },
+  // Use server actions for form handling
+  experimental: {
+    serverActions: true,
+  },
+  // Define environment variables with defaults
+  env: {
+    PORT: process.env.PORT || '3001',
+  },
 };
  
 export default nextConfig; 

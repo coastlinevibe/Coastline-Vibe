@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Search, X, Hash } from 'lucide-react';
 
 interface SearchBarProps {
@@ -31,12 +31,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   // Trigger search on debounced query change
   useEffect(() => {
-    onSearch(debouncedQuery);
-  }, [debouncedQuery, onSearch]);
+    if (debouncedQuery !== undefined) {
+      onSearch(debouncedQuery);
+    }
+  }, [debouncedQuery]); // Remove onSearch from dependencies
 
   const handleClear = () => {
     setSearchQuery('');
-    onSearch('');
+    setDebouncedQuery('');
   };
 
   const handleHashtagClick = (hashtag: string) => {
@@ -44,7 +46,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
       onHashtagSelect(hashtag);
     } else {
       setSearchQuery(`#${hashtag}`);
-      onSearch(`#${hashtag}`);
+      setDebouncedQuery(`#${hashtag}`);
     }
   };
 

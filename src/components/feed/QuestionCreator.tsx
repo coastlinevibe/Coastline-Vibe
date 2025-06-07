@@ -2,7 +2,10 @@
 
 import React, { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { HelpCircle, Loader2, Tag, X } from 'lucide-react';
+import { HelpCircle, Loader2, Tag, X, Wand2, Lightbulb } from 'lucide-react';
+import PoliteRewriter from './PoliteRewriter';
+import ContentSuggestions from './ContentSuggestions';
+import KindnessReminder from './KindnessReminder';
 
 interface QuestionCreatorProps {
   communityId: string;
@@ -24,6 +27,9 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({ communityId, onQuesti
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Add state to track if AI features are actively processing
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
 
   const handleAddTag = (tag: string) => {
     const trimmedTag = tag.trim();
@@ -111,6 +117,26 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({ communityId, onQuesti
   const filteredSuggestions = SUGGESTED_TAGS.filter(
     tag => tag.toLowerCase().includes(tagInput.toLowerCase()) && !tags.includes(tag)
   );
+  
+  // Handle polite rewriting for title
+  const handleRewriteTitle = (rewrittenText: string) => {
+    setTitle(rewrittenText);
+  };
+  
+  // Handle polite rewriting for content
+  const handleRewriteContent = (rewrittenText: string) => {
+    setContent(rewrittenText);
+  };
+  
+  // Handle content suggestions
+  const handleSelectSuggestion = (suggestion: string) => {
+    setContent(suggestion);
+  };
+  
+  // Handle kindness reminders
+  const handleContentChange = (newContent: string) => {
+    setContent(newContent);
+  };
 
   return (
     <div className="bg-white p-4 rounded-lg shadow mb-4">
@@ -120,34 +146,68 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({ communityId, onQuesti
       </h3>
       
       <form onSubmit={handleSubmit}>
+        {/* Kindness reminder will appear if needed */}
+        <KindnessReminder 
+          content={content} 
+          onContentChange={handleContentChange} 
+          disabled={isCreating || isAiProcessing}
+        />
+        
         <div className="mb-4">
           <label htmlFor="questionTitle" className="block text-sm font-medium mb-1">
             Question
           </label>
-          <input
-            id="questionTitle"
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="What's your question?"
-            className="w-full p-2 border border-gray-300 rounded-md"
-            disabled={isCreating}
-          />
+          <div className="relative">
+            <input
+              id="questionTitle"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="What's your question?"
+              className="w-full p-2 border border-gray-300 rounded-md"
+              disabled={isCreating || isAiProcessing}
+            />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+              <PoliteRewriter
+                originalText={title}
+                onRewritten={handleRewriteTitle}
+                disabled={isCreating || isAiProcessing}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="mb-4">
           <label htmlFor="questionContent" className="block text-sm font-medium mb-1">
             Details
           </label>
-          <textarea
-            id="questionContent"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Provide more details about your question..."
-            rows={4}
-            className="w-full p-2 border border-gray-300 rounded-md"
-            disabled={isCreating}
-          />
+          <div className="relative">
+            <textarea
+              id="questionContent"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Provide more details about your question..."
+              rows={4}
+              className="w-full p-2 border border-gray-300 rounded-md"
+              disabled={isCreating || isAiProcessing}
+            />
+            <div className="absolute right-2 bottom-2">
+              <PoliteRewriter
+                originalText={content}
+                onRewritten={handleRewriteContent}
+                disabled={isCreating || isAiProcessing}
+              />
+            </div>
+          </div>
+          
+          {/* Content suggestions */}
+          <div className="mt-1">
+            <ContentSuggestions
+              inputText={content}
+              onSelectSuggestion={handleSelectSuggestion}
+              disabled={isCreating || isAiProcessing}
+            />
+          </div>
         </div>
 
         <div className="mb-4">
@@ -168,14 +228,14 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({ communityId, onQuesti
                 onFocus={() => setShowTagSuggestions(true)}
                 placeholder="Add tags (press Enter)"
                 className="flex-1 p-2 border border-gray-300 rounded-md"
-                disabled={isCreating}
+                disabled={isCreating || isAiProcessing}
               />
               {tagInput && (
                 <button
                   type="button"
                   onClick={() => handleAddTag(tagInput)}
                   className="ml-2 px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                  disabled={isCreating}
+                  disabled={isCreating || isAiProcessing}
                 >
                   Add
                 </button>
@@ -211,7 +271,7 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({ communityId, onQuesti
                     type="button"
                     onClick={() => handleRemoveTag(tag)}
                     className="ml-1 text-blue-600 hover:text-blue-800"
-                    disabled={isCreating}
+                    disabled={isCreating || isAiProcessing}
                   >
                     <X size={12} />
                   </button>
@@ -230,7 +290,7 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({ communityId, onQuesti
         <button
           type="submit"
           className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 flex items-center justify-center"
-          disabled={isCreating}
+          disabled={isCreating || isAiProcessing}
         >
           {isCreating ? (
             <>

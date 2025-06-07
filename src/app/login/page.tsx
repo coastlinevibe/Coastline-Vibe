@@ -34,27 +34,46 @@ export default function LoginPage() {
   const supabase = createClient();
 
   useEffect(() => {
+    let isMounted = true;
+    
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        // If there's a session, redirect the user.
-        // We can try to get community_id from the profile if needed,
-        // but a simple redirect to home is a safe default.
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('community_id')
-          .eq('id', session.user.id)
-          .single();
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && isMounted) {
+          // If there's a session, redirect the user.
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('community_id')
+              .eq('id', session.user.id)
+              .single();
 
-        if (profile?.community_id) {
-          router.push(`/community/${profile.community_id}`);
-        } else {
-          router.push('/');
+            // Only proceed with routing if the component is still mounted
+            if (isMounted) {
+              if (profile?.community_id) {
+                router.push(`/community/${profile.community_id}`);
+              } else {
+                router.push('/');
+              }
+            }
+          } catch (err) {
+            console.error("Error fetching profile during session check:", err);
+            // If we can't get the profile but have a session, send to home as fallback
+            if (isMounted) {
+              router.push('/');
+            }
+          }
         }
+      } catch (err) {
+        console.error("Error checking session:", err);
       }
     };
 
     checkSession();
+    
+    return () => {
+      isMounted = false; // Prevent state updates after unmount
+    };
   }, [router, supabase]);
 
   const {

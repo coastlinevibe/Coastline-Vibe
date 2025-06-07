@@ -25,6 +25,7 @@ interface MentionTextareaProps {
   disabled?: boolean;
   onBlur?: () => void;
   onChange?: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  'data-post-id'?: string;
 }
 
 // Debounce utility
@@ -232,9 +233,10 @@ const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionTextareaPro
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
           placeholder={props.placeholder}
-          className={props.className || "w-full p-2 border rounded"}
+          className={`w-full resize-none focus:outline-none ${props.className || "p-2 border rounded"}`}
           rows={props.rows}
           disabled={props.disabled}
+          data-post-id={props['data-post-id'] || undefined}
         />
         {isSuggestionsVisible && suggestions.length > 0 && (
           <ul 

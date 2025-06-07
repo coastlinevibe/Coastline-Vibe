@@ -272,12 +272,8 @@ const PostTypeSpecificElements: React.FC<{
         ) : pollDetails && (
           <PollCard
             key={postIdForPollCard}
-            postId={poll_id!}
-            question={pollDetails.question}
-            options={pollDetails.options.map(opt => ({ id: opt.id, text: opt.text, votes: opt.votes }))}
-            userVote={userVote}
-            onVote={onVote}
-            totalVotesOverall={pollDetails.totalVotesDistinctUsers}
+            pollId={poll_id!}
+            postId={postIdForPollCard}
           />
         )
       )}
@@ -321,10 +317,26 @@ export default function FeedPostItem({
   documents, onRsvpAction, communityId,
   authorEmail, authorBio, authorProfileCreatedAt,
 }: FeedPostItemProps) {
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  // Move Supabase client initialization inside a useRef to ensure it's only created once
+  // and safely persist across renders
+  const supabaseRef = useRef<SupabaseClient<Database> | null>(null);
+  
+  // Initialize the client in a useEffect hook
+  useEffect(() => {
+    try {
+      if (!supabaseRef.current && typeof window !== 'undefined') {
+        if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+          supabaseRef.current = createBrowserClient<Database>(
+            process.env.NEXT_PUBLIC_SUPABASE_URL,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+          );
+        }
+      }
+    } catch (err) {
+      console.error("Error initializing Supabase client:", err);
+    }
+  }, []);
+  
   const [textContent, setTextContent] = useState(initialTextContent);
   const [editMode, setEditMode] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -461,20 +473,24 @@ export default function FeedPostItem({
 
   // Fetch Poll Data
   useEffect(() => {
+    let isMounted = true; // Add mounted flag to prevent state updates after unmount
+    
     const fetchPoll = async () => {
-      if (!poll_id || !supabase) return;
-    setIsLoadingPoll(true);
-    setPollFetchError(null);
-    try {
-        const { data: pollQuestionData, error: pollError } = await supabase
-        .from('polls')
+      if (!poll_id || !supabaseRef.current) return;
+      
+      if (isMounted) setIsLoadingPoll(true);
+      if (isMounted) setPollFetchError(null);
+      
+      try {
+        const { data: pollQuestionData, error: pollError } = await supabaseRef.current
+          .from('polls')
           .select('question, poll_options ( id, option_text, poll_votes (user_id) )')
           .eq('id', poll_id)
           .single();
 
         if (pollError) throw pollError;
 
-        if (pollQuestionData) {
+        if (pollQuestionData && isMounted) {
           let userVoteOptionId: string | null = null;
           const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
             const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
@@ -489,49 +505,68 @@ export default function FeedPostItem({
           
           const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
 
-        setPollDetails({ 
+          setPollDetails({ 
             question: pollQuestionData.question,
-          options: optionsWithVotes, 
+            options: optionsWithVotes, 
             totalVotesDistinctUsers: totalDistinctVotes
-        });
+          });
+          
           if (userVoteOptionId) setUserPollVote(userVoteOptionId);
-
-      } else {
+        } else if (isMounted) {
           setPollFetchError('Poll not found.');
         }
       } catch (err: any) {
         console.error("Error fetching poll data:", err);
-        if (err.message === "JSON object requested, multiple (or no) rows returned") {
-          console.log(`[FeedPostItem] Poll data retrieval failed for poll_id: ${poll_id}. This ID may be incorrect, the poll deleted, or inaccessible due to RLS.`);
-          setPollFetchError('Poll data not found or is invalid for this post. The poll might have been deleted or the ID is incorrect.');
-        } else {
-          setPollFetchError(err.message || 'Failed to load poll data.');
+        if (isMounted) {
+          if (err.message === "JSON object requested, multiple (or no) rows returned") {
+            console.log(`[FeedPostItem] Poll data retrieval failed for poll_id: ${poll_id}. This ID may be incorrect, the poll deleted, or inaccessible due to RLS.`);
+            setPollFetchError('Poll data not found or is invalid for this post. The poll might have been deleted or the ID is incorrect.');
+          } else {
+            setPollFetchError(err.message || 'Failed to load poll data.');
+          }
         }
-        // Fallback fetch logic (can be reviewed if it's problematic for this error)
-        const { data: pollQuestionDataFallback } = await supabase.from('polls').select('question, poll_options ( id, option_text, poll_votes (user_id) )').eq('id', poll_id).single();
-        if (pollQuestionDataFallback) {
-            let userVoteOptionId: string | null = null;
-            const optionsWithVotes: PollOptionWithVotes[] = pollQuestionDataFallback.poll_options.map(opt => {
+        
+        // Only try fallback if component is still mounted and supabase client is available
+        if (isMounted && supabaseRef.current) {
+          try {
+            const { data: pollQuestionDataFallback } = await supabaseRef.current
+              .from('polls')
+              .select('question, poll_options ( id, option_text, poll_votes (user_id) )')
+              .eq('id', poll_id)
+              .single();
+              
+            if (pollQuestionDataFallback && isMounted) {
+              let userVoteOptionId: string | null = null;
+              const optionsWithVotes: PollOptionWithVotes[] = pollQuestionDataFallback.poll_options.map(opt => {
                 const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
                 if (isVoted) userVoteOptionId = opt.id;
                 return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
-            });
-            const totalDistinctVotes = new Set(pollQuestionDataFallback.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
-            setPollDetails({ question: pollQuestionDataFallback.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
-            if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
-        } // No explicit setReactionError here as it's about fetching initial poll data.
-    } finally {
-      setIsLoadingPoll(false);
-    }
+              });
+              const totalDistinctVotes = new Set(pollQuestionDataFallback.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+              setPollDetails({ question: pollQuestionDataFallback.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
+              if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+            }
+          } catch (fallbackErr) {
+            console.error("Error in fallback poll fetch:", fallbackErr);
+          }
+        }
+      } finally {
+        if (isMounted) setIsLoadingPoll(false);
+      }
     };
 
     if (post_type === 'poll' && poll_id) {
       fetchPoll();
     }
-  }, [poll_id, post_type, supabase, currentUserId]);
+    
+    return () => {
+      isMounted = false; // Cleanup function to prevent state updates after unmount
+    };
+  }, [poll_id, post_type, currentUserId]);
 
   const handleVoteOnPoll = async (optionId: string) => {
-    if (!currentUserId || !poll_id || userPollVote) return; // Prevent voting if not logged in, no poll, or already voted
+    if (!currentUserId || !poll_id || userPollVote || !supabaseRef.current) return;
+    
     try {
       // Optimistically update UI
       const previousVote = userPollVote;
@@ -557,7 +592,7 @@ export default function FeedPostItem({
         return { ...prev, options: newOptions, totalVotesDistinctUsers: newTotalVotes };
       });
 
-      const { error } = await supabase.rpc('vote_on_poll', {
+      const { error } = await supabaseRef.current.rpc('vote_on_poll', {
         _poll_id: poll_id,
         _poll_option_id: optionId,
         _user_id: currentUserId
@@ -567,37 +602,56 @@ export default function FeedPostItem({
         console.error("Error voting on poll:", error);
         // Revert optimistic update
         setUserPollVote(previousVote);
-        // Re-fetch to be sure (or implement more granular revert)
-        // Ideally, pollDetails should also be reverted carefully.
-        // For simplicity, a re-fetch might be easier here.
-        const { data: pollQuestionData } = await supabase.from('polls').select('question, poll_options ( id, option_text, poll_votes (user_id) )').eq('id', poll_id).single();
-        if (pollQuestionData) {
-            let userVoteOptionId: string | null = null;
-            const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
+        // Re-fetch to be sure
+        if (supabaseRef.current) {
+          try {
+            const { data: pollQuestionData } = await supabaseRef.current
+              .from('polls')
+              .select('question, poll_options ( id, option_text, poll_votes (user_id) )')
+              .eq('id', poll_id)
+              .single();
+            
+            if (pollQuestionData) {
+              let userVoteOptionId: string | null = null;
+              const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
                 const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
                 if (isVoted) userVoteOptionId = opt.id;
                 return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
-            });
-            const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
-            setPollDetails({ question: pollQuestionData.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
-            if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+              });
+              const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+              setPollDetails({ question: pollQuestionData.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
+              if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+            }
+          } catch (refetchErr) {
+            console.error("Error refetching poll data:", refetchErr);
+          }
         }
         setReactionError('Failed to cast vote. Please try again.');
         setTimeout(() => setReactionError(null), 3000);
-
       } else {
         // Vote successful, re-fetch to confirm and get latest counts from all users
-         const { data: pollQuestionData } = await supabase.from('polls').select('question, poll_options ( id, option_text, poll_votes (user_id) )').eq('id', poll_id).single();
-        if (pollQuestionData) {
-            let userVoteOptionId: string | null = null;
-            const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
+        if (supabaseRef.current) {
+          try {
+            const { data: pollQuestionData } = await supabaseRef.current
+              .from('polls')
+              .select('question, poll_options ( id, option_text, poll_votes (user_id) )')
+              .eq('id', poll_id)
+              .single();
+            
+            if (pollQuestionData) {
+              let userVoteOptionId: string | null = null;
+              const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
                 const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
                 if (isVoted) userVoteOptionId = opt.id;
                 return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
-            });
-            const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
-            setPollDetails({ question: pollQuestionData.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
-            if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+              });
+              const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+              setPollDetails({ question: pollQuestionData.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
+              if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+            }
+          } catch (refetchErr) {
+            console.error("Error refetching poll data after successful vote:", refetchErr);
+          }
         }
       }
     } catch (err: any) {
@@ -605,48 +659,74 @@ export default function FeedPostItem({
       setReactionError(err.message || 'An unexpected error occurred while voting.');
       setTimeout(() => setReactionError(null), 3000);
       // Re-fetch on general error too
-      const { data: pollQuestionData } = await supabase.from('polls').select('question, poll_options ( id, option_text, poll_votes (user_id) )').eq('id', poll_id).single();
-        if (pollQuestionData) {
+      if (supabaseRef.current) {
+        try {
+          const { data: pollQuestionData } = await supabaseRef.current
+            .from('polls')
+            .select('question, poll_options ( id, option_text, poll_votes (user_id) )')
+            .eq('id', poll_id)
+            .single();
+          
+          if (pollQuestionData) {
             let userVoteOptionId: string | null = null;
             const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
-                const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
-                if (isVoted) userVoteOptionId = opt.id;
-                return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
+              const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
+              if (isVoted) userVoteOptionId = opt.id;
+              return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
             });
             const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
             setPollDetails({ question: pollQuestionData.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
             if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
+          }
+        } catch (refetchErr) {
+          console.error("Error refetching poll data after error:", refetchErr);
         }
+      }
     }
   };
 
   useEffect(() => { 
+    let isMounted = true;
+    
     const fetchRsvps = async () => {
-      if (post_type !== 'event' || !id || !supabase) return;
-      setIsLoadingRsvps(true);
-      setRsvpError(null);
+      if (post_type !== 'event' || !id || !supabaseRef.current) return;
+      
+      if (isMounted) setIsLoadingRsvps(true);
+      if (isMounted) setRsvpError(null);
+      
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseRef.current
           .from('event_rsvps')
           .select('user_id, status, profile:profiles(username, avatar_url)')
           .eq('event_post_id', id);
+          
         if (error) throw error;
-        const transformedData = data.map(rsvp => ({
-          ...rsvp,
-          profile: rsvp.profile && Array.isArray(rsvp.profile) && rsvp.profile.length > 0 ? rsvp.profile[0] : null
-        }));
-        setRsvps(transformedData as RsvpData[]);
-        const currentUserRsvp = transformedData.find(rsvp => rsvp.user_id === currentUserId);
-        setCurrentUserRsvpStatus(currentUserRsvp ? currentUserRsvp.status : null);
+        
+        if (isMounted) {
+          const transformedData = data.map(rsvp => ({
+            ...rsvp,
+            profile: rsvp.profile && Array.isArray(rsvp.profile) && rsvp.profile.length > 0 ? rsvp.profile[0] : null
+          }));
+          setRsvps(transformedData as RsvpData[]);
+          const currentUserRsvp = transformedData.find(rsvp => rsvp.user_id === currentUserId);
+          setCurrentUserRsvpStatus(currentUserRsvp ? currentUserRsvp.status : null);
+        }
       } catch (err: any) {
         console.error('Error fetching RSVPs:', err);
-        setRsvpError(err.message || 'Failed to load RSVP information.');
+        if (isMounted) {
+          setRsvpError(err.message || 'Failed to load RSVP information.');
+        }
       } finally {
-        setIsLoadingRsvps(false);
+        if (isMounted) setIsLoadingRsvps(false);
       }
     };
+    
     fetchRsvps();
-  }, [id, post_type, supabase, currentUserId]);
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [id, post_type, currentUserId]);
 
   const handleOptimisticLike = async () => {
     if (!currentUserId || !onToggleLike) return;
@@ -731,23 +811,29 @@ export default function FeedPostItem({
   };
 
   const handleReport = async () => {
-    if (!reportReason.trim() || !currentUserId) {
-      setReactionError("Please provide a reason for reporting.");
+    if (!currentUserId) {
+      setReactionError("You must be logged in to report posts");
       return;
     }
-    setReactionError(null);
+    
+    if (!supabaseRef.current) {
+      setReactionError("Unable to connect to the server. Please try again.");
+      return;
+    }
+    
     try {
-      const { error } = await supabase.from('post_reports').insert({
+      const { error } = await supabaseRef.current.from('post_reports').insert({
         reported_content_id: id,
         content_type: 'post',
         reason: reportReason,
         reporter_user_id: currentUserId,
-        // community_id: communityId, // TODO: Uncomment this line after adding 'community_id' column to 'post_reports' table
+        community_id: communityId,
       });
+      
       if (error) throw error;
+      
       setShowReportModal(false);
       setReportReason('');
-      // Show some success feedback, e.g. using a toast notification library
       alert('Post reported successfully. Our team will review it.'); 
     } catch (error) {
       console.error("Error reporting post:", error);
@@ -859,6 +945,7 @@ export default function FeedPostItem({
 
 const handleRsvpButtonClick = async (status: 'yes' | 'no' | 'maybe') => {
   if (!currentUserId || !onRsvpAction || !id) return;
+  
   setIsSubmittingRsvp(true);
   const previousStatus = currentUserRsvpStatus;
   setCurrentUserRsvpStatus(status); // Optimistic update
@@ -869,18 +956,24 @@ const handleRsvpButtonClick = async (status: 'yes' | 'no' | 'maybe') => {
       setCurrentUserRsvpStatus(previousStatus); // Revert on failure
       setRsvpError('Failed to update RSVP. Please try again.');
       setTimeout(() => setRsvpError(null), 3000);
-    } else {
+    } else if (supabaseRef.current) {
       // Re-fetch RSVPs to get accurate counts and other users' data
-      const { data, error } = await supabase
-      .from('event_rsvps')
-        .select('user_id, status, profile:profiles(username, avatar_url)')
-      .eq('event_post_id', id);
-      if (error) throw error;
-      const transformedDataAfterRsvp = data.map(rsvp => ({
-        ...rsvp,
-        profile: rsvp.profile && Array.isArray(rsvp.profile) && rsvp.profile.length > 0 ? rsvp.profile[0] : null
-      }));
-      setRsvps(transformedDataAfterRsvp as RsvpData[]);
+      try {
+        const { data, error } = await supabaseRef.current
+          .from('event_rsvps')
+          .select('user_id, status, profile:profiles(username, avatar_url)')
+          .eq('event_post_id', id);
+          
+        if (error) throw error;
+        
+        const transformedDataAfterRsvp = data.map(rsvp => ({
+          ...rsvp,
+          profile: rsvp.profile && Array.isArray(rsvp.profile) && rsvp.profile.length > 0 ? rsvp.profile[0] : null
+        }));
+        setRsvps(transformedDataAfterRsvp as RsvpData[]);
+      } catch (refetchErr) {
+        console.error("Error refetching RSVPs after successful update:", refetchErr);
+      }
     }
   } catch (err: any) {
     console.error('Error submitting RSVP:', err);

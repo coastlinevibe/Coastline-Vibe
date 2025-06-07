@@ -75,9 +75,12 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     setError(null);
     
     try {
+      console.log('Starting video upload process...');
       const fileExt = selectedVideo.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       const filePath = `${fileName}`;
+      
+      console.log('Uploading video:', fileName);
       
       // Upload the video to the feedpostvideos bucket
       const { data, error } = await supabase.storage
@@ -88,8 +91,11 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
         });
       
       if (error) {
+        console.error('Storage upload error:', error);
         throw new Error(`Error uploading video: ${error.message}`);
       }
+      
+      console.log('Video upload successful, data:', data);
       
       // Track upload progress manually through a separate function
       // This is a workaround since onUploadProgress is not available in the type definition
@@ -99,6 +105,8 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
       const { data: { publicUrl } } = supabase.storage
         .from('feedpostvideos')
         .getPublicUrl(filePath);
+      
+      console.log('Generated public URL:', publicUrl);
       
       // Call the callback with the video URL
       onVideoUploaded(publicUrl);
@@ -118,14 +126,15 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
   return (
     <div className="w-full">
       {!selectedVideo ? (
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50"
+        <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 text-center cursor-pointer hover:bg-blue-50 transition-colors"
           onClick={() => fileInputRef.current?.click()}>
-          <Video className="mx-auto h-12 w-12 text-gray-400" />
-          <div className="mt-2 text-sm text-gray-600">
-            <label htmlFor="video-upload" className="font-medium text-blue-600 hover:text-blue-500">
+          <Video className="mx-auto h-14 w-14 text-blue-500" />
+          <div className="mt-3 text-sm text-gray-600">
+            <label htmlFor="video-upload" className="font-medium text-blue-600 hover:text-blue-500 text-lg">
               Upload a video
             </label>
             <p className="text-xs mt-1">MP4, WebM or MOV up to {maxSizeMB}MB</p>
+            <p className="mt-3 text-sm font-medium text-blue-600">Click here to select a video file</p>
           </div>
           <input
             ref={fileInputRef}

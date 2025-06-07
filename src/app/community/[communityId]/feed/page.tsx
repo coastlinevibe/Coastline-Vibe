@@ -3,13 +3,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar } from 'lucide-react';
+import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar, MessageCircle } from 'lucide-react';
 import PollCreator from '@/components/feed/PollCreator';
 import PollCard from '@/components/feed/PollCard';
 import FeedFilters, { FeedContentType } from '@/components/feed/FeedFilters';
 import AnnouncementCreator from '@/components/feed/AnnouncementCreator';
 import QuestionCreator from '@/components/feed/QuestionCreator';
 import EventCreator from '@/components/feed/EventCreator';
+import PostCreator from '@/components/feed/PostCreator';
 import EventCard from '@/components/feed/EventCard';
 import AnnouncementCard from '@/components/feed/AnnouncementCard';
 import QuestionCard from '@/components/feed/QuestionCard';
@@ -21,6 +22,8 @@ import SortDropdown, { SortOption } from '@/components/feed/SortDropdown';
 import { createPostLikeNotification, createCommentNotification } from '@/utils/notificationUtils';
 import { CommentsList } from '@/components/feed/CommentsList';
 import CommentForm from '@/components/feed/CommentForm';
+import LocationFilters from '@/components/feed/LocationFilters';
+import { ToastProvider } from '@/components/ui/toast';
 
 export default function FeedPage() {
   const supabase = createClient();
@@ -71,6 +74,23 @@ export default function FeedPage() {
 
   // Add this state variable in the component
   const [currentSort, setCurrentSort] = useState<SortOption>('newest');
+  
+  // Location-based feed state
+  const [hasLocationData, setHasLocationData] = useState(false);
+  const [userLocation, setUserLocation] = useState<{
+    latitude: number | null;
+    longitude: number | null;
+    locationName: string | null;
+  }>({
+    latitude: null,
+    longitude: null,
+    locationName: null
+  });
+  const [locationFilters, setLocationFilters] = useState<{
+    neighborhoods?: string[];
+    maxDistance?: number;
+    showOnlyVerified?: boolean;
+  }>({});
 
   if (!params) {
     return <div>Loading...</div>;
@@ -198,11 +218,17 @@ export default function FeedPage() {
     console.log('Fetched posts:', data);
     
     // Format posts with author information
-    const formattedPosts = data.map((post: any) => ({
-      ...post,
-      author_username: post.profiles?.username,
-      author_avatar_url: post.profiles?.avatar_url
-    }));
+    const formattedPosts = data.map((post: any) => {
+      // Extract hashtags from content
+      const hashtags = post.content ? extractHashtags(post.content) : [];
+      
+      return {
+        ...post,
+        author_username: post.profiles?.username,
+        author_avatar_url: post.profiles?.avatar_url,
+        hashtags: hashtags
+      };
+    });
     
     // Fetch poll information for poll posts
     const pollPosts = formattedPosts.filter(post => post.type === 'poll');
@@ -256,6 +282,10 @@ export default function FeedPage() {
       typeCounts[type] = (typeCounts[type] || 0) + 1;
     });
     
+    // Extract popular hashtags
+    const allHashtags = findPopularHashtags(formattedPosts.map(post => ({ content: post.content || '' })));
+    setPopularHashtags(allHashtags);
+    
     setContentTypeCounts(typeCounts);
     setPosts(formattedPosts);
     
@@ -265,58 +295,184 @@ export default function FeedPage() {
     setPostsLoading(false);
   }, [communityUuid, supabase, activeFilter, searchQuery, activeHashtag, postId]);
 
-  // Function to filter posts by type
-  const filterPosts = (allPosts: any[], filter: FeedContentType) => {
-    let filtered = [...allPosts];
-    
-    // Filter by content type
-    if (filter !== 'all') {
-      filtered = filtered.filter(post => post.type === filter);
-    }
-    
-    // Filter by search query
-    if (searchQuery) {
-      const lowerQuery = searchQuery.toLowerCase();
-      filtered = filtered.filter(post => {
-        // Search in content
-        if (post.content && post.content.toLowerCase().includes(lowerQuery)) {
-          return true;
-        }
-        
-        // Search in username or display name if available
-        if (post.profiles && 
-            ((post.profiles.username && post.profiles.username.toLowerCase().includes(lowerQuery)) || 
-             (post.profiles.display_name && post.profiles.display_name.toLowerCase().includes(lowerQuery)))) {
-          return true;
-        }
-        
-        // If query starts with #, search for hashtags
-        if (lowerQuery.startsWith('#')) {
-          const searchHashtag = lowerQuery.substring(1);
-          const postHashtags = extractHashtags(post.content || '');
-          return postHashtags.some(tag => tag.toLowerCase().includes(searchHashtag));
-        }
-        
-        return false;
-      });
-    }
-    
-    // Filter by hashtag
-    if (activeHashtag) {
-      filtered = filtered.filter(post => {
-        const postHashtags = extractHashtags(post.content || '');
-        return postHashtags.includes(activeHashtag);
-      });
-    }
-    
-    // Apply sorting after filtering
-    sortPosts(filtered, currentSort);
-  };
-
-  // Handle filter change
+  // Add this function to handle filter change that was removed
   const handleFilterChange = (filter: FeedContentType) => {
     setActiveFilter(filter);
     filterPosts(posts, filter);
+  };
+
+  // Update the filterPosts function to include location filters
+  const filterPosts = (allPosts: any[], filter: FeedContentType) => {
+    if (!allPosts) return [];
+    
+    console.log('Filtering posts. Total posts:', allPosts.length);
+    console.log('Active filter:', filter);
+    
+    let filtered = allPosts;
+    
+    // Filter by post type
+    if (filter !== 'all') {
+      filtered = filtered.filter(post => post.type === filter);
+      console.log(`After type filter (${filter}):`, filtered.length);
+    }
+    
+    // Apply search filter
+    if (searchQuery) {
+      const normalizedQuery = searchQuery.toLowerCase();
+      filtered = filtered.filter(post => {
+        return (
+          (post.content && post.content.toLowerCase().includes(normalizedQuery)) ||
+          (post.author_username && post.author_username.toLowerCase().includes(normalizedQuery)) ||
+          (post.title && post.title.toLowerCase().includes(normalizedQuery))
+        );
+      });
+      console.log('After search filter:', filtered.length);
+    }
+    
+    // Apply hashtag filter
+    if (activeHashtag) {
+      filtered = filtered.filter(post => {
+        if (!post.hashtags) return false;
+        return post.hashtags.includes(activeHashtag);
+      });
+      console.log('After hashtag filter:', filtered.length);
+    }
+    
+    // Apply location filters
+    if (locationFilters.neighborhoods && locationFilters.neighborhoods.length > 0) {
+      filtered = filtered.filter(post => {
+        return post.neighborhood && locationFilters.neighborhoods?.includes(post.neighborhood);
+      });
+      console.log('After neighborhood filter:', filtered.length);
+    }
+    
+    if (locationFilters.maxDistance !== undefined && userLocation.latitude !== null && userLocation.longitude !== null) {
+      filtered = filtered.filter(post => {
+        if (!post.latitude || !post.longitude) return false;
+        
+        // Use the Haversine formula function from the database to calculate distance
+        const distance = calculateDistance(
+          userLocation.latitude as number,
+          userLocation.longitude as number,
+          parseFloat(post.latitude),
+          parseFloat(post.longitude)
+        );
+        
+        return distance <= (locationFilters.maxDistance as number);
+      });
+      console.log('After distance filter:', filtered.length);
+    }
+    
+    if (locationFilters.showOnlyVerified) {
+      filtered = filtered.filter(post => post.location_verified);
+      console.log('After verified location filter:', filtered.length);
+    }
+    
+    console.log('Final filtered posts:', filtered.length);
+    setFilteredPosts(filtered);
+    return filtered;
+  };
+
+  // Add this helper function to calculate distance locally in the browser
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2); 
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    const d = R * c; // Distance in km
+    return d;
+  };
+  
+  const deg2rad = (deg: number) => {
+    return deg * (Math.PI/180);
+  };
+
+  // Update the handleSortChange function to include location-based sorting
+  const handleSortChange = (sortOption: SortOption) => {
+    setCurrentSort(sortOption);
+    sortPosts(filteredPosts, sortOption);
+  };
+
+  // Update the sortPosts function to include location-based sorting options
+  const sortPosts = (postsToSort: any[], sortOption: SortOption) => {
+    let sorted = [...postsToSort];
+    
+    switch (sortOption) {
+      case 'newest':
+        sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        break;
+      case 'trending':
+        // Simple algorithm for trending: likes + 2*comments in the last week
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        
+        sorted.sort((a, b) => {
+          const aDate = new Date(a.created_at);
+          const bDate = new Date(b.created_at);
+          const aRecent = aDate > oneWeekAgo ? 1 : 0.5;
+          const bRecent = bDate > oneWeekAgo ? 1 : 0.5;
+          
+          const aScore = (a.like_count || 0) + 2 * (a.comment_count || 0);
+          const bScore = (b.like_count || 0) + 2 * (b.comment_count || 0);
+          
+          return (bScore * bRecent) - (aScore * aRecent);
+        });
+        break;
+      case 'most_liked':
+        sorted.sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
+        break;
+      case 'most_commented':
+        sorted.sort((a, b) => (b.comment_count || 0) - (a.comment_count || 0));
+        break;
+      case 'nearest':
+        if (userLocation.latitude !== null && userLocation.longitude !== null) {
+          sorted.sort((a, b) => {
+            // If either post doesn't have location data, put it at the end
+            if (!a.latitude || !a.longitude) return 1;
+            if (!b.latitude || !b.longitude) return -1;
+            
+            const distanceA = calculateDistance(
+              userLocation.latitude as number,
+              userLocation.longitude as number,
+              parseFloat(a.latitude),
+              parseFloat(a.longitude)
+            );
+            
+            const distanceB = calculateDistance(
+              userLocation.latitude as number,
+              userLocation.longitude as number,
+              parseFloat(b.latitude),
+              parseFloat(b.longitude)
+            );
+            
+            return distanceA - distanceB;
+          });
+        }
+        break;
+      case 'neighborhood':
+        // Sort by preferred neighborhoods
+        if (locationFilters.neighborhoods && locationFilters.neighborhoods.length > 0) {
+          sorted.sort((a, b) => {
+            const aInNeighborhood = a.neighborhood && locationFilters.neighborhoods?.includes(a.neighborhood) ? 1 : 0;
+            const bInNeighborhood = b.neighborhood && locationFilters.neighborhoods?.includes(b.neighborhood) ? 1 : 0;
+            
+            // First priority: is it in a preferred neighborhood?
+            if (aInNeighborhood !== bInNeighborhood) {
+              return bInNeighborhood - aInNeighborhood;
+            }
+            
+            // Second priority: recency
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          });
+        }
+        break;
+    }
+    
+    setFilteredPosts(sorted);
   };
 
   useEffect(() => {
@@ -367,6 +523,8 @@ export default function FeedPage() {
     if (user) {
       try {
         // Prepare post data
+        console.log('Media state before post creation:', mediaState);
+        
         const postData = {
           content: newPostContent,
           user_id: user.id,
@@ -377,15 +535,15 @@ export default function FeedPage() {
           video_url: mediaState.video
         };
         
-        console.log('Attempting to create post with:', postData);
+        console.log('Creating post with data:', postData);
 
-        const { error } = await supabase.from('posts').insert(postData);
+        const { data, error } = await supabase.from('posts').insert(postData).select();
 
         if (error) {
           console.error('Error creating post:', error);
           // Here you might want to show an error message to the user
         } else {
-          console.log('Post created successfully!');
+          console.log('Post created successfully!', data);
           setNewPostContent('');
           setMediaState({ images: [], video: null });
           setPostType('general');
@@ -522,89 +680,115 @@ export default function FeedPage() {
       [postId]: []
     }));
     
-    // First get all comments for this post, regardless of depth
-    const { data, error } = await supabase
-      .from('posts')
-      .select(`
-        *,
-        profiles:user_id (
-          username,
-          avatar_url,
-          bio,
-          created_at,
-          email,
-          role,
-          last_seen_at,
-          is_location_verified
-        )
-      `)
-      .eq('is_visible', true)
-      .or(`parent_id.eq.${postId},parent_id.in.(select id from posts where parent_id='${postId}')`)
-      .eq('type', 'comment')
-      .order('created_at', { ascending: true });
-    
-    if (error) {
-      console.error('Error fetching comments:', error);
-      return;
-    }
-    
-    console.log('Comments data received:', data);
-    
-    if (!data || data.length === 0) {
-      console.log('No comments found for post:', postId);
+    try {
+      // Get all comments for this post from the comments table
+      const { data, error } = await supabase
+        .from('comments')
+        .select(`
+          *,
+          profiles:user_id (
+            username,
+            avatar_url,
+            bio,
+            created_at,
+            email,
+            role,
+            last_seen_at,
+            is_location_verified
+          )
+        `)
+        .eq('is_visible', true)
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true });
+      
+      if (error) {
+        console.error('Error fetching comments:', error);
+        return;
+      }
+      
+      console.log('Comments data received:', data);
+      
+      if (!data || data.length === 0) {
+        console.log('No comments found for post:', postId);
+        setComments(prev => ({
+          ...prev,
+          [postId]: []
+        }));
+        return;
+      }
+      
+      const formattedComments = data.map((comment: any) => ({
+        id: comment.id,
+        textContent: comment.content,
+        authorName: comment.profiles?.username || 'Anonymous',
+        authorAvatarUrl: comment.profiles?.avatar_url,
+        timestamp: comment.created_at,
+        commentAuthorId: comment.user_id,
+        parent_id: comment.parent_comment_id || postId,
+        depth: comment.depth || 1,
+        updated_at: comment.updated_at,
+        likeCount: comment.like_count || 0,
+        isLikedByCurrentUser: false, // Will be updated below
+        files: comment.media_urls,
+        authorBio: comment.profiles?.bio,
+        authorEmail: comment.profiles?.email,
+        authorProfileCreatedAt: comment.profiles?.created_at,
+        authorRole: comment.profiles?.role,
+        authorIsLocationVerified: comment.profiles?.is_location_verified,
+        authorLastSeenAt: comment.profiles?.last_seen_at,
+        content: comment.content,
+        replies: []
+      }));
+      
+      // Check which comments are liked by the current user
+      if (currentUserId) {
+        const { data: likedComments } = await supabase
+          .from('post_likes')
+          .select('post_id')
+          .eq('user_id', currentUserId)
+          .in('post_id', formattedComments.map(c => c.id));
+          
+        if (likedComments) {
+          const likedCommentIds = new Set(likedComments.map(like => like.post_id));
+          formattedComments.forEach(comment => {
+            comment.isLikedByCurrentUser = likedCommentIds.has(comment.id);
+          });
+        }
+      }
+      
+      // Build comment hierarchy
+      const commentsById: { [key: string]: any } = {};
+      const rootComments: any[] = [];
+      
+      // First pass: index all comments by ID
+      formattedComments.forEach(comment => {
+        commentsById[comment.id] = comment;
+      });
+      
+      // Second pass: build the hierarchy
+      formattedComments.forEach(comment => {
+        // Check if this is a root comment (directly on the post, no parent comment)
+        if (comment.parent_id === postId) {
+          // This is a root-level comment (direct reply to the post)
+          rootComments.push(comment);
+        } else if (comment.parent_id && commentsById[comment.parent_id]) {
+          // This is a reply to another comment
+          if (!commentsById[comment.parent_id].replies) {
+            commentsById[comment.parent_id].replies = [];
+          }
+          commentsById[comment.parent_id].replies.push(comment);
+        }
+      });
+      
+      console.log('Setting hierarchical comments for post:', postId, rootComments);
+      
       setComments(prev => ({
         ...prev,
-        [postId]: []
+        [postId]: rootComments
       }));
-      return;
+    } catch (err) {
+      console.error('Error in fetchComments:', err);
     }
-    
-    const formattedComments = data.map((comment: any) => ({
-      id: comment.id,
-      textContent: comment.content,
-      authorName: comment.profiles?.username || 'Anonymous',
-      authorAvatarUrl: comment.profiles?.avatar_url,
-      timestamp: comment.created_at,
-      commentAuthorId: comment.user_id,
-      parent_id: comment.parent_id,
-      depth: comment.depth || 1,
-      updated_at: comment.updated_at,
-      likeCount: comment.like_count || 0,
-      isLikedByCurrentUser: false, // Will be updated below
-      files: comment.media_urls,
-      authorBio: comment.profiles?.bio,
-      authorEmail: comment.profiles?.email,
-      authorProfileCreatedAt: comment.profiles?.created_at,
-      authorRole: comment.profiles?.role,
-      authorIsLocationVerified: comment.profiles?.is_location_verified,
-      authorLastSeenAt: comment.profiles?.last_seen_at,
-      content: comment.content // Add this for compatibility
-    }));
-    
-    console.log('Formatted comments:', formattedComments);
-    
-    // Check which comments are liked by the current user
-    if (currentUserId) {
-      const { data: likedComments } = await supabase
-        .from('post_likes')
-        .select('post_id')
-        .eq('user_id', currentUserId)
-        .in('post_id', formattedComments.map(c => c.id));
-        
-      if (likedComments) {
-        const likedCommentIds = new Set(likedComments.map(like => like.post_id));
-        formattedComments.forEach(comment => {
-          comment.isLikedByCurrentUser = likedCommentIds.has(comment.id);
-        });
-      }
-    }
-    
-    console.log('Setting comments state for post:', postId, formattedComments);
-    
-    setComments(prev => ({
-      ...prev,
-      [postId]: formattedComments
-    }));
   };
 
   // Function to handle comment submission
@@ -627,15 +811,14 @@ export default function FeedPage() {
         
       if (!userData) throw new Error('User profile not found');
       
-      // Create the comment
+      // Create the comment in the comments table
       const { data: commentData, error } = await supabase
-        .from('posts')
+        .from('comments')
         .insert({
           content: commentText[postId],
           user_id: currentUserId,
-          community_id: communityUuid,
-          type: 'comment',
-          parent_id: postId,
+          post_id: postId,
+          parent_comment_id: null,
           depth: 1,
           is_visible: true
         })
@@ -645,7 +828,7 @@ export default function FeedPage() {
       if (error) throw error;
       
       // Format the new comment
-    const newComment = {
+      const newComment = {
         id: commentData.id,
         textContent: commentData.content,
         content: commentData.content,
@@ -653,7 +836,7 @@ export default function FeedPage() {
         authorAvatarUrl: userData.avatar_url,
         timestamp: commentData.created_at,
         commentAuthorId: currentUserId,
-      parent_id: postId,
+        parent_id: postId,
         depth: 1,
         updated_at: commentData.updated_at,
         likeCount: 0,
@@ -663,14 +846,18 @@ export default function FeedPage() {
         authorProfileCreatedAt: userData.created_at,
         authorRole: userData.role,
         authorIsLocationVerified: userData.is_location_verified,
-        authorLastSeenAt: userData.last_seen_at
+        authorLastSeenAt: userData.last_seen_at,
+        replies: []
       };
       
       // Update comments state
-      setComments(prev => ({
-        ...prev,
-        [postId]: [...(prev[postId] || []), newComment]
-      }));
+      setComments(prev => {
+        const existingComments = prev[postId] || [];
+        return {
+          ...prev,
+          [postId]: [...existingComments, newComment]
+        };
+      });
       
       // Clear comment input
       setCommentText(prev => ({ ...prev, [postId]: '' }));
@@ -719,9 +906,14 @@ export default function FeedPage() {
     setShowEventCreator(false);
     fetchPosts();
   };
+  
+  // Handler for standard post creation from PostCreator component
+  const handlePostCreated = () => {
+    fetchPosts();
+  };
 
   // Add this function to handle search
-  const handleSearch = (query: string) => {
+  const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     
     // Reset hashtag filter if search is used
@@ -731,7 +923,7 @@ export default function FeedPage() {
     
     // Apply filters
     filterPosts(posts, activeFilter);
-  };
+  }, [activeHashtag, activeFilter, posts]);
 
   // Add this function to handle hashtag selection
   const handleHashtagSelect = (hashtag: string) => {
@@ -744,41 +936,6 @@ export default function FeedPage() {
     
     // Apply filters
     filterPosts(posts, activeFilter);
-  };
-
-  // Add this function to handle sort changes
-  const handleSortChange = (sortOption: SortOption) => {
-    setCurrentSort(sortOption);
-    sortPosts(filteredPosts, sortOption);
-  };
-
-  // Add this function to sort posts
-  const sortPosts = (postsToSort: any[], sortOption: SortOption) => {
-    const sorted = [...postsToSort];
-    
-    switch (sortOption) {
-      case 'newest':
-        sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        break;
-      case 'trending':
-        // Simple trending algorithm: (likes + comments) * recency factor
-        sorted.sort((a, b) => {
-          const aScore = ((a.like_count || 0) + (a.comment_count || 0)) * 
-                         (1 + 1 / (1 + (Date.now() - new Date(a.created_at).getTime()) / 86400000));
-          const bScore = ((b.like_count || 0) + (b.comment_count || 0)) * 
-                         (1 + 1 / (1 + (Date.now() - new Date(b.created_at).getTime()) / 86400000));
-          return bScore - aScore;
-        });
-        break;
-      case 'most_liked':
-        sorted.sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
-        break;
-      case 'most_commented':
-        sorted.sort((a, b) => (b.comment_count || 0) - (a.comment_count || 0));
-        break;
-    }
-    
-    setFilteredPosts(sorted);
   };
 
   // Add this effect to calculate popular hashtags
@@ -796,16 +953,35 @@ export default function FeedPage() {
     try {
       // Find the parent comment to get the post ID
       let postId = '';
+      let parentComment: any = null;
+      
+      // Search through all comments to find the parent comment
       for (const [key, commentsList] of Object.entries(comments)) {
-        const parentComment = commentsList.find(c => c.id === parentCommentId);
-        if (parentComment) {
+        // Helper function to search recursively through comment tree
+        const findCommentRecursive = (commentsToSearch: any[]): any => {
+          for (const c of commentsToSearch) {
+            if (c.id === parentCommentId) {
+              parentComment = c;
+              return true;
+            }
+            // Check replies if they exist
+            if (c.replies && c.replies.length > 0) {
+              if (findCommentRecursive(c.replies)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        };
+        
+        if (findCommentRecursive(commentsList)) {
           postId = key;
           break;
         }
       }
       
-      if (!postId) {
-        console.error('Could not find post ID for parent comment');
+      if (!postId || !parentComment) {
+        console.error('Could not find post ID or parent comment');
         return false;
       }
       
@@ -818,15 +994,14 @@ export default function FeedPage() {
         
       if (!userData) throw new Error('User profile not found');
       
-      // Create the reply comment
+      // Create the reply comment in the comments table
       const { data: replyData, error } = await supabase
-        .from('posts')
+        .from('comments')
         .insert({
           content: replyText,
-      user_id: currentUserId,
-          community_id: communityUuid,
-      type: 'comment',
-          parent_id: parentCommentId, // This is now the parent comment ID, not the post ID
+          user_id: currentUserId,
+          post_id: postId,
+          parent_comment_id: parentCommentId,
           depth: parentDepth,
           is_visible: true
         })
@@ -838,13 +1013,13 @@ export default function FeedPage() {
       // Format the new reply
       const newReply = {
         id: replyData.id,
-        content: replyData.content, // Add this for CommentsList compatibility
+        content: replyData.content,
         textContent: replyData.content,
         authorName: userData.username || 'Anonymous',
         authorAvatarUrl: userData.avatar_url,
         timestamp: replyData.created_at,
         commentAuthorId: replyData.user_id,
-        parent_id: replyData.parent_id,
+        parent_id: parentCommentId,
         depth: replyData.depth || parentDepth,
         updated_at: replyData.updated_at,
         likeCount: 0,
@@ -854,17 +1029,14 @@ export default function FeedPage() {
         authorProfileCreatedAt: userData.created_at,
         authorRole: userData.role,
         authorIsLocationVerified: userData.is_location_verified,
-        authorLastSeenAt: userData.last_seen_at
+        authorLastSeenAt: userData.last_seen_at,
+        replies: []
       };
       
-      // Update comments state
-      setComments(prev => ({
-        ...prev,
-        [postId]: [...prev[postId], newReply]
-      }));
+      // After creating the reply, refresh comments to get the updated hierarchy
+      await fetchComments(postId);
       
       // Send notification to comment owner if it's not the current user
-      const parentComment = comments[postId].find(c => c.id === parentCommentId);
       if (parentComment && parentComment.commentAuthorId !== currentUserId) {
         await createCommentNotification(
           parentComment.commentAuthorId,
@@ -913,10 +1085,9 @@ export default function FeedPage() {
       
       // Update comment like count in database
       await supabase
-        .rpc('increment_like_count', {
-          entity_id_param: commentId,
-          entity_type_param: 'posts'
-        });
+        .from('comments')
+        .update({ like_count: (comment.likeCount || 0) + 1 })
+        .eq('id', commentId);
         
       // Send notification if needed
       if (comment.commentAuthorId !== currentUserId) {
@@ -965,15 +1136,17 @@ export default function FeedPage() {
     try {
       // Find which post this comment belongs to
       let postId = '';
+      let comment = null;
       
       for (const [key, commentsList] of Object.entries(comments)) {
-        if (commentsList.some(c => c.id === commentId)) {
+        comment = commentsList.find(c => c.id === commentId);
+        if (comment) {
           postId = key;
           break;
         }
       }
       
-      if (!postId) return;
+      if (!postId || !comment) return;
       
       // Remove like from database
       const { error } = await supabase
@@ -986,11 +1159,10 @@ export default function FeedPage() {
       
       // Update comment like count in database
       await supabase
-        .rpc('decrement_like_count', {
-          entity_id_param: commentId,
-          entity_type_param: 'posts'
-        });
-        
+        .from('comments')
+        .update({ like_count: Math.max(0, (comment.likeCount || 0) - 1) })
+        .eq('id', commentId);
+      
       // Update local state
       const updatedComments = comments[postId].map(c => {
         if (c.id === commentId) {
@@ -1004,7 +1176,7 @@ export default function FeedPage() {
       });
       
       setComments(prev => ({
-      ...prev,
+        ...prev,
         [postId]: updatedComments
       }));
     } catch (error) {
@@ -1014,51 +1186,59 @@ export default function FeedPage() {
 
   // Function to handle comment update
   const handleCommentUpdate = async (commentId: string, newContent: string) => {
-    if (!currentUserId || !newContent.trim()) return false;
+    if (!currentUserId) return false;
     
     try {
       // Find which post this comment belongs to
       let postId = '';
-      let comment = null;
       
       for (const [key, commentsList] of Object.entries(comments)) {
-        comment = commentsList.find(c => c.id === commentId);
-        if (comment) {
+        if (commentsList.some(c => c.id === commentId)) {
           postId = key;
           break;
         }
       }
       
-      if (!postId || !comment) return false;
+      if (!postId) return false;
       
-      // Ensure the current user is the comment author
-      if (comment.commentAuthorId !== currentUserId) return false;
-      
-      // Update the comment in the database
+      // Update comment in database
       const { error } = await supabase
-        .from('posts')
-        .update({ content: newContent })
+        .from('comments')
+        .update({ content: newContent, updated_at: new Date().toISOString() })
         .eq('id', commentId)
-        .eq('user_id', currentUserId);
+        .eq('user_id', currentUserId); // Ensure user can only update their own comments
         
-      if (error) throw error;
+      if (error) {
+        console.error('Error updating comment:', error);
+        return false;
+      }
       
       // Update local state
-      const updatedComments = comments[postId].map(c => {
-        if (c.id === commentId) {
-          return {
-            ...c,
-            textContent: newContent,
-            content: newContent, // Add this for CommentsList compatibility
-            updated_at: new Date().toISOString()
-          };
-        }
-        return c;
-      });
+      const updateCommentRecursively = (commentsList: any[]): any[] => {
+        return commentsList.map(comment => {
+          if (comment.id === commentId) {
+            return {
+              ...comment,
+              content: newContent,
+              textContent: newContent,
+              updated_at: new Date().toISOString()
+            };
+          }
+          
+          if (comment.replies && comment.replies.length > 0) {
+            return {
+              ...comment,
+              replies: updateCommentRecursively(comment.replies)
+            };
+          }
+          
+          return comment;
+        });
+      };
       
       setComments(prev => ({
-      ...prev,
-        [postId]: updatedComments
+        ...prev,
+        [postId]: updateCommentRecursively(prev[postId] || [])
       }));
       
       return true;
@@ -1075,36 +1255,46 @@ export default function FeedPage() {
     try {
       // Find which post this comment belongs to
       let postId = '';
-      let comment = null;
       
       for (const [key, commentsList] of Object.entries(comments)) {
-        comment = commentsList.find(c => c.id === commentId);
-        if (comment) {
+        if (commentsList.some(c => c.id === commentId)) {
           postId = key;
           break;
         }
       }
       
-      if (!postId || !comment) return false;
+      if (!postId) return false;
       
-      // Ensure the current user is the comment author
-      if (comment.commentAuthorId !== currentUserId) return false;
-      
-      // Delete the comment in the database (or set is_visible to false)
+      // Delete comment from database (or mark as not visible)
       const { error } = await supabase
-        .from('posts')
+        .from('comments')
         .update({ is_visible: false })
         .eq('id', commentId)
-        .eq('user_id', currentUserId);
+        .eq('user_id', currentUserId); // Ensure user can only delete their own comments
         
-      if (error) throw error;
+      if (error) {
+        console.error('Error deleting comment:', error);
+        return false;
+      }
       
       // Update local state - remove the comment
-      const updatedComments = comments[postId].filter(c => c.id !== commentId);
+      const filterCommentsRecursively = (commentsList: any[]): any[] => {
+        return commentsList
+          .filter(comment => comment.id !== commentId)
+          .map(comment => {
+            if (comment.replies && comment.replies.length > 0) {
+              return {
+                ...comment,
+                replies: filterCommentsRecursively(comment.replies)
+              };
+            }
+            return comment;
+          });
+      };
       
       setComments(prev => ({
         ...prev,
-        [postId]: updatedComments
+        [postId]: filterCommentsRecursively(prev[postId] || [])
       }));
       
       return true;
@@ -1117,7 +1307,7 @@ export default function FeedPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold mb-6">Community Feed</h1>
-      
+
       {/* Search bar */}
       <SearchBar 
         onSearch={handleSearch}
@@ -1156,202 +1346,115 @@ export default function FeedPage() {
         </div>
       </div>
 
-      {/* Post form */}
+      {/* Post creator section with tabs */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <form onSubmit={handlePostSubmit} className="mb-6 bg-white p-4 rounded-lg shadow">
-        <textarea
-          className="w-full p-2 border border-gray-300 rounded-md"
-          rows={3}
-          placeholder="What's on your mind?"
-          value={newPostContent}
-          onChange={(e) => setNewPostContent(e.target.value)}
-          disabled={isPosting}
-        />
-        
-        {/* Image preview area */}
-          {mediaState.images.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-              {mediaState.images.map((url, index) => (
-              <div key={index} className="relative">
-                <img 
-                  src={url} 
-                  alt={`Preview ${index}`} 
-                    className="h-20 w-20 object-cover rounded"
-                />
-                <button
-                  type="button"
-                    onClick={() => {
-                      // Remove image from state and revoke URL
-                      const urlToRevoke = mediaState.images[index];
-                      setMediaState(prev => ({
-                        ...prev,
-                        images: prev.images.filter((_, i) => i !== index)
-                      }));
-                      URL.revokeObjectURL(urlToRevoke);
-                    }}
-                    className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 transform translate-x-1/3 -translate-y-1/3"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        <div className="flex justify-between items-center mt-3">
-            <div className="flex space-x-2">
-            {/* Image upload button */}
-            <button
-              type="button"
-                onClick={() => setShowMediaUploader(true)}
-                className="flex items-center text-gray-600 hover:text-gray-800"
-            >
-                <ImageIcon size={18} className="mr-1" />
-              <span>Add Image</span>
-            </button>
-            
-              {/* Post type selection */}
-              <div className="flex space-x-2">
-            <button
-              type="button"
-                  onClick={() => {
-                    setPostType('general');
-                    setShowPollCreator(false);
-                    setShowAnnouncementCreator(false);
-                    setShowQuestionCreator(false);
-                    setShowEventCreator(false);
-                  }}
-                  className={`flex items-center px-2 py-1 rounded ${
-                    postType === 'general' && !showPollCreator && !showAnnouncementCreator && !showQuestionCreator && !showEventCreator
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  <MessageSquare size={16} className="mr-1" />
-                  <span>Post</span>
-            </button>
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPollCreator(true);
-                    setShowAnnouncementCreator(false);
-                    setShowQuestionCreator(false);
-                    setShowEventCreator(false);
-                    setPostType('poll');
-                  }}
-                  className={`flex items-center px-2 py-1 rounded ${
-                    showPollCreator ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  <BarChart2 size={16} className="mr-1" />
-                  <span>Poll</span>
-                </button>
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowQuestionCreator(true);
-                    setShowPollCreator(false);
-                    setShowAnnouncementCreator(false);
-                    setShowEventCreator(false);
-                    setPostType('ask');
-                  }}
-                  className={`flex items-center px-2 py-1 rounded ${
-                    showQuestionCreator ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  <HelpCircle size={16} className="mr-1" />
-                  <span>Question</span>
-                </button>
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAnnouncementCreator(true);
-                    setShowPollCreator(false);
-                    setShowQuestionCreator(false);
-                    setShowEventCreator(false);
-                    setPostType('announce');
-                  }}
-                  className={`flex items-center px-2 py-1 rounded ${
-                    showAnnouncementCreator ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  <Megaphone size={16} className="mr-1" />
-                  <span>Announcement</span>
-                </button>
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEventCreator(true);
-                    setShowPollCreator(false);
-                    setShowAnnouncementCreator(false);
-                    setShowQuestionCreator(false);
-                    setPostType('event');
-                  }}
-                  className={`flex items-center px-2 py-1 rounded ${
-                    showEventCreator ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  <Calendar size={16} className="mr-1" />
-                  <span>Event</span>
-                </button>
-              </div>
-            </div>
-          
+        {/* Post type selection */}
+        <div className="flex space-x-2 mb-4 border-b pb-2">
           <button
-            type="submit"
-              className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center"
-              disabled={isPosting}
-            >
-              {isPosting ? 'Posting...' : (
-                <>
-                  <Send size={16} className="mr-1" />
-                  <span>Post</span>
-                </>
-              )}
+            type="button"
+            onClick={() => {
+              setPostType('general');
+              setShowPollCreator(false);
+              setShowAnnouncementCreator(false);
+              setShowQuestionCreator(false);
+              setShowEventCreator(false);
+            }}
+            className={`flex items-center px-3 py-2 rounded-t-lg ${
+              postType === 'general' && !showPollCreator && !showAnnouncementCreator && !showQuestionCreator && !showEventCreator
+                ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' 
+                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+            }`}
+          >
+            <MessageSquare size={16} className="mr-2" />
+            <span>Post</span>
+          </button>
+              
+          <button
+            type="button"
+            onClick={() => {
+              setShowPollCreator(true);
+              setShowAnnouncementCreator(false);
+              setShowQuestionCreator(false);
+              setShowEventCreator(false);
+              setPostType('poll');
+            }}
+            className={`flex items-center px-3 py-2 rounded-t-lg ${
+              showPollCreator ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+            }`}
+          >
+            <BarChart2 size={16} className="mr-2" />
+            <span>Poll</span>
+          </button>
+              
+          <button
+            type="button"
+            onClick={() => {
+              setShowQuestionCreator(true);
+              setShowPollCreator(false);
+              setShowAnnouncementCreator(false);
+              setShowEventCreator(false);
+              setPostType('ask');
+            }}
+            className={`flex items-center px-3 py-2 rounded-t-lg ${
+              showQuestionCreator ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+            }`}
+          >
+            <HelpCircle size={16} className="mr-2" />
+            <span>Question</span>
+          </button>
+              
+          <button
+            type="button"
+            onClick={() => {
+              setShowAnnouncementCreator(true);
+              setShowPollCreator(false);
+              setShowQuestionCreator(false);
+              setShowEventCreator(false);
+              setPostType('announce');
+            }}
+            className={`flex items-center px-3 py-2 rounded-t-lg ${
+              showAnnouncementCreator ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+            }`}
+          >
+            <Megaphone size={16} className="mr-2" />
+            <span>Announcement</span>
+          </button>
+              
+          <button
+            type="button"
+            onClick={() => {
+              setShowEventCreator(true);
+              setShowPollCreator(false);
+              setShowAnnouncementCreator(false);
+              setShowQuestionCreator(false);
+              setPostType('event');
+            }}
+            className={`flex items-center px-3 py-2 rounded-t-lg ${
+              showEventCreator ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+            }`}
+          >
+            <Calendar size={16} className="mr-2" />
+            <span>Event</span>
           </button>
         </div>
-      </form>
+        
 
-        {/* Media uploader modal */}
-        {showMediaUploader && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium">Upload Media</h3>
-                <button 
-                  type="button" 
-                  onClick={() => setShowMediaUploader(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <X size={24} />
-                </button>
-              </div>
-              
-              <MediaUploader 
-                onMediaSelected={(media) => {
-                  setMediaState(media);
-                  setShowMediaUploader(false);
-                }}
-                onError={(error) => {
-                  console.error('Media upload error:', error);
-                  // Optionally show an error message to the user
-                }}
-              />
-            </div>
-          </div>
-        )}
 
-      {/* Poll creator */}
-        {showPollCreator && (
-        <PollCreator 
+      {/* Post creators based on selected type */}
+        {postType === 'general' && !showPollCreator && !showAnnouncementCreator && !showQuestionCreator && !showEventCreator && (
+          <PostCreator 
             communityId={communityUuid || ''} 
-          onPollCreated={handlePollCreated} 
-        />
-      )}
+            onPostCreated={handlePostCreated} 
+          />
+        )}
+        
+        {/* Poll creator */}
+        {showPollCreator && (
+          <PollCreator 
+            communityId={communityUuid || ''} 
+            onPollCreated={handlePollCreated} 
+          />
+        )}
 
         {/* Question creator */}
         {showQuestionCreator && (
@@ -1388,30 +1491,48 @@ export default function FeedPage() {
             <p className="text-gray-500">
               {activeFilter === 'all' 
                 ? 'No posts in this community yet. Be the first to post!' 
-                : `No ${activeFilter} posts found. Create one!`}
+                : `No ${activeFilter} posts found. You can create one by clicking the ${activeFilter} tab above.`}
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {filteredPosts.map((post) => (
-              <div key={post.id} className="bg-white rounded-lg shadow p-4">
-                {/* Post header */}
-                <div className="flex items-center mb-3">
-                  <div className="h-10 w-10 rounded-full bg-gray-300 overflow-hidden mr-3">
-                    {post.author_avatar_url ? (
-                    <img
-                      src={post.author_avatar_url}
-                        alt={post.author_username} 
-                        className="h-full w-full object-cover"
-                    />
-                    ) : (
-                      <div className="h-full w-full flex items-center justify-center bg-blue-100 text-blue-500">
-                        {post.author_username?.charAt(0).toUpperCase() || '?'}
-                      </div>
-                  )}
-                </div>
-                <div>
-                    <div className="font-medium">{post.author_username || 'Anonymous'}</div>
+          <div className="space-y-8">
+            {filteredPosts.map((post, index) => (
+              <React.Fragment key={post.id}>
+                <div className="bg-white rounded-lg shadow p-4">
+                  {/* Post header */}
+                  <div className="flex items-center mb-3">
+                    <div className="h-10 w-10 rounded-full bg-gray-300 overflow-hidden mr-3">
+                      {post.author_avatar_url ? (
+                      <img
+                        src={post.author_avatar_url}
+                          alt={post.author_username} 
+                          className="h-full w-full object-cover"
+                      />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-blue-100 text-blue-500">
+                          {post.author_username?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center">
+                      <span className="font-medium">{post.author_username || 'Anonymous'}</span>
+                      <button
+                        onClick={() => {
+                          toggleComments(post.id);
+                          // Focus the comment input after a short delay to allow the comment section to render
+                          setTimeout(() => {
+                            const commentInput = document.querySelector(`[data-post-id="${post.id}"] textarea`);
+                            if (commentInput) {
+                              (commentInput as HTMLTextAreaElement).focus();
+                            }
+                          }, 100);
+                        }}
+                        className="ml-1 text-xs text-blue-500 hover:text-blue-700 bg-transparent border-none p-0 inline"
+                      >
+                        Reply
+                      </button>
+                    </div>
                     <div className="text-xs text-gray-500">
                       {new Date(post.created_at).toLocaleString()}
                       {post.type !== 'general' && (
@@ -1419,8 +1540,8 @@ export default function FeedPage() {
                           {post.type.charAt(0).toUpperCase() + post.type.slice(1)}
                         </span>
                       )}
-                </div>
-              </div>
+                    </div>
+                  </div>
                 </div>
                 
                 {/* Post content */}
@@ -1480,13 +1601,22 @@ export default function FeedPage() {
                   <span>{post.like_count || 0}</span>
                 </button>
                 
-                  {/* Comment button */}
+                  {/* Comment/Reply button */}
                 <button
-                  onClick={() => toggleComments(post.id)}
-                    className="flex items-center text-gray-500 hover:text-blue-500"
+                  onClick={() => {
+                    toggleComments(post.id);
+                    // Focus the comment input after a short delay to allow the comment section to render
+                    setTimeout(() => {
+                      const commentInput = document.querySelector(`[data-post-id="${post.id}"] textarea`);
+                      if (commentInput) {
+                        (commentInput as HTMLTextAreaElement).focus();
+                      }
+                    }, 100);
+                  }}
+                  className="flex items-center text-gray-500 hover:text-blue-500"
                 >
-                    <MessageSquare size={18} className="mr-1" />
-                    <span>{post.comment_count || 0}</span>
+                  <MessageSquare size={18} className="mr-1" />
+                  <span>{post.comment_count || 0} Comments</span>
                 </button>
               </div>
               
@@ -1497,17 +1627,18 @@ export default function FeedPage() {
                     {comments[post.id] && comments[post.id].length > 0 ? (
                       <>
                         <CommentsList 
-                          comments={comments[post.id].filter(comment => comment.parent_id === post.id)}
+                          comments={comments[post.id]}
                           onLikeComment={handleCommentLike}
                           onUnlikeComment={handleCommentUnlike}
                           currentUserId={currentUserId}
                           onActualUpdateComment={handleCommentUpdate}
                           onActualDeleteComment={handleCommentDelete}
                           communityId={communityUuid || ''}
+                          onReplySubmit={handleReplySubmit}
                         />
                         <div className="text-xs text-gray-500 mt-2">
                           {comments[post.id].length} comment{comments[post.id].length !== 1 ? 's' : ''}
-                            </div>
+                        </div>
                       </>
                     ) : (
                       <div className="text-gray-500 text-sm mb-3">No comments yet</div>
@@ -1525,11 +1656,29 @@ export default function FeedPage() {
                         isSubmitting={isCommenting[post.id] || false}
                         placeholder="Write a comment..."
                         communityId={communityUuid || ''}
+                        data-post-id={post.id}
+                        showSubmitButton={true}
                       />
                     </div>
                 </div>
               )}
             </div>
+            {index < filteredPosts.length - 1 && (
+              <div className="flex justify-center my-4">
+                <div className="w-full flex items-center">
+                  <div className="flex-grow border-t border-blue-200"></div>
+                  <div className="flex-shrink-0 mx-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
+                      <circle cx="12" cy="5" r="3"></circle>
+                      <line x1="12" y1="22" x2="12" y2="8"></line>
+                      <path d="M5 12H2a10 10 0 0 0 20 0h-3"></path>
+                    </svg>
+                  </div>
+                  <div className="flex-grow border-t border-blue-200"></div>
+                </div>
+              </div>
+            )}
+          </React.Fragment>
             ))}
           </div>
         )}
