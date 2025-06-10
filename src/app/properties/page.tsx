@@ -2,6 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
+import FilterSidebar from '@/components/shared/FilterSidebar';
+import { propertyFilters } from '@/constants/filters';
+import LocationFilter from '@/components/shared/filter-panels/LocationFilter';
+import PropertyTypeFilter from '@/components/shared/filter-panels/PropertyTypeFilter';
+import PriceFilter from '@/components/shared/filter-panels/PriceFilter';
+import BedroomsFilter from '@/components/shared/filter-panels/BedroomsFilter';
+import AmenitiesFilter from '@/components/shared/filter-panels/AmenitiesFilter';
 
 type Property = {
   id: string;
@@ -198,16 +205,32 @@ export default function PropertiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'All' | 'Rent' | 'Sale'>('All');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [location, setLocation] = useState('');
-  const [propertyType, setPropertyType] = useState('Any');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [bedrooms, setBedrooms] = useState('Any');
-  const [isFurnished, setIsFurnished] = useState(false);
-  const [hasParking, setHasParking] = useState(false);
-  const [isPetFriendly, setIsPetFriendly] = useState(false);
-  const [sortOption, setSortOption] = useState('Newest First');
+  
+  // Filter sidebar state
+  const [selectedFilters, setSelectedFilters] = useState<Record<string, any>>({});
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<boolean>(false);
+
+  // Initialize collapsed state based on screen width
+  useEffect(() => {
+    setCollapsed(window.innerWidth < 768);
+    
+    const handleResize = () => {
+      setCollapsed(window.innerWidth < 768);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
+  const handleFilterChange = (key: string, value: any) => {
+    setSelectedFilters(prev => ({ ...prev, [key]: value }));
+    setOpenKey(null); // close panel
+  };
+  
+  const clearAllFilters = () => {
+    setSelectedFilters({});
+  };
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -216,7 +239,7 @@ export default function PropertiesPage() {
 
   useEffect(() => {
     fetchProperties();
-  }, [activeTab, searchTerm, location, propertyType, minPrice, maxPrice, bedrooms, isFurnished, hasParking, isPetFriendly, sortOption]);
+  }, [activeTab, selectedFilters]);
 
   const fetchProperties = async () => {
     try {
@@ -233,54 +256,54 @@ export default function PropertiesPage() {
         query = query.eq('listingType', activeTab);
       }
 
-      if (searchTerm) {
-        query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+      // Apply location filter
+      if (selectedFilters.location?.city) {
+        query = query.ilike('city', `%${selectedFilters.location.city}%`);
+        
+        // If area is also provided, filter by area/location too
+        if (selectedFilters.location.area) {
+          query = query.or(`location.ilike.%${selectedFilters.location.area}%`);
+        }
       }
 
-      if (location) {
-        query = query.or(`city.ilike.%${location}%,location.ilike.%${location}%`);
+      // Apply property type filter
+      if (selectedFilters.type) {
+        query = query.eq('propertyType', selectedFilters.type);
       }
 
-      if (propertyType !== 'Any') {
-        query = query.eq('propertyType', propertyType);
+      // Apply price range filter
+      if (selectedFilters.price?.min) {
+        query = query.gte('price', selectedFilters.price.min);
+      }
+      if (selectedFilters.price?.max) {
+        query = query.lte('price', selectedFilters.price.max);
       }
 
-      if (minPrice) {
-        query = query.gte('price', parseInt(minPrice));
+      // Apply bedrooms filter
+      if (selectedFilters.beds && selectedFilters.beds !== 'Any') {
+        if (selectedFilters.beds === '5+') {
+          query = query.gte('bedrooms', 5);
+        } else {
+          query = query.eq('bedrooms', parseInt(selectedFilters.beds));
+        }
       }
 
-      if (maxPrice) {
-        query = query.lte('price', parseInt(maxPrice));
+      // Apply amenities filters
+      if (selectedFilters.amenities?.length > 0) {
+        for (const amenity of selectedFilters.amenities) {
+          if (amenity === 'furnished') {
+            query = query.eq('isFurnished', true);
+          } else if (amenity === 'parking') {
+            query = query.eq('hasParking', true);
+          } else if (amenity === 'petFriendly') {
+            query = query.eq('isPetFriendly', true);
+          }
+          // Additional amenity filters can be added here
+        }
       }
 
-      if (bedrooms !== 'Any') {
-        query = query.eq('bedrooms', parseInt(bedrooms));
-      }
-
-      if (isFurnished) {
-        query = query.eq('isFurnished', true);
-      }
-
-      if (hasParking) {
-        query = query.eq('hasParking', true);
-      }
-
-      if (isPetFriendly) {
-        query = query.eq('isPetFriendly', true);
-      }
-
-      // Apply sorting
-      switch (sortOption) {
-        case 'Newest First':
-          query = query.order('created_at', { ascending: false });
-          break;
-        case 'Price: Low to High':
-          query = query.order('price', { ascending: true });
-          break;
-        case 'Price: High to Low':
-          query = query.order('price', { ascending: false });
-          break;
-      }
+      // Apply sorting - default to newest first
+      query = query.order('created_at', { ascending: false });
 
       console.log('Executing query...');
       const { data, error } = await query;
@@ -323,94 +346,48 @@ export default function PropertiesPage() {
     }
   };
 
-  const clearFilters = () => {
-    setSearchTerm('');
-    setLocation('');
-    setPropertyType('Any');
-    setMinPrice('');
-    setMaxPrice('');
-    setBedrooms('Any');
-    setIsFurnished(false);
-    setHasParking(false);
-    setIsPetFriendly(false);
-    setSortOption('Newest First');
-  };
-
-  const hasActiveFilters = () => {
-    return searchTerm || location || propertyType !== 'Any' || minPrice || maxPrice || bedrooms !== 'Any' || isFurnished || hasParking || isPetFriendly;
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 flex gap-8">
+      <div className="max-w-7xl mx-auto px-4 flex gap-6">
         {/* Filter Sidebar */}
-        <aside className="w-64 bg-white rounded-lg shadow p-6 hidden md:block">
-          <h2 className="font-bold text-lg mb-4">Filters</h2>
-          <form className="space-y-4 text-sm">
-            <div>
-              <label className="block font-medium mb-1">Search</label>
-              <input className="w-full border rounded px-2 py-1" placeholder="Search properties" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Location</label>
-              <input className="w-full border rounded px-2 py-1" placeholder="Enter city or location" value={location} onChange={(e) => setLocation(e.target.value)} />
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Property Type</label>
-              <select className="w-full border rounded px-2 py-1" value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
-                <option>Any</option>
-                <option>Apartment</option>
-                <option>House</option>
-                <option>Studio</option>
-                <option>Townhouse</option>
-                <option>Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Price Range</label>
-              <div className="flex gap-2">
-                <input className="w-1/2 border rounded px-2 py-1" placeholder="Min" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
-                <input className="w-1/2 border rounded px-2 py-1" placeholder="Max" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} />
-              </div>
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Bedrooms</label>
-              <select className="w-full border rounded px-2 py-1" value={bedrooms} onChange={(e) => setBedrooms(e.target.value)}>
-                <option>Any</option>
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-                <option>4</option>
-                <option>5+</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={isFurnished} onChange={(e) => setIsFurnished(e.target.checked)} />
-              <label>Furnished</label>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={hasParking} onChange={(e) => setHasParking(e.target.checked)} />
-              <label>Parking</label>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={isPetFriendly} onChange={(e) => setIsPetFriendly(e.target.checked)} />
-              <label>Pet Friendly</label>
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Sort By</label>
-              <select className="w-full border rounded px-2 py-1" value={sortOption} onChange={(e) => setSortOption(e.target.value)}>
-                <option>Newest First</option>
-                <option>Price: Low to High</option>
-                <option>Price: High to Low</option>
-              </select>
-            </div>
-            {hasActiveFilters() && (
-              <button type="button" className="w-full py-2 bg-teal-500 text-white rounded hover:bg-teal-600 transition" onClick={clearFilters}>
-                Clear Filters
-              </button>
-            )}
-          </form>
-        </aside>
+        <div className={`${collapsed ? 'w-16' : 'w-64'} transition-all duration-300 flex-shrink-0`}>
+          <FilterSidebar
+            filters={propertyFilters}
+            selectedFilters={selectedFilters}
+            openKey={openKey}
+            collapsed={collapsed}
+            onToggleCollapse={() => setCollapsed(!collapsed)}
+            onOpenKeyChange={setOpenKey}
+            onFilterChange={handleFilterChange}
+            onClearAll={clearAllFilters}
+          >
+            <LocationFilter 
+              filterKey="location" 
+              value={selectedFilters.location} 
+              onChange={(value) => handleFilterChange('location', value)}
+            />
+            <PropertyTypeFilter 
+              filterKey="type" 
+              value={selectedFilters.type} 
+              onChange={(value) => handleFilterChange('type', value)}
+            />
+            <PriceFilter 
+              filterKey="price" 
+              value={selectedFilters.price} 
+              onChange={(value) => handleFilterChange('price', value)}
+            />
+            <BedroomsFilter 
+              filterKey="beds" 
+              value={selectedFilters.beds} 
+              onChange={(value) => handleFilterChange('beds', value)}
+            />
+            <AmenitiesFilter 
+              filterKey="amenities" 
+              value={selectedFilters.amenities} 
+              onChange={(value) => handleFilterChange('amenities', value)}
+            />
+          </FilterSidebar>
+        </div>
 
         {/* Main Content */}
         <main className="flex-1">
@@ -441,6 +418,41 @@ export default function PropertiesPage() {
               </button>
             ))}
           </div>
+
+          {/* Active Filters Summary */}
+          {Object.keys(selectedFilters).length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {selectedFilters.location && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Location: {selectedFilters.location.city}
+                  {selectedFilters.location.area && ` - ${selectedFilters.location.area}`}
+                </div>
+              )}
+              {selectedFilters.type && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Type: {selectedFilters.type}
+                </div>
+              )}
+              {selectedFilters.price && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Price: 
+                  {selectedFilters.price.min ? ` $${selectedFilters.price.min}` : ' $0'} 
+                  {' - '}
+                  {selectedFilters.price.max ? `$${selectedFilters.price.max}` : 'Any'}
+                </div>
+              )}
+              {selectedFilters.beds && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Beds: {selectedFilters.beds}
+                </div>
+              )}
+              {selectedFilters.amenities && selectedFilters.amenities.length > 0 && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Amenities: {selectedFilters.amenities.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Property Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

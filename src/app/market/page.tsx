@@ -2,6 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
+import FilterSidebar from '@/components/shared/FilterSidebar';
+import { marketFilters } from '@/constants/filters';
+import SearchFilter from '@/components/shared/filter-panels/SearchFilter';
+import CategoryFilter from '@/components/shared/filter-panels/CategoryFilter';
+import PriceFilter from '@/components/shared/filter-panels/PriceFilter';
+import ConditionFilter from '@/components/shared/filter-panels/ConditionFilter';
+import LocationFilter from '@/components/shared/filter-panels/LocationFilter';
 
 type Item = {
   id: string;
@@ -15,11 +22,6 @@ type Item = {
   description?: string;
 };
 
-const categories = ['All', 'Electronics', 'Sports', 'Furniture', 'Fashion'];
-const conditions = ['All', 'New', 'Like New', 'Good', 'Used'];
-const locations = ['All', 'Miami', 'Miami Beach', 'Coral Gables', 'Downtown'];
-const sortOptions = ['Newest', 'Price: Low to High', 'Price: High to Low'];
-
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -28,26 +30,88 @@ const supabase = createBrowserClient(
 export default function MarketListPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  // Filter state (placeholders)
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('All');
-  const [condition, setCondition] = useState('All');
-  const [location, setLocation] = useState('All');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [sortBy, setSortBy] = useState('Newest');
-  const [tags, setTags] = useState('');
-  const [onlyWithImages, setOnlyWithImages] = useState(false);
+  
+  // Filter sidebar state
+  const [selectedFilters, setSelectedFilters] = useState<Record<string, any>>({});
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<boolean>(false);
+
+  // Initialize collapsed state based on screen width
+  useEffect(() => {
+    setCollapsed(window.innerWidth < 768);
+    
+    const handleResize = () => {
+      setCollapsed(window.innerWidth < 768);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
+  const handleFilterChange = (key: string, value: any) => {
+    setSelectedFilters(prev => ({ ...prev, [key]: value }));
+    setOpenKey(null); // close panel
+  };
+  
+  const clearAllFilters = () => {
+    setSelectedFilters({});
+  };
 
   // Load items from Supabase on mount
   useEffect(() => {
-    const fetchItems = async () => {
-      const { data, error } = await supabase.from('market_items').select('*').eq('approval_status', 'approved');
+    fetchItems();
+  }, [selectedFilters]);
+
+  const fetchItems = async () => {
+    try {
+      let query = supabase.from('market_items').select('*').eq('approval_status', 'approved');
+      
+      // Apply search filter
+      if (selectedFilters.search?.term) {
+        query = query.ilike('title', `%${selectedFilters.search.term}%`);
+      }
+      
+      // Apply category filter
+      if (selectedFilters.category && selectedFilters.category !== 'All') {
+        query = query.eq('category', selectedFilters.category);
+      }
+      
+      // Apply price range filter
+      if (selectedFilters.price?.min) {
+        query = query.gte('price', selectedFilters.price.min);
+      }
+      if (selectedFilters.price?.max) {
+        query = query.lte('price', selectedFilters.price.max);
+      }
+      
+      // Apply condition filter
+      if (selectedFilters.condition && selectedFilters.condition !== 'All') {
+        query = query.eq('condition', selectedFilters.condition);
+      }
+      
+      // Apply location filter
+      if (selectedFilters.location?.city) {
+        query = query.ilike('location', `%${selectedFilters.location.city}%`);
+      }
+      
+      // Apply tag filters
+      if (selectedFilters.search?.tags && selectedFilters.search.tags.length > 0) {
+        // Use overlaps for array comparison if your DB supports it
+        // This assumes tags are stored as an array in Supabase
+        query = query.overlaps('tags', selectedFilters.search.tags);
+      }
+      
+      // Sorting - default to newest
+      query = query.order('created_at', { ascending: false });
+      
+      const { data, error } = await query;
+      
       if (error) {
         console.error('Error fetching market items:', error);
         setItems([]);
         return;
       }
+      
       setItems(
         (data || []).map(item => ({
           id: item.id,
@@ -61,60 +125,10 @@ export default function MarketListPage() {
           description: item.description,
         }))
       );
-    };
-    fetchItems();
-  }, []);
-
-  // Filtering logic
-  const filteredItems = items.filter(item => {
-    if (search && !item.title.toLowerCase().includes(search.toLowerCase())) return false;
-    if (category !== 'All' && item.category !== category) return false;
-    if (condition !== 'All' && item.condition !== condition) return false;
-    if (location !== 'All' && item.location !== location) return false;
-    if (minPrice && item.price < parseInt(minPrice)) return false;
-    if (maxPrice && item.price > parseInt(maxPrice)) return false;
-    if (tags) {
-      const searchTags = tags.toLowerCase().split(',').map(t => t.trim());
-      if (!searchTags.every(tag => item.tags.some(itemTag => itemTag.toLowerCase().includes(tag)))) return false;
+    } catch (err) {
+      console.error('Error in fetchItems:', err);
+      setItems([]);
     }
-    if (onlyWithImages && !item.image) return false;
-    return true;
-  }).sort((a, b) => {
-    switch (sortBy) {
-      case 'Price: Low to High':
-        return a.price - b.price;
-      case 'Price: High to Low':
-        return b.price - a.price;
-      case 'Newest':
-      default:
-        return parseInt(b.id) - parseInt(a.id);
-    }
-  });
-
-  const hasActiveFilters = () => {
-    return (
-      search ||
-      category !== 'All' ||
-      condition !== 'All' ||
-      location !== 'All' ||
-      minPrice ||
-      maxPrice ||
-      sortBy !== 'Newest' ||
-      tags ||
-      onlyWithImages
-    );
-  };
-
-  const clearFilters = () => {
-    setSearch('');
-    setCategory('All');
-    setCondition('All');
-    setLocation('All');
-    setMinPrice('');
-    setMaxPrice('');
-    setSortBy('Newest');
-    setTags('');
-    setOnlyWithImages(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -124,85 +138,55 @@ export default function MarketListPage() {
       alert('Failed to delete item: ' + error.message);
       return;
     }
-    // Refresh list
-    const { data, error: fetchError } = await supabase.from('market_items').select('*').eq('approval_status', 'approved');
-    if (fetchError) {
-      setItems([]);
-      return;
-    }
-    setItems(
-      (data || []).map(item => ({
-        id: item.id,
-        title: item.title,
-        price: item.price,
-        category: item.category,
-        condition: item.condition,
-        location: item.location,
-        image: item.imagefiles && item.imagefiles.length > 0 ? item.imagefiles[0] : '',
-        tags: Array.isArray(item.tags) ? item.tags : [],
-        description: item.description,
-      }))
-    );
+    
+    // Refresh items
+    fetchItems();
     setDeleteId(null);
   };
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 flex gap-8">
+      <div className="max-w-7xl mx-auto px-4 flex gap-6">
         {/* Filter Sidebar */}
-        <aside className="w-64 bg-white rounded-lg shadow p-6 hidden md:block">
-          <h2 className="font-bold text-lg mb-4">Filters</h2>
-          <form className="space-y-4 text-sm">
-            <div>
-              <label className="block font-medium mb-1">Search</label>
-              <input className="w-full border rounded px-2 py-1" placeholder="Search items" value={search} onChange={e => setSearch(e.target.value)} />
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Category</label>
-              <select className="w-full border rounded px-2 py-1" value={category} onChange={e => setCategory(e.target.value)}>
-                {categories.map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Condition</label>
-              <select className="w-full border rounded px-2 py-1" value={condition} onChange={e => setCondition(e.target.value)}>
-                {conditions.map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Location</label>
-              <select className="w-full border rounded px-2 py-1" value={location} onChange={e => setLocation(e.target.value)}>
-                {locations.map(l => <option key={l}>{l}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Price Range</label>
-              <div className="flex gap-2">
-                <input className="w-1/2 border rounded px-2 py-1" placeholder="Min" value={minPrice} onChange={e => setMinPrice(e.target.value)} />
-                <input className="w-1/2 border rounded px-2 py-1" placeholder="Max" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} />
-              </div>
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Sort By</label>
-              <select className="w-full border rounded px-2 py-1" value={sortBy} onChange={e => setSortBy(e.target.value)}>
-                {sortOptions.map(opt => <option key={opt}>{opt}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block font-medium mb-1">Tags <span className="text-xs text-gray-500">(comma separated)</span></label>
-              <input className="w-full border rounded px-2 py-1" placeholder="e.g. bike, phone" value={tags} onChange={e => setTags(e.target.value)} />
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={onlyWithImages} onChange={e => setOnlyWithImages(e.target.checked)} id="with-images" />
-              <label htmlFor="with-images">Only show items with images</label>
-            </div>
-            {hasActiveFilters() && (
-              <button type="button" className="w-full py-2 bg-teal-500 text-white rounded hover:bg-teal-600 transition" onClick={clearFilters}>
-                Clear Filters
-              </button>
-            )}
-          </form>
-        </aside>
+        <div className={`${collapsed ? 'w-16' : 'w-64'} transition-all duration-300 flex-shrink-0`}>
+          <FilterSidebar
+            filters={marketFilters}
+            selectedFilters={selectedFilters}
+            openKey={openKey}
+            collapsed={collapsed}
+            onToggleCollapse={() => setCollapsed(!collapsed)}
+            onOpenKeyChange={setOpenKey}
+            onFilterChange={handleFilterChange}
+            onClearAll={clearAllFilters}
+          >
+            <SearchFilter 
+              filterKey="search" 
+              value={selectedFilters.search} 
+              onChange={(value) => handleFilterChange('search', value)}
+            />
+            <CategoryFilter 
+              filterKey="category" 
+              value={selectedFilters.category} 
+              onChange={(value) => handleFilterChange('category', value)}
+            />
+            <PriceFilter 
+              filterKey="price" 
+              value={selectedFilters.price} 
+              onChange={(value) => handleFilterChange('price', value)}
+            />
+            <ConditionFilter 
+              filterKey="condition" 
+              value={selectedFilters.condition} 
+              onChange={(value) => handleFilterChange('condition', value)}
+            />
+            <LocationFilter 
+              filterKey="location" 
+              value={selectedFilters.location} 
+              onChange={(value) => handleFilterChange('location', value)}
+            />
+          </FilterSidebar>
+        </div>
+
         {/* Main Content */}
         <main className="flex-1">
           <div className="flex items-center justify-between mb-6">
@@ -213,15 +197,55 @@ export default function MarketListPage() {
               + Create Item
             </Link>
           </div>
+          
+          {/* Active Filters Summary */}
+          {Object.keys(selectedFilters).length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {selectedFilters.search?.term && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Search: {selectedFilters.search.term}
+                </div>
+              )}
+              {selectedFilters.search?.tags && selectedFilters.search.tags.length > 0 && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Tags: {selectedFilters.search.tags.join(', ')}
+                </div>
+              )}
+              {selectedFilters.category && selectedFilters.category !== 'All' && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Category: {selectedFilters.category}
+                </div>
+              )}
+              {selectedFilters.price && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Price: 
+                  {selectedFilters.price.min ? ` $${selectedFilters.price.min}` : ' $0'} 
+                  {' - '}
+                  {selectedFilters.price.max ? `$${selectedFilters.price.max}` : 'Any'}
+                </div>
+              )}
+              {selectedFilters.condition && selectedFilters.condition !== 'All' && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Condition: {selectedFilters.condition}
+                </div>
+              )}
+              {selectedFilters.location && (
+                <div className="bg-cyan-50 text-cyan-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Location: {selectedFilters.location.city}
+                </div>
+              )}
+            </div>
+          )}
+          
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredItems.map((item) => (
+            {items.map((item) => (
               <div
                 key={item.id}
                 className="bg-gradient-to-br from-sky-50 to-cyan-50 rounded-2xl shadow-lg p-5 flex flex-col relative border border-cyan-100 w-full"
               >
                 <div className="relative group">
                   <img
-                    src={item.image}
+                    src={item.image || 'https://via.placeholder.com/400x200?text=No+Image'}
                     alt={item.title}
                     className="w-full h-40 object-cover rounded-xl mb-3 border-2 border-sky-100 shadow-sm"
                   />
@@ -264,6 +288,17 @@ export default function MarketListPage() {
               </div>
             ))}
           </div>
+          
+          {/* Empty State */}
+          {items.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500 mb-4">No items found</p>
+              <Link href="/market/create" className="text-teal-500 hover:text-teal-600">
+                Create your first item listing
+              </Link>
+            </div>
+          )}
+          
           {/* Delete Confirmation Modal */}
           {deleteId && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
