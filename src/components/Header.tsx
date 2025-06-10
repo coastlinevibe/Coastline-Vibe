@@ -57,6 +57,7 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
 
   const baseNavLinks = [
     { label: 'Coastline Chatter', href: `/community/${communityId}/feed` },
+    { label: 'Vibe Groups', href: `/community/${communityId}/vibe-groups` },
     { label: 'Properties', href: '/properties' },
     { label: 'Coastline Market', href: '/market' },
   ];

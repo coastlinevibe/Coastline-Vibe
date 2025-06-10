@@ -8,13 +8,14 @@ import { CreateVibeGroupParams, VibeGroupVisibility } from '@/types/vibe-groups'
 
 export default function CreateVibeGroupPage() {
   const params = useParams();
-  const communityId = params?.communityId as string;
+  const communitySlug = params?.communityId as string;
   const router = useRouter();
+  const [communityId, setCommunityId] = useState<string | null>(null);
   const [formData, setFormData] = useState<CreateVibeGroupParams>({
     name: '',
     description: '',
     visibility: 'public',
-    community_id: communityId,
+    community_id: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +23,37 @@ export default function CreateVibeGroupPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
   const supabase = createClientComponentClient();
+
+  // Fetch community ID from slug
+  useEffect(() => {
+    async function fetchCommunityId() {
+      if (!communitySlug) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('communities')
+          .select('id')
+          .eq('slug', communitySlug)
+          .single();
+          
+        if (error) {
+          throw error;
+        }
+        
+        if (data) {
+          setCommunityId(data.id);
+          setFormData(prev => ({ ...prev, community_id: data.id }));
+        } else {
+          setError('Community not found');
+        }
+      } catch (err) {
+        console.error('Error fetching community:', err);
+        setError('Failed to load community');
+      }
+    }
+    
+    fetchCommunityId();
+  }, [communitySlug, supabase]);
 
   // Check authentication status on load
   useEffect(() => {
@@ -102,6 +134,11 @@ export default function CreateVibeGroupPage() {
         throw new Error('Could not find your profile. Please contact support.');
       }
 
+      // Check if we have a community ID
+      if (!communityId) {
+        throw new Error('Community not found');
+      }
+
       console.log('Creating group with profile ID:', profileId);
 
       // Create the group
@@ -147,7 +184,7 @@ export default function CreateVibeGroupPage() {
       }
 
       // Redirect to the new group
-      router.push(`/community/${communityId}/vibe-groups/${groupData.id}`);
+      router.push(`/community/${communitySlug}/vibe-groups/${groupData.id}`);
     } catch (err) {
       console.error('Error creating vibe group:', err);
       setError(err instanceof Error ? err.message : 'Failed to create group');
@@ -159,7 +196,7 @@ export default function CreateVibeGroupPage() {
     <div className="container mx-auto py-6 px-4">
       <div className="mb-6">
         <Link 
-          href={`/community/${communityId}/vibe-groups`}
+          href={`/community/${communitySlug}/vibe-groups`}
           className="text-blue-500 hover:underline mb-4 inline-block"
         >
           ← Back to Vibe Groups
@@ -233,16 +270,16 @@ export default function CreateVibeGroupPage() {
 
             <div className="flex justify-end">
               <Link
-                href={`/community/${communityId}/vibe-groups`}
+                href={`/community/${communitySlug}/vibe-groups`}
                 className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded mr-2"
               >
                 Cancel
               </Link>
               <button
                 type="submit"
-                disabled={loading || !isAuthenticated || !profileId}
+                disabled={loading || !isAuthenticated || !profileId || !communityId}
                 className={`bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded ${
-                  (loading || !isAuthenticated || !profileId) ? 'opacity-50 cursor-not-allowed' : ''
+                  (loading || !isAuthenticated || !profileId || !communityId) ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
                 {loading ? 'Creating...' : 'Create Group'}

@@ -1,19 +1,58 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { VibeGroup } from '@/types/vibe-groups';
+import VibeGroupFilters, { VibeGroupVisibilityFilter } from '@/components/feed/VibeGroupFilters';
+import { VibeGroupsClient } from '@/lib/supabase/vibe-groups-client';
 
 export default function VibeGroupsPage() {
   const params = useParams();
-  const communityId = params?.communityId as string;
+  const communitySlug = params?.communityId as string;
   const [groups, setGroups] = useState<VibeGroup[]>([]);
+  const [filteredGroups, setFilteredGroups] = useState<VibeGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [communityId, setCommunityId] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<VibeGroupVisibilityFilter>('all');
   const supabase = createClientComponentClient();
+  const vibeGroupsClient = useRef(new VibeGroupsClient()).current;
 
+  // First fetch the community ID from the slug
+  useEffect(() => {
+    async function fetchCommunityId() {
+      if (!communitySlug) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('communities')
+          .select('id')
+          .eq('slug', communitySlug)
+          .single();
+          
+        if (error) {
+          throw error;
+        }
+        
+        if (data) {
+          setCommunityId(data.id);
+        } else {
+          setError('Community not found');
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error fetching community:', err);
+        setError('Failed to load community');
+        setLoading(false);
+      }
+    }
+    
+    fetchCommunityId();
+  }, [communitySlug, supabase]);
+
+  // Then fetch the vibe groups for that community
   useEffect(() => {
     async function fetchGroups() {
       if (!communityId) return;
@@ -21,21 +60,15 @@ export default function VibeGroupsPage() {
       setLoading(true);
       
       try {
-        const { data, error } = await supabase
-          .from('vibe_groups')
-          .select(`
-            *,
-            captain:profiles!captain_id(id, username, avatar_url),
-            member_count:vibe_groups_members(count)
-          `)
-          .eq('community_id', communityId)
-          .eq('is_active', true);
+        // Use the client to fetch groups
+        const { data, error } = await vibeGroupsClient.getGroups(communityId);
           
         if (error) {
           throw error;
         }
         
         setGroups(data || []);
+        setFilteredGroups(data || []);
       } catch (err) {
         console.error('Error fetching vibe groups:', err);
         setError('Failed to load vibe groups');
@@ -44,20 +77,54 @@ export default function VibeGroupsPage() {
       }
     }
     
-    fetchGroups();
-  }, [communityId, supabase]);
+    if (communityId) {
+      fetchGroups();
+    }
+  }, [communityId, vibeGroupsClient]);
+
+  // Filter groups based on visibility
+  const handleFilterChange = (filter: VibeGroupVisibilityFilter) => {
+    setActiveFilter(filter);
+    if (filter === 'all') {
+      setFilteredGroups(groups);
+    } else {
+      setFilteredGroups(groups.filter(group => group.visibility === filter));
+    }
+  };
+
+  // Calculate counts for each filter
+  const getCounts = () => {
+    const counts: {[key in VibeGroupVisibilityFilter]?: number} = {
+      all: groups.length,
+    };
+    
+    // Count groups by visibility
+    groups.forEach(group => {
+      const visibility = group.visibility as VibeGroupVisibilityFilter;
+      counts[visibility] = (counts[visibility] || 0) + 1;
+    });
+    
+    return counts;
+  };
 
   return (
     <div className="container mx-auto py-6 px-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Vibe Groups</h1>
         <Link 
-          href={`/community/${communityId}/vibe-groups/create`}
+          href={`/community/${communitySlug}/vibe-groups/create`}
           className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
         >
           Create Group
         </Link>
       </div>
+
+      {/* Filters */}
+      <VibeGroupFilters 
+        activeFilter={activeFilter} 
+        onFilterChange={handleFilterChange} 
+        counts={getCounts()}
+      />
       
       {loading ? (
         <div className="flex justify-center py-10">
@@ -65,17 +132,17 @@ export default function VibeGroupsPage() {
         </div>
       ) : error ? (
         <div className="text-red-500 text-center py-10">{error}</div>
-      ) : groups.length === 0 ? (
+      ) : filteredGroups.length === 0 ? (
         <div className="text-center py-10">
-          <p className="text-gray-500 mb-4">No vibe groups found in this community.</p>
+          <p className="text-gray-500 mb-4">No vibe groups found for the selected filter.</p>
           <p className="text-gray-500">Create a new group to get started!</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {groups.map((group) => (
+          {filteredGroups.map((group) => (
             <Link 
               key={group.id} 
-              href={`/community/${communityId}/vibe-groups/${group.id}`}
+              href={`/community/${communitySlug}/vibe-groups/${group.id}`}
               className="block"
             >
               <div className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">

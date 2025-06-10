@@ -86,10 +86,10 @@
     @apply border-border;
   }
   body {
-    @apply bg-sand text-darkCharcoal font-body;
+    @apply bg-background text-foreground font-sans;
   }
   h1, h2, h3, h4, h5, h6 {
-    @apply font-heading;
+    @apply font-sans;
   }
   /* You can add more custom base styles here if needed */
 }
