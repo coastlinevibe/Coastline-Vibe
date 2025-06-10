@@ -9,7 +9,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
-import { useToast } from '../ui/use-toast';
+import { useToast } from '../ui/toast';
 
 interface LocationPreferencesProps {
   userId: string;

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar, MessageCircle } from 'lucide-react';
+import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar, MessageCircle, UserCircle2, Hash } from 'lucide-react';
 import PollCreator from '@/components/feed/PollCreator';
 import PollCard from '@/components/feed/PollCard';
 import FeedFilters, { FeedContentType } from '@/components/feed/FeedFilters';
@@ -24,6 +24,8 @@ import { CommentsList } from '@/components/feed/CommentsList';
 import CommentForm from '@/components/feed/CommentForm';
 import LocationFilters from '@/components/feed/LocationFilters';
 import { ToastProvider } from '@/components/ui/toast';
+import LeftSidebar from '@/components/feed/LeftSidebar';
+import RightSidebar from '@/components/feed/RightSidebar';
 
 export default function FeedPage() {
   const supabase = createClient();
@@ -1304,385 +1306,433 @@ export default function FeedPage() {
     }
   };
 
+  // Handler for opening content creators from the sidebar
+  const handleOpenCreator = (type: 'poll' | 'ask' | 'announce' | 'event' | 'general' | 'group') => {
+    // Close any open creators first
+    setShowPollCreator(false);
+    setShowAnnouncementCreator(false);
+    setShowQuestionCreator(false);
+    setShowEventCreator(false);
+    
+    // Open the requested creator
+    switch(type) {
+      case 'poll':
+        setShowPollCreator(true);
+        break;
+      case 'ask':
+        setShowQuestionCreator(true);
+        break;
+      case 'announce':
+        setShowAnnouncementCreator(true);
+        break;
+      case 'event':
+        setShowEventCreator(true);
+        break;
+      case 'group':
+        // Redirect to group creation page
+        window.location.href = `/community/${communityIdOrSlug}/vibe-groups/create`;
+        break;
+      default:
+        // For general posts, just scroll to the post creator
+        const postCreator = document.getElementById('post-creator');
+        if (postCreator) {
+          postCreator.scrollIntoView({ behavior: 'smooth' });
+          // Focus the post input
+          const postInput = postCreator.querySelector('textarea');
+          if (postInput) {
+            postInput.focus();
+          }
+        }
+        break;
+    }
+  };
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold mb-6">Community Feed</h1>
-
-      {/* Search bar */}
-      <SearchBar 
-        onSearch={handleSearch}
-        onHashtagSelect={handleHashtagSelect}
-        popularHashtags={popularHashtags}
-      />
-      
-      {/* Active hashtag filter indicator */}
-      {activeHashtag && (
-        <div className="mb-4 flex items-center">
-          <span className="text-sm text-gray-600 mr-2">Filtering by:</span>
-          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm flex items-center">
-            <span className="mr-1">#</span>{activeHashtag}
-            <button 
-              onClick={() => handleHashtagSelect(activeHashtag)}
-              className="ml-1 hover:text-blue-600"
-            >
-              <X size={14} />
-            </button>
-          </span>
-        </div>
-      )}
-      
-      <div className="flex justify-between items-center mb-4">
-        <FeedFilters
-          activeFilter={activeFilter}
-          onFilterChange={handleFilterChange}
-          counts={contentTypeCounts}
-        />
-        
-        <div className="w-48">
-          <SortDropdown 
-            onSortChange={handleSortChange}
-            currentSort={currentSort}
-          />
-        </div>
-      </div>
-
-      {/* Post creator section with tabs */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        {/* Post type selection */}
-        <div className="flex space-x-2 mb-4 border-b pb-2">
-          <button
-            type="button"
-            onClick={() => {
-              setPostType('general');
-              setShowPollCreator(false);
-              setShowAnnouncementCreator(false);
-              setShowQuestionCreator(false);
-              setShowEventCreator(false);
-            }}
-            className={`flex items-center px-3 py-2 rounded-t-lg ${
-              postType === 'general' && !showPollCreator && !showAnnouncementCreator && !showQuestionCreator && !showEventCreator
-                ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' 
-                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-            }`}
-          >
-            <MessageSquare size={16} className="mr-2" />
-            <span>Post</span>
-          </button>
-              
-          <button
-            type="button"
-            onClick={() => {
-              setShowPollCreator(true);
-              setShowAnnouncementCreator(false);
-              setShowQuestionCreator(false);
-              setShowEventCreator(false);
-              setPostType('poll');
-            }}
-            className={`flex items-center px-3 py-2 rounded-t-lg ${
-              showPollCreator ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-            }`}
-          >
-            <BarChart2 size={16} className="mr-2" />
-            <span>Poll</span>
-          </button>
-              
-          <button
-            type="button"
-            onClick={() => {
-              setShowQuestionCreator(true);
-              setShowPollCreator(false);
-              setShowAnnouncementCreator(false);
-              setShowEventCreator(false);
-              setPostType('ask');
-            }}
-            className={`flex items-center px-3 py-2 rounded-t-lg ${
-              showQuestionCreator ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-            }`}
-          >
-            <HelpCircle size={16} className="mr-2" />
-            <span>Question</span>
-          </button>
-              
-          <button
-            type="button"
-            onClick={() => {
-              setShowAnnouncementCreator(true);
-              setShowPollCreator(false);
-              setShowQuestionCreator(false);
-              setShowEventCreator(false);
-              setPostType('announce');
-            }}
-            className={`flex items-center px-3 py-2 rounded-t-lg ${
-              showAnnouncementCreator ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-            }`}
-          >
-            <Megaphone size={16} className="mr-2" />
-            <span>Announcement</span>
-          </button>
-              
-          <button
-            type="button"
-            onClick={() => {
-              setShowEventCreator(true);
-              setShowPollCreator(false);
-              setShowAnnouncementCreator(false);
-              setShowQuestionCreator(false);
-              setPostType('event');
-            }}
-            className={`flex items-center px-3 py-2 rounded-t-lg ${
-              showEventCreator ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-            }`}
-          >
-            <Calendar size={16} className="mr-2" />
-            <span>Event</span>
-          </button>
-        </div>
-        
-
-
-      {/* Post creators based on selected type */}
-        {postType === 'general' && !showPollCreator && !showAnnouncementCreator && !showQuestionCreator && !showEventCreator && (
-          <PostCreator 
-            communityId={communityUuid || ''} 
-            onPostCreated={handlePostCreated} 
-          />
-        )}
-        
-        {/* Poll creator */}
-        {showPollCreator && (
-          <PollCreator 
-            communityId={communityUuid || ''} 
-            onPollCreated={handlePollCreated} 
-          />
-        )}
-
-        {/* Question creator */}
-        {showQuestionCreator && (
-          <QuestionCreator 
-            communityId={communityUuid || ''} 
-            onQuestionCreated={handleQuestionCreated}
-          />
-        )}
-
-        {/* Announcement creator */}
-        {showAnnouncementCreator && (
-          <AnnouncementCreator 
-            communityId={communityUuid || ''} 
-            onAnnouncementCreated={handleAnnouncementCreated}
-          />
-        )}
-
-        {/* Event creator */}
-        {showEventCreator && (
-          <EventCreator 
-            communityId={communityUuid || ''} 
-            onEventCreated={handleEventCreated}
-          />
-        )}
-
-        {/* Posts list */}
-        {postsLoading ? (
-          <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-            <p className="mt-2 text-gray-500">Loading posts...</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-screen-2xl mx-auto px-2 md:px-4 py-6">
+        <div className="flex gap-4">
+          {/* Left Sidebar */}
+          <div className="hidden md:block">
+            <LeftSidebar 
+              communityId={communityIdOrSlug} 
+              onHashtagSelect={handleHashtagSelect}
+              onOpenCreator={handleOpenCreator}
+            />
           </div>
-        ) : filteredPosts.length === 0 ? (
-          <div className="text-center py-8 bg-white rounded-lg shadow">
-            <p className="text-gray-500">
-              {activeFilter === 'all' 
-                ? 'No posts in this community yet. Be the first to post!' 
-                : `No ${activeFilter} posts found. You can create one by clicking the ${activeFilter} tab above.`}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {filteredPosts.map((post, index) => (
-              <React.Fragment key={post.id}>
-                <div className="bg-white rounded-lg shadow p-4">
-                  {/* Post header */}
-                  <div className="flex items-center mb-3">
-                    <div className="h-10 w-10 rounded-full bg-gray-300 overflow-hidden mr-3">
-                      {post.author_avatar_url ? (
-                      <img
-                        src={post.author_avatar_url}
-                          alt={post.author_username} 
-                          className="h-full w-full object-cover"
-                      />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center bg-blue-100 text-blue-500">
-                          {post.author_username?.charAt(0).toUpperCase() || '?'}
-                        </div>
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center">
-                      <span className="font-medium">{post.author_username || 'Anonymous'}</span>
-                      <button
-                        onClick={() => {
-                          toggleComments(post.id);
-                          // Focus the comment input after a short delay to allow the comment section to render
-                          setTimeout(() => {
-                            const commentInput = document.querySelector(`[data-post-id="${post.id}"] textarea`);
-                            if (commentInput) {
-                              (commentInput as HTMLTextAreaElement).focus();
-                            }
-                          }, 100);
-                        }}
-                        className="ml-1 text-xs text-blue-500 hover:text-blue-700 bg-transparent border-none p-0 inline"
-                      >
-                        Reply
-                      </button>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(post.created_at).toLocaleString()}
-                      {post.type !== 'general' && (
-                        <span className="ml-2 px-1.5 py-0.5 bg-gray-100 rounded text-xs">
-                          {post.type.charAt(0).toUpperCase() + post.type.slice(1)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Post content */}
-                {post.type === 'poll' && post.poll_id ? (
-                  <PollCard pollId={post.poll_id} postId={post.id} />
-                ) : post.type === 'event' ? (
-                  <EventCard postId={post.id} />
-                ) : post.type === 'announce' ? (
-                  <AnnouncementCard postId={post.id} />
-                ) : post.type === 'ask' ? (
-                  <QuestionCard postId={post.id} />
-              ) : (
-                <>
-                    {/* Text content */}
-                    <div className="mb-3 whitespace-pre-wrap">
-                      <HashtagText 
-                        content={post.content} 
-                        onHashtagClick={handleHashtagSelect}
-                      />
-                    </div>
-                    
-                    {/* Video */}
-                    {post.video_url && (
-                      <div className="mb-3">
-                        <video 
-                          src={post.video_url} 
-                          controls
-                          className="w-full rounded-lg max-h-[400px]"
-                        />
-                      </div>
-                    )}
-                    
-                    {/* Images (only show if no video) */}
-                    {!post.video_url && post.images && post.images.length > 0 && (
-                      <div className="mb-3 flex flex-wrap gap-2">
-                        {post.images.map((imgUrl: string, index: number) => (
-                          <img 
-                            key={index}
-                            src={imgUrl}
-                            alt={`Post image ${index + 1}`}
-                            className="max-h-64 rounded"
-                          />
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-              
-                {/* Post actions */}
-                <div className="flex items-center mt-3 pt-3 border-t border-gray-100">
-                  {/* Like button */}
-                <button 
-                  onClick={() => handleToggleLike(post.id)}
-                    className={`flex items-center mr-4 ${likedPosts[post.id] ? 'text-red-500' : 'text-gray-500'} hover:text-red-500`}
-                >
-                    <Heart size={18} className="mr-1" fill={likedPosts[post.id] ? 'currentColor' : 'none'} />
-                  <span>{post.like_count || 0}</span>
-                </button>
-                
-                  {/* Comment/Reply button */}
-                <button
-                  onClick={() => {
-                    toggleComments(post.id);
-                    // Focus the comment input after a short delay to allow the comment section to render
-                    setTimeout(() => {
-                      const commentInput = document.querySelector(`[data-post-id="${post.id}"] textarea`);
-                      if (commentInput) {
-                        (commentInput as HTMLTextAreaElement).focus();
-                      }
-                    }, 100);
+          
+          {/* Main Feed Content */}
+          <div className="flex-1 max-w-2xl mx-auto">
+            {/* Post Creation Area */}
+            <div id="post-creator" className="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
+              <PostCreator
+                communityId={communityUuid || ''}
+                onPostCreated={handlePostCreated}
+                onPollCreatorOpen={() => setShowPollCreator(true)}
+                onAnnouncementCreatorOpen={() => setShowAnnouncementCreator(true)}
+                onQuestionCreatorOpen={() => setShowQuestionCreator(true)}
+                onEventCreatorOpen={() => setShowEventCreator(true)}
+              />
+            </div>
+            
+            {/* Content Type Filter Tabs */}
+            <FeedFilters
+              activeFilter={activeFilter}
+              onFilterChange={handleFilterChange}
+              counts={contentTypeCounts}
+            />
+            
+            {/* Search and Sort Bar */}
+            <div className="flex flex-col sm:flex-row gap-2 mb-4">
+              <div className="flex-1">
+                <SearchBar
+                  onSearch={handleSearch}
+                  onHashtagSelect={handleHashtagSelect}
+                  popularHashtags={popularHashtags}
+                />
+              </div>
+              <div className="w-full sm:w-auto">
+                <SortDropdown currentSort={currentSort} onSortChange={handleSortChange} />
+              </div>
+            </div>
+            
+            {/* Location Filters (if enabled) */}
+            {hasLocationData && currentUserId && communityUuid && (
+              <div className="mb-4">
+                <LocationFilters
+                  userId={currentUserId}
+                  communityId={communityUuid}
+                  onLocationFilterChange={(newFilters) => {
+                    setLocationFilters(newFilters);
+                    filterPosts(posts, activeFilter);
                   }}
-                  className="flex items-center text-gray-500 hover:text-blue-500"
+                />
+              </div>
+            )}
+
+            {/* Active Hashtag Badge */}
+            {activeHashtag && (
+              <div className="mb-4 flex items-center">
+                <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm flex items-center">
+                  <Hash size={14} className="mr-1" />
+                  {activeHashtag}
+                </div>
+                <button
+                  onClick={() => handleHashtagSelect(activeHashtag)}
+                  className="ml-2 text-gray-400 hover:text-gray-600"
                 >
-                  <MessageSquare size={18} className="mr-1" />
-                  <span>{post.comment_count || 0} Comments</span>
+                  <X size={14} />
                 </button>
               </div>
-              
-              {/* Comments section */}
-              {showComments[post.id] && (
-                  <div className="mt-4 border-t pt-4">
-                    {/* Comments list */}
-                    {comments[post.id] && comments[post.id].length > 0 ? (
-                      <>
-                        <CommentsList 
-                          comments={comments[post.id]}
-                          onLikeComment={handleCommentLike}
-                          onUnlikeComment={handleCommentUnlike}
-                          currentUserId={currentUserId}
-                          onActualUpdateComment={handleCommentUpdate}
-                          onActualDeleteComment={handleCommentDelete}
-                          communityId={communityUuid || ''}
-                          onReplySubmit={handleReplySubmit}
+            )}
+            
+            {/* Post List */}
+            <div className="space-y-4">
+              {postsLoading ? (
+                <div className="bg-white rounded-lg p-6 text-center">
+                  <div className="animate-pulse flex flex-col items-center">
+                    <div className="h-8 w-24 bg-gray-200 rounded-md mb-4"></div>
+                    <div className="h-32 w-full bg-gray-100 rounded-md"></div>
+                  </div>
+                </div>
+              ) : filteredPosts.length > 0 ? (
+                filteredPosts.map(post => {
+                  // Check post type and render appropriate component
+                  switch (post.type) {
+                    case 'poll':
+                      return (
+                        <PollCard
+                          key={post.id}
+                          post={post}
+                          onLike={() => handleToggleLike(post.id)}
+                          isLiked={likedPosts[post.id]}
+                          onComment={() => toggleComments(post.id)}
                         />
-                        <div className="text-xs text-gray-500 mt-2">
-                          {comments[post.id].length} comment{comments[post.id].length !== 1 ? 's' : ''}
+                      );
+                    case 'event':
+                      return (
+                        <EventCard
+                          key={post.id}
+                          event={post}
+                          onLike={() => handleToggleLike(post.id)}
+                          isLiked={likedPosts[post.id]}
+                          onComment={() => toggleComments(post.id)}
+                        />
+                      );
+                    case 'announce':
+                      return (
+                        <AnnouncementCard
+                          key={post.id}
+                          announcement={post}
+                          onLike={() => handleToggleLike(post.id)}
+                          isLiked={likedPosts[post.id]}
+                          onComment={() => toggleComments(post.id)}
+                        />
+                      );
+                    case 'ask':
+                      return (
+                        <QuestionCard
+                          key={post.id}
+                          question={post}
+                          onLike={() => handleToggleLike(post.id)}
+                          isLiked={likedPosts[post.id]}
+                          onComment={() => toggleComments(post.id)}
+                        />
+                      );
+                    default:
+                      // This is a regular post
+                      return (
+                        <div key={post.id} id={`post-${post.id}`} className="bg-white rounded-lg shadow-sm overflow-hidden">
+                          {/* Post Header */}
+                          <div className="p-4 border-b border-gray-100">
+                            <div className="flex items-center">
+                              {post.author_avatar_url ? (
+                                <img 
+                                  src={post.author_avatar_url} 
+                                  alt={post.author_username} 
+                                  className="w-10 h-10 rounded-full border border-gray-200"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                  <UserCircle2 className="text-blue-500" size={24} />
+                                </div>
+                              )}
+                              <div className="ml-3">
+                                <div className="font-medium text-gray-900">{post.author_username || 'Anonymous'}</div>
+                                <div className="text-xs text-gray-500">
+                                  {new Date(post.created_at).toLocaleDateString()}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Post Content */}
+                          <div className="p-4">
+                            <div className="whitespace-pre-line mb-3">
+                              <HashtagText 
+                                content={post.content} 
+                                onHashtagClick={handleHashtagSelect}
+                              />
+                            </div>
+                            
+                            {/* Display media if any */}
+                            {post.media_urls && post.media_urls.length > 0 && (
+                              <div className="mt-2 mb-3">
+                                <div className={`grid ${post.media_urls.length > 1 ? 'grid-cols-2 gap-2' : 'grid-cols-1'}`}>
+                                  {post.media_urls.map((url: string, idx: number) => (
+                                    <div key={idx} className="overflow-hidden rounded-lg">
+                                      {url.includes('.mp4') ? (
+                                        <video 
+                                          controls 
+                                          className="w-full h-auto"
+                                          src={url}
+                                        ></video>
+                                      ) : (
+                                        <img 
+                                          src={url} 
+                                          alt="" 
+                                          className="w-full h-auto"
+                                          onClick={() => {
+                                            // Add lightbox functionality later
+                                          }}
+                                        />
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Post Toolbar */}
+                          <div className="px-4 py-2 border-t border-gray-100 flex items-center justify-between">
+                            <button 
+                              onClick={() => handleToggleLike(post.id)} 
+                              className={`flex items-center text-sm ${likedPosts[post.id] ? 'text-red-500' : 'text-gray-500 hover:text-red-500'}`}
+                            >
+                              <Heart size={18} className={likedPosts[post.id] ? 'fill-current' : ''} />
+                              <span className="ml-1">{post.like_count || 0}</span>
+                            </button>
+                            
+                            <button 
+                              onClick={() => toggleComments(post.id)} 
+                              className="flex items-center text-sm text-gray-500 hover:text-blue-500"
+                            >
+                              <MessageSquare size={18} />
+                              <span className="ml-1">{post.comment_count || 0}</span>
+                            </button>
+                          </div>
+                          
+                          {/* Comments Section (hidden by default) */}
+                          {showComments[post.id] && (
+                            <div className="border-t border-gray-100">
+                              <div className="px-4 py-3">
+                                {/* Comment form */}
+                                <CommentForm 
+                                  postId={post.id}
+                                  onSubmit={handleCommentFormSubmit(post.id)}
+                                  value={commentText[post.id] || ''}
+                                  onChange={(value) => setCommentText(prev => ({ ...prev, [post.id]: value }))}
+                                  isSubmitting={isCommenting[post.id] || false}
+                                />
+                                
+                                {/* Comments list */}
+                                <div className="mt-4">
+                                  <CommentsList 
+                                    comments={comments[post.id] || []}
+                                    onReplySubmit={handleReplySubmit}
+                                    onLike={handleCommentLike}
+                                    onUnlike={handleCommentUnlike}
+                                    onUpdate={handleCommentUpdate}
+                                    onDelete={handleCommentDelete}
+                                    currentUserId={currentUserId}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </>
-                    ) : (
-                      <div className="text-gray-500 text-sm mb-3">No comments yet</div>
-                    )}
-                    
-                    {/* Comment input */}
-                    <div className="mt-3">
-                      <CommentForm
-                        onSubmit={async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
-                          e.preventDefault();
-                          await handleCommentSubmit(post.id);
-                        }}
-                        value={commentText[post.id] || ''}
-                        onChange={(value) => setCommentText(prev => ({ ...prev, [post.id]: value }))}
-                        isSubmitting={isCommenting[post.id] || false}
-                        placeholder="Write a comment..."
-                        communityId={communityUuid || ''}
-                        data-post-id={post.id}
-                        showSubmitButton={true}
-                      />
-                    </div>
+                      );
+                  }
+                })
+              ) : (
+                <div className="bg-white rounded-lg p-6 text-center">
+                  <p className="text-gray-500">No posts found</p>
                 </div>
               )}
             </div>
-            {index < filteredPosts.length - 1 && (
-              <div className="flex justify-center my-4">
-                <div className="w-full flex items-center">
-                  <div className="flex-grow border-t border-blue-200"></div>
-                  <div className="flex-shrink-0 mx-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
-                      <circle cx="12" cy="5" r="3"></circle>
-                      <line x1="12" y1="22" x2="12" y2="8"></line>
-                      <path d="M5 12H2a10 10 0 0 0 20 0h-3"></path>
-                    </svg>
-                  </div>
-                  <div className="flex-grow border-t border-blue-200"></div>
-                </div>
-              </div>
-            )}
-          </React.Fragment>
-            ))}
           </div>
-        )}
+          
+          {/* Right Sidebar */}
+          <div className="hidden lg:block">
+            <RightSidebar communityId={communityIdOrSlug} />
+          </div>
+        </div>
       </div>
+      
+      {/* Modals for content creation */}
+      {showPollCreator && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg max-h-screen overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Create Poll</h2>
+              <button
+                onClick={() => setShowPollCreator(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-4">
+              <PollCreator
+                communityId={communityUuid || ''}
+                onPollCreated={handlePollCreated}
+                onCancel={() => setShowPollCreator(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Announcement Creator Modal */}
+      {showAnnouncementCreator && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg max-h-screen overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Create Announcement</h2>
+              <button
+                onClick={() => setShowAnnouncementCreator(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-4">
+              <AnnouncementCreator
+                communityId={communityUuid || ''}
+                onAnnouncementCreated={handleAnnouncementCreated}
+                onCancel={() => setShowAnnouncementCreator(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Question Creator Modal */}
+      {showQuestionCreator && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg max-h-screen overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Ask a Question</h2>
+              <button
+                onClick={() => setShowQuestionCreator(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-4">
+              <QuestionCreator
+                communityId={communityUuid || ''}
+                onQuestionCreated={handleQuestionCreated}
+                onCancel={() => setShowQuestionCreator(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Event Creator Modal */}
+      {showEventCreator && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg max-h-screen overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Create Event</h2>
+              <button
+                onClick={() => setShowEventCreator(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-4">
+              <EventCreator
+                communityId={communityUuid || ''}
+                onEventCreated={handleEventCreated}
+                onCancel={() => setShowEventCreator(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Media Uploader Modal */}
+      {showMediaUploader && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Upload Media</h2>
+              <button
+                onClick={() => setShowMediaUploader(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-4">
+              <MediaUploader
+                onUploadComplete={(urls) => {
+                  setMediaState(prev => ({
+                    ...prev,
+                    images: [...prev.images, ...urls]
+                  }));
+                  setShowMediaUploader(false);
+                }}
+                onCancel={() => setShowMediaUploader(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
