@@ -2,28 +2,29 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Image, X, Upload, AlertCircle, Plus } from 'lucide-react';
+import { File as FileIcon, X, Upload, AlertCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 
-interface ImageUploaderProps {
-  onImagesUploaded: (imageUrls: string[]) => void;
+interface FileUploaderProps {
+  onFilesUploaded: (fileUrls: string[]) => void;
   onError?: (error: string) => void;
   maxFiles?: number;
   maxSizeMB?: number;
+  allowedFileTypes?: string[];
   initialFiles?: File[];
 }
 
-const ImageUploader: React.FC<ImageUploaderProps> = ({
-  onImagesUploaded,
+const FileUploader: React.FC<FileUploaderProps> = ({
+  onFilesUploaded,
   onError,
-  maxFiles = 5,
+  maxFiles = 3,
   maxSizeMB = 10,
+  allowedFileTypes = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'],
   initialFiles = []
 }) => {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedImages, setSelectedImages] = useState<File[]>([]);
-  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -35,60 +36,58 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   }, [initialFiles]);
 
   const handleFiles = (files: File[]) => {
-    const invalidFiles = files.filter(file => !file.type.startsWith('image/'));
+    const invalidFiles = files.filter(file => {
+      const extension = file.name.split('.').pop()?.toLowerCase() || '';
+      return !allowedFileTypes.includes(extension);
+    });
+    
     if (invalidFiles.length > 0) {
-      setError('Please select valid image files only');
-      onError?.('Please select valid image files only');
+      setError(`Please select valid file types: ${allowedFileTypes.join(', ')}`);
+      onError?.(`Please select valid file types: ${allowedFileTypes.join(', ')}`);
       return;
     }
-
+    
     const maxSizeBytes = maxSizeMB * 1024 * 1024;
     const oversizedFiles = files.filter(file => file.size > maxSizeBytes);
     if (oversizedFiles.length > 0) {
-      setError(`Some images exceed maximum allowed size (${maxSizeMB}MB)`);
-      onError?.(`Some images exceed maximum allowed size (${maxSizeMB}MB)`);
+      setError(`Some files exceed maximum allowed size (${maxSizeMB}MB)`);
+      onError?.(`Some files exceed maximum allowed size (${maxSizeMB}MB)`);
       return;
     }
-
-    if (selectedImages.length + files.length > maxFiles) {
-      setError(`You can upload a maximum of ${maxFiles} images`);
-      onError?.(`You can upload a maximum of ${maxFiles} images`);
+    
+    if (selectedFiles.length + files.length > maxFiles) {
+      setError(`You can upload a maximum of ${maxFiles} files`);
+      onError?.(`You can upload a maximum of ${maxFiles} files`);
       return;
     }
-
-    setSelectedImages(prev => [...prev, ...files]);
+    
+    setSelectedFiles(prev => [...prev, ...files]);
     setError(null);
-
-    const newUrls = files.map(file => URL.createObjectURL(file));
-    setPreviewUrls(prev => [...prev, ...newUrls]);
   };
 
   const onDrop = (acceptedFiles: File[]) => {
     handleFiles(acceptedFiles);
   };
-
+  
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'image/*': ['.png', '.gif', '.jpeg', '.jpg'] },
     maxSize: maxSizeMB * 1024 * 1024,
     maxFiles: maxFiles,
-    disabled: isUploading || selectedImages.length >= maxFiles,
+    disabled: isUploading || selectedFiles.length >= maxFiles,
   });
-  
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       handleFiles(Array.from(e.target.files));
     }
   };
   
-  const removeImage = (index: number) => {
-    URL.revokeObjectURL(previewUrls[index]);
-    setSelectedImages(prev => prev.filter((_, i) => i !== index));
-    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
   
-  const uploadImages = async () => {
-    if (selectedImages.length === 0) return;
+  const uploadFiles = async () => {
+    if (selectedFiles.length === 0) return;
     
     setIsUploading(true);
     setUploadProgress(0);
@@ -97,34 +96,32 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     const uploadedUrls: string[] = [];
     
     try {
-      for (let i = 0; i < selectedImages.length; i++) {
-        const file = selectedImages[i];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
         const filePath = `${fileName}`;
         
         const { data, error } = await supabase.storage
-          .from('feedpostimages')
+          .from('feedpostfiles')
           .upload(filePath, file, { cacheControl: '3600', upsert: false });
         
         if (error) {
-          throw new Error(`Error uploading image: ${error.message}`);
+          throw new Error(`Error uploading file: ${error.message}`);
         }
         
         const { data: { publicUrl } } = supabase.storage
-          .from('feedpostimages')
+          .from('feedpostfiles')
           .getPublicUrl(filePath);
         
         uploadedUrls.push(publicUrl);
         
-        setUploadProgress(Math.round(((i + 1) / selectedImages.length) * 100));
+        setUploadProgress(Math.round(((i + 1) / selectedFiles.length) * 100));
       }
       
-      onImagesUploaded(uploadedUrls);
+      onFilesUploaded(uploadedUrls);
       
-      previewUrls.forEach(url => URL.revokeObjectURL(url));
-      setSelectedImages([]);
-      setPreviewUrls([]);
+      setSelectedFiles([]);
       setUploadProgress(0);
       
       if (fileInputRef.current) {
@@ -132,9 +129,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       }
       
     } catch (err: any) {
-      console.error('Error uploading images:', err);
-      setError(err.message || 'An error occurred while uploading images');
-      onError?.(err.message || 'An error occurred while uploading images');
+      setError(err.message || 'An error occurred while uploading files');
+      onError?.(err.message || 'An error occurred while uploading files');
     } finally {
       setIsUploading(false);
     }
@@ -142,49 +138,39 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   return (
     <div className="w-full">
-      {previewUrls.length > 0 ? (
+      {selectedFiles.length > 0 ? (
         <div className="mb-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-            {previewUrls.map((url, index) => (
-              <div key={index} className="relative aspect-square">
-                <img 
-                  src={url} 
-                  alt={`Preview ${index + 1}`}
-                  className="w-full h-full object-cover rounded-md"
-                />
+          <div className="space-y-2">
+            {selectedFiles.map((file, index) => (
+              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-md border border-gray-200">
+                <div className="flex items-center space-x-2 overflow-hidden">
+                  <FileIcon size={16} className="text-blue-500 flex-shrink-0" />
+                  <span className="text-sm text-gray-700 truncate">{file.name}</span>
+                  <span className="text-xs text-gray-500 flex-shrink-0">({(file.size / (1024 * 1024)).toFixed(2)}MB)</span>
+                </div>
                 <button
                   type="button"
-                  onClick={() => removeImage(index)}
-                  className="absolute top-1 right-1 bg-black bg-opacity-70 text-white p-1 rounded-full hover:bg-opacity-90"
+                  onClick={() => removeFile(index)}
+                  className="p-1 text-gray-500 hover:text-gray-700"
                   disabled={isUploading}
                 >
                   <X size={14} />
                 </button>
               </div>
             ))}
-            
-            {selectedImages.length < maxFiles && (
-              <div 
-                {...getRootProps()}
-                className={`border-2 border-dashed border-gray-300 rounded-md flex items-center justify-center aspect-square cursor-pointer hover:bg-gray-50 ${isDragActive ? 'bg-blue-50 border-blue-400' : ''}`}
-              >
-                <input {...getInputProps()} />
-                <Plus size={24} className="text-gray-400" />
-              </div>
-            )}
           </div>
           
           <div className="mt-3 flex justify-between items-center">
             <span className="text-sm text-gray-500">
-              {selectedImages.length} of {maxFiles} images selected
+              {selectedFiles.length} of {maxFiles} files selected
             </span>
             
             {!isUploading ? (
               <button
                 type="button"
-                onClick={uploadImages}
+                onClick={uploadFiles}
                 className="px-3 py-1 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 flex items-center"
-                disabled={selectedImages.length === 0}
+                disabled={selectedFiles.length === 0}
               >
                 <Upload size={14} className="mr-1" />
                 Upload All
@@ -209,26 +195,28 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
           className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 ${isDragActive ? 'bg-blue-50 border-blue-400' : 'border-gray-300'}`}
         >
           <input {...getInputProps()} />
-          <Image className="mx-auto h-12 w-12 text-gray-400" />
+          <FileIcon className="mx-auto h-12 w-12 text-gray-400" />
           <div className="mt-2 text-sm text-gray-600">
             <p className="font-medium text-blue-600 hover:text-blue-500">
-              {isDragActive ? "Drop the images here ..." : "Upload images or drag and drop"}
+              {isDragActive ? "Drop the files here ..." : "Upload documents or drag and drop"}
             </p>
-            <p className="text-xs mt-1">PNG, JPG, GIF up to {maxSizeMB}MB (max {maxFiles} files)</p>
+            <p className="text-xs mt-1">
+              {allowedFileTypes.join(', ').toUpperCase()} up to {maxSizeMB}MB (max {maxFiles} files)
+            </p>
           </div>
         </div>
       )}
       
       <input
         ref={fileInputRef}
-        id="image-upload"
-        name="images"
+        id="file-upload"
+        name="files"
         type="file"
-        accept="image/*"
+        accept={allowedFileTypes.map(t => `.${t}`).join(',')}
         multiple
         className="hidden"
-        onChange={handleImageSelect}
-        disabled={isUploading || selectedImages.length >= maxFiles}
+        onChange={handleFileSelect}
+        disabled={isUploading || selectedFiles.length >= maxFiles}
       />
       
       {error && (
@@ -241,4 +229,4 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   );
 };
 
-export default ImageUploader; 
+export default FileUploader; 
