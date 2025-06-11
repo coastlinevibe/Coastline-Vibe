@@ -1678,35 +1678,49 @@ export default function FeedPage() {
               <span>/{MAX_POST_LENGTH} characters</span>
             </div>
         
-        {/* Image preview area */}
-          {mediaState.images.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-              {mediaState.images.map((url, index) => (
-              <div key={index} className="relative">
-                <img 
-                  src={url} 
-                  alt={`Preview ${index}`} 
-                    className="h-20 w-20 object-cover rounded"
-                />
-                <button
-                  type="button"
+            {/* Media preview area */}
+            <div className="mt-3 flex flex-wrap gap-2">
+                {/* Image Previews */}
+                {mediaState.images.map((url, index) => (
+                <div key={index} className="relative">
+                  <img 
+                    src={url} 
+                    alt={`Preview ${index}`} 
+                    className="h-24 w-24 object-cover rounded-md"
+                  />
+                  <button
+                    type="button"
                     onClick={() => {
-                      // Remove image from state and revoke URL
-                      const urlToRevoke = mediaState.images[index];
-                      setMediaState(prev => ({
-                        ...prev,
-                        images: prev.images.filter((_, i) => i !== index)
-                      }));
-                      URL.revokeObjectURL(urlToRevoke);
+                      setMediaState(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
                     }}
-                    className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 transform translate-x-1/3 -translate-y-1/3"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+                    className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 leading-none transform translate-x-1/2 -translate-y-1/2 hover:bg-red-600"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+
+                {/* Video Preview */}
+                {mediaState.video && (
+                <div className="relative">
+                  <video 
+                    src={`${mediaState.video}#t=0.1`}
+                    preload="metadata"
+                    className="h-24 w-24 object-cover rounded-md bg-black"
+                  />
+                  <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center rounded-md">
+                    <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path></svg>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMediaState(prev => ({ ...prev, video: null }))}
+                    className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 leading-none transform translate-x-1/2 -translate-y-1/2 hover:bg-red-600"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
         
         <div className="flex justify-between items-center mt-3">
             <div className="flex space-x-2">
@@ -1974,24 +1988,6 @@ export default function FeedPage() {
                           controls
                           className="w-full rounded-lg max-h-[400px]"
                         />
-                      </div>
-                    )}
-                    
-                    {post.video_url && (
-                      <div className="mt-3 rounded-lg overflow-hidden relative">
-                        <video
-                          src={`${post.video_url}#t=0.1`}
-                          className="w-full h-auto max-h-[400px] object-contain bg-black rounded-md"
-                          preload="metadata"
-                          muted
-                          playsInline
-                          onClick={(e) => (e.currentTarget as HTMLVideoElement).play()}
-                        />
-                         <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 pointer-events-none">
-                              <div className="text-white bg-black bg-opacity-50 rounded-full p-3">
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                              </div>
-                          </div>
                       </div>
                     )}
                     
