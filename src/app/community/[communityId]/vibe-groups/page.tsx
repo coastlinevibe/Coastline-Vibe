@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { VibeGroup } from '@/types/vibe-groups';
 import VibeGroupFilters, { VibeGroupVisibilityFilter } from '@/components/feed/VibeGroupFilters';
 import { VibeGroupsClient } from '@/lib/supabase/vibe-groups-client';
@@ -17,7 +17,10 @@ export default function VibeGroupsPage() {
   const [error, setError] = useState<string | null>(null);
   const [communityId, setCommunityId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<VibeGroupVisibilityFilter>('all');
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const vibeGroupsClient = useRef(new VibeGroupsClient()).current;
 
   // First fetch the community ID from the slug

@@ -4,8 +4,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client'
 import type { Database } from '@/types/supabase';
-import { ShieldAlert, ShieldCheck } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, Sailboat, Mail, CalendarDays } from 'lucide-react';
 import { useParams } from 'next/navigation';
+import { formatDistanceToNow } from 'date-fns';
 
 interface UserProfilePageProps {
   params: {
@@ -21,6 +22,10 @@ interface ProfileData {
   bio: string | null;
   is_banned: boolean;
   ban_reason?: string;
+  email?: string | null;
+  created_at?: string | null;
+  is_location_verified?: boolean | null;
+  last_seen_at?: string | null;
 }
 
 interface CurrentAdminContext {
@@ -133,7 +138,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
     try {
       const { data, error: fetchError } = await supabase
         .from('profiles')
-        .select('id, username, avatar_url, role, bio, is_banned')
+        .select('id, username, avatar_url, role, bio, is_banned, ban_reason, email, created_at, is_location_verified, last_seen_at')
         .eq('id', viewedUserId)
         .single();
 
@@ -385,6 +390,19 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
     return <div className="container mx-auto p-4 text-center">Profile not found.</div>;
   }
 
+  // Helper function to check if user is online (similar to UserTooltipDisplay)
+  const calculateIsOnline = (userId: string, lastSeenAt?: string | null): boolean => {
+    // If this is the current user, always show as online
+    if (currentUserId && userId === currentUserId) return true;
+    
+    if (!lastSeenAt) return false;
+    const lastSeenDate = new Date(lastSeenAt);
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    return lastSeenDate > fiveMinutesAgo;
+  };
+
+  const isOnline = calculateIsOnline(profile.id, profile.last_seen_at);
+
   return (
     <div className="container mx-auto p-4 max-w-2xl">
       <div className="bg-white shadow-md rounded-lg p-6">
@@ -402,15 +420,26 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
                 alt={profile.username || 'User avatar'}
                 width={150}
                 height={150}
-                className="rounded-full mr-0 md:mr-6 mb-4 md:mb-0"
+                className="rounded-full mr-0 md:mr-6 mb-4 md:mb-0 border-4 border-blue-600"
               />
             ) : (
-              <div className="w-36 h-36 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 text-4xl mb-4 md:mb-0 md:mr-6">
+              <div className="w-36 h-36 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 text-4xl mb-4 md:mb-0 md:mr-6 border-4 border-blue-600">
                 {profile.username ? profile.username.charAt(0).toUpperCase() : 'U'}
               </div>
             )}
             <div className="text-center md:text-left">
-              <h1 className="text-3xl font-bold text-gray-800">{profile.username || 'User'}</h1>
+              <div className="flex items-center">
+                <h1 className="text-3xl font-bold text-gray-800">{profile.username || 'User'}</h1>
+                <div className={`flex items-center ml-3 text-sm ${isOnline ? 'text-green-600' : 'text-gray-400'}`}>
+                  <Sailboat size={18} className="mr-1.5" />
+                  <span>{isOnline ? 'Online' : 'Offline'}</span>
+                </div>
+                {profile.is_location_verified && (
+                  <span title="Verified Resident" className="ml-2">
+                    <ShieldCheck size={20} className="text-blue-600" />
+                  </span>
+                )}
+              </div>
               {profile.username && <p className="text-md text-gray-500">@{profile.username}</p>}
               {profile.role && (
                 <p className="text-sm text-gray-600 mt-1 bg-gray-100 px-2 py-0.5 rounded inline-block capitalize">
@@ -421,6 +450,24 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
                 <p className="text-sm text-red-600 mt-1">
                   Reason: {profile.ban_reason}
                 </p>
+              )}
+              
+              {/* Email */}
+              {profile.email && (
+                <div className="flex items-center text-sm text-gray-600 mt-2">
+                  <Mail size={14} className="mr-2 text-blue-600" />
+                  <span>{profile.email}</span>
+                </div>
+              )}
+              
+              {/* Join date */}
+              {profile.created_at && (
+                <div className="flex items-center text-sm text-gray-600 mt-2">
+                  <CalendarDays size={14} className="mr-2 text-blue-600" />
+                  <span>
+                    Joined {formatDistanceToNow(new Date(profile.created_at), { addSuffix: true })}
+                  </span>
+                </div>
               )}
             </div>
           </div>

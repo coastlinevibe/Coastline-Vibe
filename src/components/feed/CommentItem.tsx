@@ -13,7 +13,9 @@ import {
   Send,
   Heart,
   ShieldCheck,
-  Sailboat
+  Sailboat,
+  MessageSquare,
+  Reply
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { renderFormattedText } from '@/utils/textProcessing';
@@ -416,9 +418,10 @@ export default function CommentItem({
               {onReplySubmit && depth < 3 && (
                 <button 
                   onClick={handleToggleReplyForm}
-                  className="text-xs text-cyan-600 hover:text-cyan-700 font-medium self-end flex items-center"
+                  className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center transition-colors"
                 >
-                  {showReplyForm ? 'Cancel Reply' : 'Reply'}
+                  <Reply size={14} className="mr-1" />
+                  {showReplyForm ? 'Cancel' : 'Reply'}
                 </button>
               )}
             </div>

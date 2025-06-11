@@ -2,6 +2,7 @@ import type { Config } from "tailwindcss";
 import defaultTheme from "tailwindcss/defaultTheme";
 
 const config = {
+  darkMode: ["class"],
   content: [
     './pages/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
@@ -125,12 +126,18 @@ const config = {
             animationTimingFunction: "cubic-bezier(0,0,0.2,1)",
           },
         },
+        "reaction-float": {
+          "0%": { opacity: "1", transform: "translateY(0) scale(1)" },
+          "50%": { opacity: "0.8", transform: "translateY(-30px) scale(1.2)" },
+          "100%": { opacity: "0", transform: "translateY(-60px) scale(0.8)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "bounce-slow": "bounce-slow 3s infinite",
         "bounce-gentle": "bounce-gentle 3s infinite",
+        "reaction-float": "reaction-float 3s ease-out forwards",
       },
     },
   },

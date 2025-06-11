@@ -2,14 +2,17 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import UserTooltipDisplay, { type UserTooltipProfileData } from './UserTooltipDisplay';
+import { useRouter } from 'next/navigation';
 
 interface UserTooltipWrapperProps {
   children: React.ReactNode;
   profileData: UserTooltipProfileData | null; // Allow null if data might be missing
   delay?: number; // Optional delay before showing tooltip
+  currentUserId?: string | null; // Add current user ID
 }
 
-const UserTooltipWrapper: React.FC<UserTooltipWrapperProps> = ({ children, profileData, delay = 200 }) => {
+const UserTooltipWrapper: React.FC<UserTooltipWrapperProps> = ({ children, profileData, delay = 200, currentUserId }) => {
+  const router = useRouter();
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const hoverTimeoutRef = useRef<number | null>(null);
   const leaveTimeoutRef = useRef<number | null>(null);
@@ -52,6 +55,12 @@ const UserTooltipWrapper: React.FC<UserTooltipWrapperProps> = ({ children, profi
     }, 150);
   };
 
+  const handleClick = () => {
+    if (profileData?.id) {
+      router.push(`/profile/${profileData.id}`);
+    }
+  };
+
   if (!profileData) {
     // If no profile data, just render children without tooltip functionality
     // Or, you could render a placeholder/loader, but the strategy is to have data ready
@@ -63,6 +72,8 @@ const UserTooltipWrapper: React.FC<UserTooltipWrapperProps> = ({ children, profi
       className="relative inline-block" 
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
+      style={{ cursor: 'pointer' }}
     >
       {children}
       {isTooltipVisible && (
@@ -70,7 +81,7 @@ const UserTooltipWrapper: React.FC<UserTooltipWrapperProps> = ({ children, profi
           onMouseEnter={handleTooltipMouseEnter} 
           onMouseLeave={handleTooltipMouseLeave}
         >
-          <UserTooltipDisplay profile={profileData} />
+          <UserTooltipDisplay profile={profileData} currentUserId={currentUserId} />
         </div>
       )}
     </div>

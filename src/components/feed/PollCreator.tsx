@@ -3,9 +3,6 @@
 import React, { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Plus, Trash2, Loader2, Calendar, Tag, X } from 'lucide-react';
-import PoliteRewriter from './PoliteRewriter';
-import ContentSuggestions from './ContentSuggestions';
-import KindnessReminder from './KindnessReminder';
 
 interface PollCreatorProps {
   communityId: string;
@@ -29,9 +26,6 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
-  
-  // Add state to track if AI features are actively processing
-  const [isAiProcessing, setIsAiProcessing] = useState(false);
 
   const handleAddOption = () => {
     setOptions([...options, '']);
@@ -74,28 +68,6 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
       setShowTagSuggestions(false);
     }
   };
-  
-  // Handle polite rewriting for poll question
-  const handleRewriteQuestion = (rewrittenText: string) => {
-    setQuestion(rewrittenText);
-  };
-  
-  // Handle polite rewriting for poll options
-  const handleRewriteOption = (index: number, rewrittenText: string) => {
-    const newOptions = [...options];
-    newOptions[index] = rewrittenText;
-    setOptions(newOptions);
-  };
-  
-  // Handle content suggestions for poll question
-  const handleSelectSuggestion = (suggestion: string) => {
-    setQuestion(suggestion);
-  };
-  
-  // Handle kindness reminders
-  const handleContentChange = (newContent: string) => {
-    setQuestion(newContent);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,10 +79,15 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
       return;
     }
 
-    // Filter out empty options and check if we have at least 2
-    const validOptions = options.filter(opt => opt.trim() !== '');
-    if (validOptions.length < 2) {
-      setError('Polls must have at least 2 non-empty options');
+    // Check if any options are empty
+    if (options.some(opt => opt.trim() === '')) {
+      setError('All options must be filled');
+      return;
+    }
+
+    // Check if we have at least 2 options
+    if (options.length < 2) {
+      setError('Polls must have at least 2 options');
       return;
     }
 
@@ -174,9 +151,9 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
       }
 
       // 3. Create poll options
-      const optionsToInsert = validOptions.map(optionText => ({
+      const optionsToInsert = options.map(optionText => ({
         poll_id: pollData.id,
-        option_text: optionText
+        option_text: optionText.trim()
       }));
 
       const { error: optionsError } = await supabase
@@ -217,44 +194,19 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
       <h3 className="text-lg font-semibold mb-2">Create a Poll</h3>
       
       <form onSubmit={handleSubmit}>
-        {/* Kindness reminder will appear if needed */}
-        <KindnessReminder 
-          content={question} 
-          onContentChange={handleContentChange} 
-          disabled={isCreating || isAiProcessing}
-        />
-      
         <div className="mb-4">
           <label htmlFor="pollQuestion" className="block text-sm font-medium mb-1">
             Question
           </label>
-          <div className="relative">
-            <input
-              id="pollQuestion"
-              type="text"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask a question..."
-              className="w-full p-2 border border-gray-300 rounded-md"
-              disabled={isCreating || isAiProcessing}
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2">
-              <PoliteRewriter
-                originalText={question}
-                onRewritten={handleRewriteQuestion}
-                disabled={isCreating || isAiProcessing}
-              />
-            </div>
-          </div>
-          
-          {/* Content suggestions */}
-          <div className="mt-1">
-            <ContentSuggestions
-              inputText={question}
-              onSelectSuggestion={handleSelectSuggestion}
-              disabled={isCreating || isAiProcessing}
-            />
-          </div>
+          <input
+            id="pollQuestion"
+            type="text"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Ask a question..."
+            className="w-full p-2 border border-gray-300 rounded-md"
+            disabled={isCreating}
+          />
         </div>
 
         <div className="mb-4">
@@ -263,30 +215,19 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
           </label>
           {options.map((option, index) => (
             <div key={index} className="flex items-center mb-2">
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  value={option}
-                  onChange={(e) => handleOptionChange(index, e.target.value)}
-                  placeholder={`Option ${index + 1}`}
-                  className="w-full p-2 border border-gray-300 rounded-md mr-2"
-                  disabled={isCreating || isAiProcessing}
-                />
-                {option.trim() && (
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2">
-                    <PoliteRewriter
-                      originalText={option}
-                      onRewritten={(text) => handleRewriteOption(index, text)}
-                      disabled={isCreating || isAiProcessing}
-                    />
-                  </div>
-                )}
-              </div>
+              <input
+                type="text"
+                value={option}
+                onChange={(e) => handleOptionChange(index, e.target.value)}
+                placeholder={`Option ${index + 1}`}
+                className="flex-1 p-2 border border-gray-300 rounded-md mr-2"
+                disabled={isCreating}
+              />
               <button
                 type="button"
                 onClick={() => handleRemoveOption(index)}
                 className="p-1 text-red-500 hover:text-red-700"
-                disabled={options.length <= 2 || isCreating || isAiProcessing}
+                disabled={options.length <= 2 || isCreating}
               >
                 <Trash2 size={18} />
               </button>
@@ -297,7 +238,7 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
             type="button"
             onClick={handleAddOption}
             className="flex items-center text-blue-500 hover:text-blue-700 mt-2"
-            disabled={isCreating || isAiProcessing}
+            disabled={isCreating}
           >
             <Plus size={18} className="mr-1" />
             <span>Add Option</span>
@@ -312,10 +253,10 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
               checked={hasExpiration}
               onChange={(e) => setHasExpiration(e.target.checked)}
               className="mr-2"
-              disabled={isCreating || isAiProcessing}
+              disabled={isCreating}
             />
             <label htmlFor="hasExpiration" className="text-sm font-medium">
-              Set expiration date
+              Set poll expiration date
             </label>
           </div>
           
@@ -323,20 +264,20 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
             <div className="flex items-center">
               <Calendar size={18} className="mr-2 text-gray-500" />
               <input
-                type="date"
+                type="datetime-local"
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
                 min={minDate}
                 className="p-2 border border-gray-300 rounded-md"
-                disabled={isCreating || isAiProcessing}
+                disabled={isCreating}
               />
             </div>
           )}
         </div>
-        
+
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">
-            Tags (Optional)
+            Tags
           </label>
           <div className="relative">
             <div className="flex items-center">
@@ -352,14 +293,14 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
                 onFocus={() => setShowTagSuggestions(true)}
                 placeholder="Add tags (press Enter)"
                 className="flex-1 p-2 border border-gray-300 rounded-md"
-                disabled={isCreating || isAiProcessing}
+                disabled={isCreating}
               />
               {tagInput && (
                 <button
                   type="button"
                   onClick={() => handleAddTag(tagInput)}
                   className="ml-2 px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                  disabled={isCreating || isAiProcessing}
+                  disabled={isCreating}
                 >
                   Add
                 </button>
@@ -395,7 +336,7 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
                     type="button"
                     onClick={() => handleRemoveTag(tag)}
                     className="ml-1 text-blue-600 hover:text-blue-800"
-                    disabled={isCreating || isAiProcessing}
+                    disabled={isCreating}
                   >
                     <X size={12} />
                   </button>
@@ -414,7 +355,7 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
         <button
           type="submit"
           className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 flex items-center justify-center"
-          disabled={isCreating || isAiProcessing}
+          disabled={isCreating}
         >
           {isCreating ? (
             <>

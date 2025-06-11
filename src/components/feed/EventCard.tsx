@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Calendar, Clock, MapPin, Users, ExternalLink, Calendar as CalendarIcon, Flag, XSquare } from 'lucide-react';
+import { Calendar, Clock, MapPin, Users, ExternalLink, CheckCircle, CalendarPlus } from 'lucide-react';
 import { formatDistanceToNow, format, parseISO } from 'date-fns';
 
 interface EventCardProps {
@@ -16,10 +16,6 @@ const EventCard: React.FC<EventCardProps> = ({ postId }) => {
   const [error, setError] = useState<string | null>(null);
   const [attending, setAttending] = useState(false);
   const [attendeeCount, setAttendeeCount] = useState(0);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reportReason, setReportReason] = useState('');
-  const [reportError, setReportError] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -53,7 +49,7 @@ const EventCard: React.FC<EventCardProps> = ({ postId }) => {
             .select('*')
             .eq('post_id', postId)
             .eq('user_id', user.id)
-            .maybeSingle();
+            .single();
           
           setAttending(!!attendeeData);
         }
@@ -76,17 +72,6 @@ const EventCard: React.FC<EventCardProps> = ({ postId }) => {
     
     fetchEvent();
   }, [postId, supabase]);
-
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        setCurrentUserId(data.user.id);
-      }
-    };
-
-    fetchCurrentUser();
-  }, [supabase]);
 
   const handleToggleAttending = async () => {
     try {
@@ -124,28 +109,42 @@ const EventCard: React.FC<EventCardProps> = ({ postId }) => {
     }
   };
 
-  const handleReport = async () => {
-    if (!currentUserId) {
-      setReportError("You must be logged in to report events");
-      return;
-    }
+  const handleAddToCalendar = () => {
+    if (!startTime) return;
     
-    try {
-      const { error } = await supabase.from('post_reports').insert({
-        reported_content_id: postId,
-        content_type: 'event',
-        reason: reportReason,
-        reporter_user_id: currentUserId,
-        community_id: event?.community_id,
-      });
-      if (error) throw error;
-      setShowReportModal(false);
-      setReportReason('');
-      alert('Event reported successfully. Our team will review it.');
-    } catch (error) {
-      console.error("Error reporting event:", error);
-      setReportError("Failed to submit report. Please try again.");
-    }
+    // Format dates for iCalendar
+    const formatICalDate = (date: Date) => {
+      return date.toISOString().replace(/-|:|\.\d+/g, '');
+    };
+    
+    const start = formatICalDate(startTime);
+    const end = endTime ? formatICalDate(endTime) : formatICalDate(new Date(startTime.getTime() + 60 * 60 * 1000)); // Default to 1 hour later
+    
+    // Create iCalendar content
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'CALSCALE:GREGORIAN',
+      'BEGIN:VEVENT',
+      `SUMMARY:${event.title}`,
+      `DTSTART:${start}`,
+      `DTEND:${end}`,
+      `LOCATION:${location || 'Not specified'}`,
+      `DESCRIPTION:${event.content || 'No description provided'}`,
+      'STATUS:CONFIRMED',
+      'SEQUENCE:0',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\r\n');
+    
+    // Create a Blob and download link
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${event.title.replace(/\s+/g, '-')}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (loading) {
@@ -187,21 +186,9 @@ const EventCard: React.FC<EventCardProps> = ({ postId }) => {
     : null;
 
   return (
-    <>
-      <div className="bg-white rounded-lg p-4 border border-gray-200">
-        <div className="mb-3 flex justify-between items-start">
-          <h3 className="text-xl font-semibold mb-1">{event.title}</h3>
-          {currentUserId && event.user_id !== currentUserId && (
-            <button 
-              onClick={() => setShowReportModal(true)} 
-              className="text-gray-500 hover:text-red-500"
-              title="Report event"
-            >
-              <Flag size={16} />
-            </button>
-          )}
-        </div>
-
+    <div className="bg-white rounded-lg p-4 border border-gray-200">
+      <div className="mb-3">
+        <h3 className="text-xl font-semibold mb-1">{event.title}</h3>
         <div className="text-sm text-gray-500 flex items-center">
           <span>Posted by {event.profiles?.username || 'Anonymous'}</span>
           {isUpcoming && (
@@ -210,73 +197,75 @@ const EventCard: React.FC<EventCardProps> = ({ postId }) => {
             </span>
           )}
         </div>
+      </div>
 
-        {event.content && (
-          <div className="mb-4 text-gray-700">
-            {event.content}
-          </div>
-        )}
-
-        <div className="bg-gray-50 rounded-lg p-3 mb-4">
-          <div className="flex items-center mb-2">
-            <Calendar className="text-blue-500 mr-2" size={18} />
-            <div>
-              <div>{formattedStartDate}</div>
-              {formattedEndDate && (
-                <div className="text-sm text-gray-500">to {formattedEndDate}</div>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex items-center mb-2">
-            <Clock className="text-blue-500 mr-2" size={18} />
-            <div>
-              {formattedStartTime}
-              {formattedEndTime && ` - ${formattedEndTime}`}
-            </div>
-          </div>
-          
-          {isVirtual ? (
-            <div className="flex items-center">
-              <ExternalLink className="text-blue-500 mr-2" size={18} />
-              <a 
-                href={virtualLink} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
-              >
-                {virtualLink}
-              </a>
-            </div>
-          ) : location ? (
-            <div className="flex items-center">
-              <MapPin className="text-blue-500 mr-2" size={18} />
-              <span>{location}</span>
-            </div>
-          ) : null}
+      {event.content && (
+        <div className="mb-4 text-gray-700">
+          {event.content}
         </div>
+      )}
 
-        {event.hashtags && event.hashtags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-4">
-            {event.hashtags.map((tag: string) => (
-              <span 
-                key={tag} 
-                className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs"
-              >
-                #{tag}
-              </span>
-            ))}
+      <div className="bg-gray-50 rounded-lg p-3 mb-4">
+        <div className="flex items-center mb-2">
+          <Calendar className="text-blue-500 mr-2" size={18} />
+          <div>
+            <div>{formattedStartDate}</div>
+            {formattedEndDate && (
+              <div className="text-sm text-gray-500">to {formattedEndDate}</div>
+            )}
           </div>
-        )}
-
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+        </div>
+        
+        <div className="flex items-center mb-2">
+          <Clock className="text-blue-500 mr-2" size={18} />
+          <div>
+            {formattedStartTime}
+            {formattedEndTime && ` - ${formattedEndTime}`}
+          </div>
+        </div>
+        
+        {isVirtual ? (
           <div className="flex items-center">
-            <Users className="text-blue-500 mr-1" size={18} />
-            <span className="text-sm">
-              {attendeeCount} {attendeeCount === 1 ? 'person' : 'people'} attending
-            </span>
+            <ExternalLink className="text-blue-500 mr-2" size={18} />
+            <a 
+              href={virtualLink} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              {virtualLink}
+            </a>
           </div>
-          
+        ) : location ? (
+          <div className="flex items-center">
+            <MapPin className="text-blue-500 mr-2" size={18} />
+            <span>{location}</span>
+          </div>
+        ) : null}
+      </div>
+
+      {event.hashtags && event.hashtags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-4">
+          {event.hashtags.map((tag: string) => (
+            <span 
+              key={tag} 
+              className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs"
+            >
+              #{tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+        <div className="flex items-center">
+          <Users className="text-blue-500 mr-1" size={18} />
+          <span className="text-sm">
+            {attendeeCount} {attendeeCount === 1 ? 'person' : 'people'} {attendeeCount === 1 ? 'is' : 'are'} going
+          </span>
+        </div>
+        
+        <div className="flex items-center gap-2">
           <button
             onClick={handleToggleAttending}
             className={`px-3 py-1 rounded-md text-sm flex items-center ${
@@ -285,41 +274,21 @@ const EventCard: React.FC<EventCardProps> = ({ postId }) => {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            <CalendarIcon size={16} className="mr-1" />
-            {attending ? 'Attending' : 'Attend'}
+            <CheckCircle size={16} className="mr-1" />
+            {attending ? 'You\'re going' : 'RSVP'}
+          </button>
+          
+          <button
+            onClick={handleAddToCalendar}
+            title="Add to calendar"
+            className="px-3 py-1 rounded-md text-sm flex items-center bg-green-100 text-green-700 hover:bg-green-200"
+          >
+            <CalendarPlus size={16} className="mr-1" />
+            <span>Add to calendar</span>
           </button>
         </div>
       </div>
-
-      {/* Report Modal */}
-      {showReportModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowReportModal(false)}>
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Report Event</h3>
-              <button onClick={() => setShowReportModal(false)} className="text-gray-400 hover:text-gray-600">
-                <XSquare size={20}/>
-              </button>
-            </div>
-            <textarea
-              className="w-full p-2 border rounded mb-4 bg-white text-black border-gray-300 placeholder-gray-400"
-              rows={3}
-              placeholder="Please provide a reason for reporting this event..."
-              value={reportReason}
-              onChange={(e) => setReportReason(e.target.value)}
-              autoFocus
-            />
-            {reportError && <p className="text-xs text-red-500 mb-3">{reportError}</p>}
-            <div className="flex justify-end space-x-3">
-              <button onClick={() => { setShowReportModal(false); setReportReason(''); setReportError(null); }} className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-md text-gray-800">Cancel</button>
-              <button onClick={handleReport} className="px-4 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-md flex items-center" disabled={!reportReason.trim()}>
-                Submit Report
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 };
 

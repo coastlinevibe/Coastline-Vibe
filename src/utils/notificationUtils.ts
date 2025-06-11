@@ -136,4 +136,33 @@ export const createMentionNotification = async (
     postId,
     `${actorUsername} mentioned you in a ${isComment ? 'comment' : 'post'}.`
   );
+};
+
+/**
+ * Create a poll vote notification
+ * @param pollOwnerId The ID of the poll owner
+ * @param actorUserId The ID of the user who voted on the poll
+ * @param pollId The ID of the poll that was voted on
+ * @param postId The ID of the post containing the poll
+ * @param communityId The ID of the community
+ * @param actorUsername The username of the actor
+ * @returns The created notification or null if there was an error
+ */
+export const createPollVoteNotification = async (
+  pollOwnerId: string,
+  actorUserId: string,
+  pollId: string,
+  postId: string,
+  communityId: string,
+  actorUsername: string
+) => {
+  return createNotification(
+    pollOwnerId,
+    actorUserId,
+    communityId,
+    'poll',
+    'posts',
+    postId,
+    `${actorUsername} voted on your poll.`,
+  );
 }; 

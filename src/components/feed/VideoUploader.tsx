@@ -7,22 +7,16 @@ import { useDropzone } from 'react-dropzone';
 
 interface VideoUploaderProps {
   onVideoUploaded: (videoUrl: string) => void;
-  onVideoSelected?: (file: File, previewUrl: string) => void;
-  onVideoRemoved?: () => void;
   onError?: (error: string) => void;
   maxSizeMB?: number;
   initialFiles?: File[];
-  communityId: string;
 }
 
 const VideoUploader: React.FC<VideoUploaderProps> = ({ 
-  onVideoUploaded,
-  onVideoSelected,
-  onVideoRemoved,
+  onVideoUploaded, 
   onError,
   maxSizeMB = 50,
-  initialFiles = [],
-  communityId
+  initialFiles = []
 }) => {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +53,6 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     
     const objectUrl = URL.createObjectURL(file);
     setPreviewUrl(objectUrl);
-    onVideoSelected?.(file, objectUrl);
   };
   
   const onDrop = (acceptedFiles: File[]) => {
@@ -93,7 +86,6 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    onVideoRemoved?.();
   };
   
   const uploadVideo = async () => {
@@ -105,7 +97,7 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     try {
       const fileExt = selectedVideo.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-      const filePath = `${communityId}/${fileName}`;
+      const filePath = `${fileName}`;
       
       const { data, error } = await supabase.storage
         .from('feedpostvideos')

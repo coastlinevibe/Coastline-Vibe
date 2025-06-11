@@ -1104,6 +1104,97 @@ export default function CommunityAdminDashboard() {
                 )}
               </div>
             )}
+            
+            {/* Reports Tab Content */}
+            {approvalsTab === 'reports' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-red-900">Post Reports</h3>
+                {reports.length === 0 ? (
+                  <p className="text-gray-600">No reported posts to review.</p>
+                ) : (
+                  <ul className="divide-y divide-gray-200">
+                    {reports.map((report) => (
+                      <li key={report.id} className="py-4 px-4 bg-white rounded-lg shadow-sm mb-4 border-l-4 border-red-500">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="font-medium text-red-800">Report #{report.id.substring(0, 8)}</h4>
+                            <p className="text-xs text-gray-500">
+                              Reported {new Date(report.created_at).toLocaleString()} by {report.reporter_username}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleDismissReport(report.id)} 
+                              className="bg-gray-200 text-gray-800 px-3 py-1 rounded-md hover:bg-gray-300 text-sm"
+                            >
+                              Dismiss
+                            </button>
+                            <button 
+                              onClick={() => {
+                                // Handle delete post
+                                handleDeletePost(report.post_id);
+                                handleDismissReport(report.id);
+                              }} 
+                              className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600 text-sm"
+                            >
+                              Delete Post
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-red-50 p-3 rounded-md mb-3">
+                          <div className="flex items-center mb-1">
+                            <span className="font-medium text-red-800 mr-2">Reason:</span>
+                            <span className="text-red-700 bg-red-100 px-2 py-0.5 rounded-full text-xs">
+                              {report.reason}
+                            </span>
+                          </div>
+                          {report.details && (
+                            <div className="text-sm text-gray-700">
+                              <span className="font-medium">Details:</span> {report.details}
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="bg-gray-50 p-3 rounded-md">
+                          <div className="mb-2">
+                            <span className="font-medium text-gray-700">Post by:</span> 
+                            <span className="ml-1">{report.post_author_username}</span>
+                          </div>
+                          
+                          <div className="mb-2">
+                            <span className="font-medium text-gray-700">Post title:</span>
+                            <div className="ml-1 text-gray-800">{report.post_title}</div>
+                          </div>
+                          
+                          <div>
+                            <span className="font-medium text-gray-700">Post content:</span>
+                            <div className="ml-1 text-gray-800 whitespace-pre-wrap mt-1 border-l-2 border-gray-200 pl-3">
+                              {report.post_content?.substring(0, 200)}
+                              {report.post_content && report.post_content.length > 200 ? '...' : ''}
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3">
+                            <a 
+                              href={`/community/${communityUuid}/feed?post=${report.post_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer" 
+                              className="text-blue-600 hover:underline text-sm flex items-center"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              View Full Post
+                            </a>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
                 </div>
         </>
       </div>

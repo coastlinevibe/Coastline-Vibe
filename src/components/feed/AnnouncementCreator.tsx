@@ -3,9 +3,6 @@
 import React, { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Megaphone, Loader2, Calendar } from 'lucide-react';
-import PoliteRewriter from './PoliteRewriter';
-import ContentSuggestions from './ContentSuggestions';
-import KindnessReminder from './KindnessReminder';
 
 interface AnnouncementCreatorProps {
   communityId: string;
@@ -21,9 +18,6 @@ const AnnouncementCreator: React.FC<AnnouncementCreatorProps> = ({ communityId, 
   const [hasExpiration, setHasExpiration] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Add state to track if AI features are actively processing
-  const [isAiProcessing, setIsAiProcessing] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,26 +82,6 @@ const AnnouncementCreator: React.FC<AnnouncementCreatorProps> = ({ communityId, 
       setIsCreating(false);
     }
   };
-  
-  // Handle polite rewriting for title
-  const handleRewriteTitle = (rewrittenText: string) => {
-    setTitle(rewrittenText);
-  };
-  
-  // Handle polite rewriting for content
-  const handleRewriteContent = (rewrittenText: string) => {
-    setContent(rewrittenText);
-  };
-  
-  // Handle content suggestions
-  const handleSelectSuggestion = (suggestion: string) => {
-    setContent(suggestion);
-  };
-  
-  // Handle kindness reminders
-  const handleContentChange = (newContent: string) => {
-    setContent(newContent);
-  };
 
   // Calculate minimum date for expiration (today)
   const today = new Date();
@@ -121,68 +95,34 @@ const AnnouncementCreator: React.FC<AnnouncementCreatorProps> = ({ communityId, 
       </h3>
       
       <form onSubmit={handleSubmit}>
-        {/* Kindness reminder will appear if needed */}
-        <KindnessReminder 
-          content={content} 
-          onContentChange={handleContentChange} 
-          disabled={isCreating || isAiProcessing}
-        />
-        
         <div className="mb-4">
           <label htmlFor="announcementTitle" className="block text-sm font-medium mb-1">
             Title
           </label>
-          <div className="relative">
-            <input
-              id="announcementTitle"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Announcement title..."
-              className="w-full p-2 border border-gray-300 rounded-md"
-              disabled={isCreating || isAiProcessing}
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2">
-              <PoliteRewriter
-                originalText={title}
-                onRewritten={handleRewriteTitle}
-                disabled={isCreating || isAiProcessing}
-              />
-            </div>
-          </div>
+          <input
+            id="announcementTitle"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Announcement title..."
+            className="w-full p-2 border border-gray-300 rounded-md"
+            disabled={isCreating}
+          />
         </div>
 
         <div className="mb-4">
           <label htmlFor="announcementContent" className="block text-sm font-medium mb-1">
             Content
           </label>
-          <div className="relative">
-            <textarea
-              id="announcementContent"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Announcement details..."
-              rows={4}
-              className="w-full p-2 border border-gray-300 rounded-md"
-              disabled={isCreating || isAiProcessing}
-            />
-            <div className="absolute right-2 bottom-2">
-              <PoliteRewriter
-                originalText={content}
-                onRewritten={handleRewriteContent}
-                disabled={isCreating || isAiProcessing}
-              />
-            </div>
-          </div>
-          
-          {/* Content suggestions */}
-          <div className="mt-1">
-            <ContentSuggestions
-              inputText={content}
-              onSelectSuggestion={handleSelectSuggestion}
-              disabled={isCreating || isAiProcessing}
-            />
-          </div>
+          <textarea
+            id="announcementContent"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="Announcement details..."
+            rows={4}
+            className="w-full p-2 border border-gray-300 rounded-md"
+            disabled={isCreating}
+          />
         </div>
 
         <div className="mb-4">
@@ -193,7 +133,7 @@ const AnnouncementCreator: React.FC<AnnouncementCreatorProps> = ({ communityId, 
               checked={isImportant}
               onChange={(e) => setIsImportant(e.target.checked)}
               className="mr-2"
-              disabled={isCreating || isAiProcessing}
+              disabled={isCreating}
             />
             <label htmlFor="isImportant" className="text-sm font-medium">
               Mark as important
@@ -207,7 +147,7 @@ const AnnouncementCreator: React.FC<AnnouncementCreatorProps> = ({ communityId, 
               checked={hasExpiration}
               onChange={(e) => setHasExpiration(e.target.checked)}
               className="mr-2"
-              disabled={isCreating || isAiProcessing}
+              disabled={isCreating}
             />
             <label htmlFor="hasExpiration" className="text-sm font-medium">
               Set expiration date
@@ -223,7 +163,7 @@ const AnnouncementCreator: React.FC<AnnouncementCreatorProps> = ({ communityId, 
                 onChange={(e) => setExpiresAt(e.target.value)}
                 min={minDate}
                 className="p-2 border border-gray-300 rounded-md"
-                disabled={isCreating || isAiProcessing}
+                disabled={isCreating}
               />
             </div>
           )}
@@ -238,7 +178,7 @@ const AnnouncementCreator: React.FC<AnnouncementCreatorProps> = ({ communityId, 
         <button
           type="submit"
           className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 flex items-center justify-center"
-          disabled={isCreating || isAiProcessing}
+          disabled={isCreating}
         >
           {isCreating ? (
             <>

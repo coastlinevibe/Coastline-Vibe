@@ -59,7 +59,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         <input
           type="text"
           className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5"
-          placeholder="Search posts, hashtags, or users..."
+          placeholder="Search by keyword or Type #,@ tag & press Enter"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onFocus={() => setIsFocused(true)}

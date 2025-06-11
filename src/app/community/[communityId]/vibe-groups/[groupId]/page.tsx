@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { VibeGroupWithDetails, VibeGroupMessage } from '@/types/vibe-groups';
 import { VibeGroupsClient } from '@/lib/supabase/vibe-groups-client';
 
@@ -16,7 +16,10 @@ export default function VibeGroupDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState('');
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const vibeGroupsClient = useRef(new VibeGroupsClient()).current;
   
   // Fetch group details and messages

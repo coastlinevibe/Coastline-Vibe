@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 
 interface HashtagTextProps {
   content: string;
@@ -10,8 +11,10 @@ interface HashtagTextProps {
 const HashtagText: React.FC<HashtagTextProps> = ({ content, onHashtagClick }) => {
   if (!content) return null;
   
-  // Split the content by hashtags
-  const parts = content.split(/(#\w+)/g);
+  // Split the content by hashtags and mentions
+  // This regex matches both hashtags and mentions
+  const regex = /(\B#\w+|\B@\w+)/g;
+  const parts = content.split(regex);
   
   return (
     <span>
@@ -25,6 +28,19 @@ const HashtagText: React.FC<HashtagTextProps> = ({ content, onHashtagClick }) =>
             >
               {part}
             </span>
+          );
+        } else if (part.startsWith('@')) {
+          const username = part.substring(1);
+          return (
+            <Link 
+              key={index}
+              href={`/profile/${username}`}
+              legacyBehavior={false}
+            >
+              <span className="text-cyan-600 font-semibold cursor-pointer hover:underline">
+                {part}
+              </span>
+            </Link>
           );
         }
         return <span key={index}>{part}</span>;

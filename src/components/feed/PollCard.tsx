@@ -2,15 +2,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { CheckCircle, Loader2, BarChart, Clock, Lock, AlertCircle, Tag, Flag, XSquare } from 'lucide-react';
+import { CheckCircle, Loader2, BarChart, Clock, Lock, AlertCircle, Tag } from 'lucide-react';
 import PollAnalytics from './PollAnalytics';
 import PollExport from './PollExport';
 import PollShare from './PollShare';
 
 interface PollOption {
   id: string;
-  option_text: string;
+  option_text?: string;
+  text?: string;
   vote_count?: number;
+  votes?: number;
 }
 
 interface Poll {
@@ -24,16 +26,21 @@ interface Poll {
   community_id: string;
   options: PollOption[];
   total_votes: number;
-  user_vote?: string;
+  user_vote?: string | null;
   tags?: string[] | null;
 }
 
 interface PollCardProps {
   pollId: string;
   postId: string;
+  question?: string;
+  options?: PollOption[];
+  userVote?: string | null;
+  onVote?: (optionId: string) => Promise<void>;
+  totalVotesOverall?: number;
 }
 
-const PollCard: React.FC<PollCardProps> = ({ pollId, postId }) => {
+const PollCard: React.FC<PollCardProps> = ({ pollId, postId, question, options, userVote, onVote, totalVotesOverall }) => {
   const supabase = createClient();
   const [poll, setPoll] = useState<Poll | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,9 +48,6 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId }) => {
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isClosing, setIsClosing] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reportReason, setReportReason] = useState('');
-  const [reportError, setReportError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -57,6 +61,31 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId }) => {
   }, [supabase]);
 
   useEffect(() => {
+    // If we have props passed from parent, use those instead of fetching
+    if (question && options && options.length > 0) {
+      // Create a poll object from the props
+      const constructedPoll = {
+        id: pollId,
+        question: question,
+        is_closed: false, // Default values since we don't have these from props
+        show_voter_names: false,
+        created_at: new Date().toISOString(),
+        created_by_user_id: '',
+        community_id: '',
+        options: options.map(opt => ({
+          id: opt.id,
+          option_text: opt.text || opt.option_text || '',
+          vote_count: opt.votes || opt.vote_count || 0
+        })),
+        total_votes: totalVotesOverall || options.reduce((sum, opt) => sum + (opt.votes || opt.vote_count || 0), 0),
+        user_vote: userVote || null
+      };
+      
+      setPoll(constructedPoll);
+      setLoading(false);
+      return; // Skip the fetch
+    }
+    
     const fetchPoll = async () => {
       setLoading(true);
       setError(null);
@@ -93,7 +122,7 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId }) => {
         }
 
         // If user is logged in, check if they've voted
-        let userVote = null;
+        let userVoteFromDB = null;
         if (currentUserId) {
           const { data: userVoteData, error: userVoteError } = await supabase
             .from('poll_votes')
@@ -103,7 +132,7 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId }) => {
             .maybeSingle();
 
           if (!userVoteError && userVoteData) {
-            userVote = userVoteData.poll_option_id;
+            userVoteFromDB = userVoteData.poll_option_id;
           }
         }
 
@@ -123,7 +152,7 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId }) => {
           ...pollData,
           options: optionsWithCounts,
           total_votes: totalVotes,
-          user_vote: userVote
+          user_vote: userVoteFromDB
         });
       } catch (err: any) {
         console.error('Error fetching poll data:', err);
@@ -136,9 +165,25 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId }) => {
     if (pollId && currentUserId !== undefined) {
       fetchPoll();
     }
-  }, [pollId, currentUserId, supabase]);
+  }, [pollId, currentUserId, supabase, question, options, userVote, totalVotesOverall]);
 
   const handleVote = async (optionId: string) => {
+    // If parent provided onVote handler, use that
+    if (onVote) {
+      setVoting(true);
+      try {
+        await onVote(optionId);
+        // Don't update local state as parent will handle that
+      } catch (err: any) {
+        console.error('Error voting:', err);
+        setError(err.message || 'Failed to submit vote');
+      } finally {
+        setVoting(false);
+      }
+      return;
+    }
+
+    // Otherwise use the original implementation
     if (!currentUserId) {
       setError('You must be logged in to vote');
       return;
@@ -229,30 +274,6 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId }) => {
     }
   };
 
-  const handleReport = async () => {
-    if (!currentUserId) {
-      setReportError("You must be logged in to report polls");
-      return;
-    }
-    
-    try {
-      const { error } = await supabase.from('post_reports').insert({
-        reported_content_id: pollId,
-        content_type: 'poll',
-        reason: reportReason,
-        reporter_user_id: currentUserId,
-        community_id: poll?.community_id,
-      });
-      if (error) throw error;
-      setShowReportModal(false);
-      setReportReason('');
-      alert('Poll reported successfully. Our team will review it.');
-    } catch (error) {
-      console.error("Error reporting poll:", error);
-      setReportError("Failed to submit report. Please try again.");
-    }
-  };
-
   if (loading) {
     return (
       <div className="bg-white p-4 rounded-lg shadow flex justify-center items-center h-32">
@@ -289,177 +310,132 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId }) => {
   const isCreator = currentUserId === poll.created_by_user_id;
 
   return (
-    <>
-      <div className="bg-white p-4 rounded-lg shadow">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center">
-            <BarChart size={20} className="mr-2 text-blue-500" />
-            <h3 className="font-semibold text-lg">{poll.question}</h3>
-          </div>
-          {currentUserId && poll.created_by_user_id !== currentUserId && (
-            <button 
-              onClick={() => setShowReportModal(true)} 
-              className="text-gray-500 hover:text-red-500"
-              title="Report poll"
+    <div className="bg-white p-4 rounded-lg shadow">
+      <div className="flex items-center mb-3">
+        <BarChart size={20} className="mr-2 text-blue-500" />
+        <h3 className="font-semibold text-lg">{poll.question}</h3>
+      </div>
+
+      {/* Display tags if available */}
+      {poll.tags && poll.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          <Tag size={14} className="text-gray-500" />
+          {poll.tags.map(tag => (
+            <span 
+              key={tag} 
+              className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded"
             >
-              <Flag size={16} />
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-3 mb-4">
+        {poll.options.map((option) => {
+          const percentage = calculatePercentage(option.vote_count || 0);
+          const isSelected = poll.user_vote === option.id;
+          const hasVoted = !!poll.user_vote;
+
+          return (
+            <div key={option.id} className="relative">
+              {/* Option button or result bar */}
+              {!hasVoted ? (
+                <button
+                  onClick={() => handleVote(option.id)}
+                  disabled={voting || poll.is_closed}
+                  className={`w-full text-left p-3 border rounded-md hover:bg-gray-50 
+                    ${voting ? 'opacity-50 cursor-not-allowed' : ''}
+                    ${poll.is_closed ? 'cursor-not-allowed' : ''}`}
+                >
+                  {option.option_text}
+                </button>
+              ) : (
+                <div className="relative border rounded-md overflow-hidden">
+                  <div 
+                    className={`absolute top-0 left-0 h-full ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}
+                    style={{ width: `${percentage}%` }}
+                  ></div>
+                  <div className="relative p-3 flex justify-between items-center">
+                    <div className="flex items-center">
+                      {isSelected && (
+                        <CheckCircle size={16} className="mr-2 text-blue-500" />
+                      )}
+                      <span>{option.option_text}</span>
+                    </div>
+                    <span className="font-medium">{percentage}%</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {error && (
+        <div className="text-red-500 text-sm mb-3">
+          {error}
+        </div>
+      )}
+
+      <div className="text-sm text-gray-500">
+        <div className="flex justify-between items-center mb-1">
+          <span>{poll.total_votes} {poll.total_votes === 1 ? 'vote' : 'votes'}</span>
+          {poll.is_closed && <span className="text-orange-500 flex items-center"><Lock size={14} className="mr-1" /> Poll closed</span>}
+        </div>
+        
+        {poll.expires_at && (
+          <div className="flex items-center text-sm text-gray-500 mb-2">
+            <Clock size={14} className="mr-1" />
+            <span>
+              {isExpired 
+                ? 'Poll expired on ' 
+                : 'Poll closes on '} 
+              {formatExpirationDate(poll.expires_at)}
+            </span>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex flex-wrap gap-2 mt-2 mb-2">
+          {/* Share button */}
+          <PollShare 
+            pollId={pollId} 
+            postId={postId} 
+            communityId={poll.community_id} 
+            question={poll.question} 
+          />
+
+          {/* Show close button only to poll creator and if poll is not already closed */}
+          {isCreator && !poll.is_closed && (
+            <button
+              onClick={handleClosePoll}
+              disabled={isClosing}
+              className="flex items-center text-sm text-orange-600 hover:text-orange-800"
+            >
+              {isClosing ? (
+                <>
+                  <Loader2 size={14} className="mr-1 animate-spin" />
+                  Closing...
+                </>
+              ) : (
+                <>
+                  <Lock size={14} className="mr-1" />
+                  Close Poll
+                </>
+              )}
             </button>
           )}
         </div>
-
-        {/* Display tags if available */}
-        {poll.tags && poll.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-3">
-            <Tag size={14} className="text-gray-500" />
-            {poll.tags.map(tag => (
-              <span 
-                key={tag} 
-                className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
+        
+        <PollAnalytics pollId={pollId} isCreator={isCreator} />
+        
+        {/* Only show export option to poll creator */}
+        {isCreator && (
+          <PollExport pollId={pollId} pollQuestion={poll.question} />
         )}
-
-        <div className="space-y-3 mb-4">
-          {poll.options.map((option) => {
-            const percentage = calculatePercentage(option.vote_count || 0);
-            const isSelected = poll.user_vote === option.id;
-            const hasVoted = !!poll.user_vote;
-
-            return (
-              <div key={option.id} className="relative">
-                {/* Option button or result bar */}
-                {!hasVoted ? (
-                  <button
-                    onClick={() => handleVote(option.id)}
-                    disabled={voting || poll.is_closed}
-                    className={`w-full text-left p-3 border rounded-md hover:bg-gray-50 
-                      ${voting ? 'opacity-50 cursor-not-allowed' : ''}
-                      ${poll.is_closed ? 'cursor-not-allowed' : ''}`}
-                  >
-                    {option.option_text}
-                  </button>
-                ) : (
-                  <div className="relative border rounded-md overflow-hidden">
-                    <div 
-                      className={`absolute top-0 left-0 h-full ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}
-                      style={{ width: `${percentage}%` }}
-                    ></div>
-                    <div className="relative p-3 flex justify-between items-center">
-                      <div className="flex items-center">
-                        {isSelected && (
-                          <>
-                            <CheckCircle size={16} className="mr-2 text-blue-500" />
-                            <span className="text-blue-500 text-sm font-medium mr-2">You Voted</span>
-                          </>
-                        )}
-                        <span>{option.option_text}</span>
-                      </div>
-                      <span className="font-medium">{percentage}%</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {error && (
-          <div className="text-red-500 text-sm mb-3">
-            {error}
-          </div>
-        )}
-
-        <div className="text-sm text-gray-500">
-          <div className="flex justify-between items-center mb-1">
-            <span>{poll.total_votes} {poll.total_votes === 1 ? 'vote' : 'votes'}</span>
-            {poll.is_closed && <span className="text-orange-500 flex items-center"><Lock size={14} className="mr-1" /> Poll closed</span>}
-          </div>
-          
-          {poll.expires_at && (
-            <div className="flex items-center text-sm text-gray-500 mb-2">
-              <Clock size={14} className="mr-1" />
-              <span>
-                {isExpired 
-                  ? 'Poll expired on ' 
-                  : 'Poll closes on '} 
-                {formatExpirationDate(poll.expires_at)}
-              </span>
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div className="flex flex-wrap gap-2 mt-2 mb-2">
-            {/* Share button */}
-            <PollShare 
-              pollId={pollId} 
-              postId={postId} 
-              communityId={poll.community_id} 
-              question={poll.question} 
-            />
-
-            {/* Show close button only to poll creator and if poll is not already closed */}
-            {isCreator && !poll.is_closed && (
-              <button
-                onClick={handleClosePoll}
-                disabled={isClosing}
-                className="flex items-center text-sm text-orange-600 hover:text-orange-800"
-              >
-                {isClosing ? (
-                  <>
-                    <Loader2 size={14} className="mr-1 animate-spin" />
-                    Closing...
-                  </>
-                ) : (
-                  <>
-                    <Lock size={14} className="mr-1" />
-                    Close Poll
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-          
-          <PollAnalytics pollId={pollId} isCreator={isCreator} />
-          
-          {/* Only show export option to poll creator */}
-          {isCreator && (
-            <PollExport pollId={pollId} pollQuestion={poll.question} />
-          )}
-        </div>
       </div>
-
-      {/* Report Modal */}
-      {showReportModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowReportModal(false)}>
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Report Poll</h3>
-              <button onClick={() => setShowReportModal(false)} className="text-gray-400 hover:text-gray-600">
-                <XSquare size={20}/>
-              </button>
-            </div>
-            <textarea
-              className="w-full p-2 border rounded mb-4 bg-white text-black border-gray-300 placeholder-gray-400"
-              rows={3}
-              placeholder="Please provide a reason for reporting this poll..."
-              value={reportReason}
-              onChange={(e) => setReportReason(e.target.value)}
-              autoFocus
-            />
-            {reportError && <p className="text-xs text-red-500 mb-3">{reportError}</p>}
-            <div className="flex justify-end space-x-3">
-              <button onClick={() => { setShowReportModal(false); setReportReason(''); setReportError(null); }} className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-md text-gray-800">Cancel</button>
-              <button onClick={handleReport} className="px-4 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-md flex items-center" disabled={!reportReason.trim()}>
-                Submit Report
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 };
 

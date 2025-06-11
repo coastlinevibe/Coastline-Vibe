@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar, File as FileIcon, ArrowUp, Sailboat, Trash2, MoreHorizontal, Edit3, Star, EyeOff, Share2 } from 'lucide-react';
+import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar, File as FileIcon, ArrowUp, Sailboat, Trash2, MoreHorizontal, Edit3, Star, EyeOff, Share2, Flag, Search, SlidersHorizontal, Filter, ChevronDown, Clock, ThumbsUp, Anchor, Ship, Compass } from 'lucide-react';
 import PollCreator from '@/components/feed/PollCreator';
 import PollCard from '@/components/feed/PollCard';
 import FeedFilters, { FeedContentType } from '@/components/feed/FeedFilters';
@@ -26,6 +26,10 @@ import { UserTooltipProfileData } from '@/components/user/UserTooltipDisplay';
 import { TideReactionsProvider } from '@/context/TideReactionsContext';
 import CoastlineReactionDisplay from '@/components/feed/CoastlineReactionDisplay';
 import { formatDistanceToNow } from 'date-fns';
+import MentionTextarea from '@/components/mention/MentionTextarea';
+import KindnessReminder from '@/components/moderation/KindnessReminder';
+import ReportPostModal, { ReportData } from '@/components/moderation/ReportPostModal';
+import { checkContentViolations, getKindnessMessage, highlightFlaggedContent, ViolationType } from '@/utils/moderationUtils';
 
 // Import Lightbox
 import Lightbox from "yet-another-react-lightbox";
@@ -53,6 +57,20 @@ export default function FeedPage() {
   const [userTooltipData, setUserTooltipData] = useState<Record<string, UserTooltipProfileData>>({});
   const [validationMessage, setValidationMessage] = useState('');
   const [isAdmin, setIsAdmin] = useState(true); // Set to true for testing
+  
+  // Moderation states
+  const [showKindnessReminder, setShowKindnessReminder] = useState(false);
+  const [moderationResult, setModerationResult] = useState<{
+    violationType: ViolationType;
+    message: string;
+    flaggedTerms: string[];
+    flaggedContent: string;
+  } | null>(null);
+  const [pendingPostData, setPendingPostData] = useState<any>(null);
+  
+  // Report post states
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportPostId, setReportPostId] = useState<string | null>(null);
   
   // Character limit for posts
   const MAX_POST_LENGTH = 1000;
@@ -234,8 +252,7 @@ export default function FeedPage() {
       .eq('community_id', communityUuid)
       .in('type', ['general', 'poll', 'event', 'announce', 'ask'])
       .eq('is_visible', true)
-      .order('created_at', { ascending: false })
-      .range((page - 1) * 10, page * 10 - 1);
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching posts:', error);
@@ -311,7 +328,7 @@ export default function FeedPage() {
     filterPosts(formattedPosts, activeFilter);
     
     setPostsLoading(false);
-    setHasMorePosts(formattedPosts.length === 10);
+    setHasMorePosts(false); // We're loading all posts at once now
   }, [communityUuid, supabase, activeFilter, searchQuery, activeHashtag, postId, page]);
 
   // Function to filter posts by type
@@ -483,6 +500,38 @@ export default function FeedPage() {
       return;
     }
 
+    // Check content for violations
+    const contentCheck = checkContentViolations(newPostContent);
+    if (contentCheck.isViolation) {
+      // Set moderation result and show kindness reminder
+      setModerationResult({
+        violationType: contentCheck.violationType,
+        message: getKindnessMessage(contentCheck.violationType),
+        flaggedTerms: contentCheck.flaggedTerms,
+        flaggedContent: highlightFlaggedContent(newPostContent, contentCheck.flaggedTerms)
+      });
+      
+      // Prepare post data but don't submit yet
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setPendingPostData({
+          content: newPostContent,
+          user_id: user.id,
+          community_id: communityUuid,
+          type: postType,
+          is_visible: true,
+          images: mediaState.images.length > 0 ? mediaState.images : null,
+          video_url: mediaState.video,
+          files: mediaState.files.length > 0 ? mediaState.files : null,
+          is_flagged: true,
+          flag_reason: contentCheck.violationType
+        });
+      }
+      
+      setShowKindnessReminder(true);
+      return;
+    }
+
     setIsPosting(true);
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -519,6 +568,47 @@ export default function FeedPage() {
       }
     }
     setIsPosting(false);
+  };
+
+  // Handle continuing with post despite warning
+  const handleContinuePost = async () => {
+    setShowKindnessReminder(false);
+    
+    if (!pendingPostData) return;
+    
+    setIsPosting(true);
+    try {
+      console.log('Continuing with flagged post:', pendingPostData);
+      const { error } = await supabase.from('posts').insert(pendingPostData);
+
+      if (error) {
+        console.error('Error creating flagged post:', error);
+      } else {
+        console.log('Flagged post created successfully!');
+        setNewPostContent('');
+        setMediaState({ images: [], video: null, files: [] });
+        setPostType('general');
+        fetchPosts(); // Refresh the post list
+      }
+    } catch (error) {
+      console.error('Error in flagged post submission:', error);
+    } finally {
+      setIsPosting(false);
+      setPendingPostData(null);
+    }
+  };
+
+  // Handle editing post after warning
+  const handleEditPost = () => {
+    setShowKindnessReminder(false);
+    // Don't clear the post content, allowing the user to edit it
+    setPendingPostData(null);
+  };
+
+  // Handle closing the kindness reminder
+  const handleCloseReminder = () => {
+    setShowKindnessReminder(false);
+    setPendingPostData(null);
   };
 
   const handleToggleLike = async (postId: string) => {
@@ -647,7 +737,7 @@ export default function FeedPage() {
     
     // First get all comments for this post, regardless of depth
     const { data, error } = await supabase
-      .from('posts')
+      .from('comments')
       .select(`
         *,
         profiles:user_id (
@@ -662,13 +752,12 @@ export default function FeedPage() {
         )
       `)
       .eq('is_visible', true)
-      .or(`parent_id.eq.${postId},parent_id.in.(select id from posts where parent_id='${postId}')`)
-      .eq('type', 'comment')
+      .eq('post_id', postId)
       .order('created_at', { ascending: true });
     
     if (error) {
       console.error('Error fetching comments:', error);
-      return;
+      return [];
     }
     
     console.log('Comments data received:', data);
@@ -679,7 +768,7 @@ export default function FeedPage() {
         ...prev,
         [postId]: []
       }));
-      return;
+      return [];
     }
     
     const formattedComments = data.map((comment: any) => ({
@@ -689,7 +778,7 @@ export default function FeedPage() {
       authorAvatarUrl: comment.profiles?.avatar_url,
       timestamp: comment.created_at,
       commentAuthorId: comment.user_id,
-      parent_id: comment.parent_id,
+      parent_id: comment.parent_comment_id || postId,
       depth: comment.depth || 1,
       updated_at: comment.updated_at,
       likeCount: comment.like_count || 0,
@@ -728,11 +817,21 @@ export default function FeedPage() {
       ...prev,
       [postId]: formattedComments
     }));
+    
+    return formattedComments;
   };
 
   // Function to handle comment submission
-  const handleCommentSubmit = async (postId: string): Promise<void> => {
-    if (!commentText[postId]?.trim() || !currentUserId) return;
+  const handleCommentSubmit = async (postId: string, commentText: string, files?: File[]): Promise<boolean> => {
+    if (!commentText.trim() || !currentUserId) return false;
+    
+    // Check content for violations
+    const contentCheck = checkContentViolations(commentText);
+    if (contentCheck.isViolation) {
+      // We're not showing a popup here since the CommentForm component will handle this
+      // Just return false to prevent submission
+      return false;
+    }
     
     setIsCommenting(prev => ({ ...prev, [postId]: true }));
     
@@ -752,13 +851,12 @@ export default function FeedPage() {
       
       // Create the comment
       const { data: commentData, error } = await supabase
-        .from('posts')
+        .from('comments')
         .insert({
-          content: commentText[postId],
+          content: commentText,
           user_id: currentUserId,
-          community_id: communityUuid,
-          type: 'comment',
-          parent_id: postId,
+          post_id: postId,
+          parent_comment_id: null,
           depth: 1,
           is_visible: true
         })
@@ -808,8 +906,11 @@ export default function FeedPage() {
           userData.username || 'Anonymous'
         );
       }
+      
+      return true;
     } catch (error) {
       console.error('Error submitting comment:', error);
+      return false;
     } finally {
       setIsCommenting(prev => ({ ...prev, [postId]: false }));
     }
@@ -818,7 +919,7 @@ export default function FeedPage() {
   // Add this wrapper function for CommentForm onSubmit
   const handleCommentFormSubmit = (postId: string) => async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
-    await handleCommentSubmit(postId);
+    await handleCommentSubmit(postId, commentText[postId] || '', undefined);
   };
 
   const handlePollCreated = () => {
@@ -916,6 +1017,14 @@ export default function FeedPage() {
   const handleReplySubmit = async (parentCommentId: string, replyText: string, parentDepth: number) => {
     if (!replyText.trim() || !currentUserId || parentDepth >= 3) return false;
     
+    // Check content for violations
+    const contentCheck = checkContentViolations(replyText);
+    if (contentCheck.isViolation) {
+      // We're not showing a popup here since the CommentForm component will handle this
+      // Just return false to prevent submission
+      return false;
+    }
+    
     try {
       // Find the parent comment to get the post ID
       let postId = '';
@@ -943,14 +1052,13 @@ export default function FeedPage() {
       
       // Create the reply comment
       const { data: replyData, error } = await supabase
-        .from('posts')
+        .from('comments')
         .insert({
           content: replyText,
       user_id: currentUserId,
-          community_id: communityUuid,
-      type: 'comment',
-          parent_id: parentCommentId, // This is now the parent comment ID, not the post ID
-          depth: parentDepth,
+          post_id: postId,
+          parent_comment_id: parentCommentId,
+          depth: parentDepth + 1,
           is_visible: true
         })
         .select()
@@ -967,8 +1075,8 @@ export default function FeedPage() {
         authorAvatarUrl: userData.avatar_url,
         timestamp: replyData.created_at,
         commentAuthorId: replyData.user_id,
-        parent_id: replyData.parent_id,
-        depth: replyData.depth || parentDepth,
+        parent_id: replyData.parent_comment_id,
+        depth: replyData.depth,
         updated_at: replyData.updated_at,
         likeCount: 0,
         isLikedByCurrentUser: false,
@@ -997,6 +1105,13 @@ export default function FeedPage() {
           userData.username || 'Anonymous'
         );
       }
+
+      // Refresh the comments for this post to ensure replies are properly displayed
+      const refreshedComments = await fetchComments(postId);
+      setComments(prev => ({
+        ...prev,
+        [postId]: refreshedComments
+      }));
       
       return true;
     } catch (error) {
@@ -1192,47 +1307,85 @@ export default function FeedPage() {
   };
 
   // Function to handle comment deletion
-  const handleCommentDelete = async (commentId: string) => {
-    if (!currentUserId) return false;
-    
+  const handleDeleteComment = async (commentId: string): Promise<boolean> => {
     try {
       // Find which post this comment belongs to
       let postId = '';
-      let comment = null;
-      
       for (const [key, commentsList] of Object.entries(comments)) {
-        comment = commentsList.find(c => c.id === commentId);
-        if (comment) {
+        if (commentsList.some(c => c.id === commentId)) {
           postId = key;
           break;
         }
       }
       
-      if (!postId || !comment) return false;
+      if (!postId) {
+        console.error('Could not find post for comment:', commentId);
+        return false;
+      }
       
-      // Ensure the current user is the comment author
-      if (comment.commentAuthorId !== currentUserId) return false;
-      
-      // Delete the comment in the database (or set is_visible to false)
+      // Delete the comment
       const { error } = await supabase
-        .from('posts')
-        .update({ is_visible: false })
-        .eq('id', commentId)
-        .eq('user_id', currentUserId);
+        .from('comments')
+        .delete()
+        .eq('id', commentId);
         
       if (error) throw error;
       
-      // Update local state - remove the comment
-      const updatedComments = comments[postId].filter(c => c.id !== commentId);
-      
+      // Update local state
       setComments(prev => ({
         ...prev,
-        [postId]: updatedComments
+        [postId]: prev[postId].filter(c => c.id !== commentId)
       }));
       
       return true;
     } catch (error) {
       console.error('Error deleting comment:', error);
+      return false;
+    }
+  };
+
+  // Function to handle comment update
+  const handleUpdateComment = async (commentId: string, newContent: string): Promise<boolean> => {
+    try {
+      // Find which post this comment belongs to
+      let postId = '';
+      let commentToUpdate = null;
+      
+      for (const [key, commentsList] of Object.entries(comments)) {
+        const foundComment = commentsList.find(c => c.id === commentId);
+        if (foundComment) {
+          postId = key;
+          commentToUpdate = foundComment;
+          break;
+        }
+      }
+      
+      if (!postId || !commentToUpdate) {
+        console.error('Could not find post for comment:', commentId);
+        return false;
+      }
+      
+      // Update the comment
+      const { error } = await supabase
+        .from('comments')
+        .update({ content: newContent, updated_at: new Date().toISOString() })
+        .eq('id', commentId);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setComments(prev => ({
+        ...prev,
+        [postId]: prev[postId].map(c => 
+          c.id === commentId 
+            ? { ...c, textContent: newContent, content: newContent, updated_at: new Date().toISOString() } 
+            : c
+        )
+      }));
+      
+      return true;
+    } catch (error) {
+      console.error('Error updating comment:', error);
       return false;
     }
   };
@@ -1413,9 +1566,37 @@ export default function FeedPage() {
     setLightboxOpen(true);
   };
 
+  const handleReportPost = (postId: string) => {
+    setReportPostId(postId);
+    setShowReportModal(true);
+  };
+  
+  const handleSubmitReport = async (reportData: ReportData): Promise<void> => {
+    try {
+      // Save the report to the database
+      const { error } = await supabase
+        .from('post_reports')
+        .insert({
+          post_id: reportData.postId,
+          reporter_id: currentUserId,
+          reason: reportData.reason,
+          details: reportData.details,
+          status: 'pending',
+          is_reviewed: false
+        });
+        
+      if (error) throw error;
+      
+      console.log('Report submitted successfully');
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      throw error;
+    }
+  };
+
   return (
     <TideReactionsProvider>
-      <div className="flex bg-gray-50/50 min-h-screen">
+      <div className="flex bg-gray-50/50 min-h-screen" style={{ marginLeft: "-50px", width: "calc(100% + 50px)" }}>
         {/* Left Sidebar */}
         <div className={`bg-white shadow-md transition-all duration-300 ${leftSidebarOpen ? 'w-64' : 'w-16'} flex-shrink-0 sticky top-0 h-screen overflow-hidden`}>
           <div className="p-4 h-full">
@@ -1635,10 +1816,11 @@ export default function FeedPage() {
                   setActiveFilter('all');
                   setSearchQuery('');
                   setActiveHashtag(null);
+                  setCurrentSort('newest'); // Reset sort to default "newest"
                 }}
-                disabled={activeFilter === 'all' && !searchQuery && !activeHashtag}
+                disabled={activeFilter === 'all' && !searchQuery && !activeHashtag && currentSort === 'newest'}
                 className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-                  activeFilter === 'all' && !searchQuery && !activeHashtag
+                  activeFilter === 'all' && !searchQuery && !activeHashtag && currentSort === 'newest'
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                 }`}
@@ -1662,17 +1844,18 @@ export default function FeedPage() {
                 {validationMessage}
               </div>
             )}
-        <textarea
+        <MentionTextarea
               className={`w-full p-2 border ${validationMessage ? 'border-red-500' : 'border-gray-300'} rounded-md`}
           rows={3}
               placeholder="Welcome back. Join the conversation!"
           value={newPostContent}
-              onChange={(e) => {
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
                 setNewPostContent(e.target.value);
                 if (validationMessage) setValidationMessage('');
               }}
           disabled={isPosting}
-              maxLength={MAX_POST_LENGTH}
+              communityId={communityUuid || ''}
+              setValue={setNewPostContent}
             />
             
             {/* Character counter */}
@@ -1942,10 +2125,18 @@ export default function FeedPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredPosts.map((post) => (
-              <div key={post.id} className="bg-white rounded-lg shadow p-4">
-                {/* Post header */}
-                <div className="flex items-center mb-3">
+            {filteredPosts.map((post, index) => (
+              <React.Fragment key={post.id}>
+                {index > 0 && (
+                  <div className="flex items-center justify-center py-3">
+                    <div className="h-px bg-blue-100 w-12"></div>
+                    <Anchor size={16} className="text-blue-400 mx-2" />
+                    <div className="h-px bg-blue-100 w-12"></div>
+                  </div>
+                )}
+                <div className="bg-white rounded-lg shadow p-4">
+                  {/* Post header */}
+                  <div className="flex items-center mb-3">
                     <UserTooltipWrapper 
                       profileData={userTooltipData[post.user_id] || null}
                       delay={200}
@@ -2069,11 +2260,23 @@ export default function FeedPage() {
                     {/* Comment button */}
                     <button
                       onClick={() => toggleComments(post.id)}
-                      className="flex items-center text-gray-500 hover:text-blue-500 mr-4"
+                      className="flex items-center bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-1.5 rounded-md mr-4 transition-colors"
                     >
-                      <MessageSquare size={18} className="mr-1" />
-                      <span>{post.comment_count || 0}</span>
+                      <MessageSquare size={18} className="mr-1.5" />
+                      <span className="font-medium">Comment</span>
+                      {post.comment_count > 0 && <span className="ml-1 text-sm">({post.comment_count})</span>}
                     </button>
+                    
+                    {/* Report button */}
+                    {post.user_id !== currentUserId && (
+                      <button
+                        onClick={() => handleReportPost(post.id)}
+                        className="flex items-center bg-gray-50 hover:bg-gray-100 text-gray-600 px-3 py-1.5 rounded-md mr-4 transition-colors"
+                      >
+                        <Flag size={18} className="mr-1.5" />
+                        <span className="font-medium">Report</span>
+                      </button>
+                    )}
                     
                     {/* Share button */}
                     <button
@@ -2177,7 +2380,8 @@ export default function FeedPage() {
                           onUnlikeComment={handleCommentUnlike}
                           currentUserId={currentUserId}
                           onActualUpdateComment={handleCommentUpdate}
-                          onActualDeleteComment={handleCommentDelete}
+                          onActualDeleteComment={handleDeleteComment}
+                          onReplySubmit={handleReplySubmit}
                           communityId={communityUuid || ''}
                         />
                         <div className="text-xs text-gray-500 mt-2">
@@ -2191,13 +2395,10 @@ export default function FeedPage() {
                     {/* Comment input */}
                     <div className="mt-3">
                       <CommentForm
-                        onSubmit={async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
-                          e.preventDefault();
-                          await handleCommentSubmit(post.id);
-                        }}
+                        onSubmit={handleCommentFormSubmit(post.id)}
                         value={commentText[post.id] || ''}
                         onChange={(value) => setCommentText(prev => ({ ...prev, [post.id]: value }))}
-                        isSubmitting={isCommenting[post.id] || false}
+                        isSubmitting={isCommenting[post.id]}
                         placeholder="Write a comment..."
                         communityId={communityUuid || ''}
                       />
@@ -2205,6 +2406,7 @@ export default function FeedPage() {
                 </div>
               )}
             </div>
+            </React.Fragment>
             ))}
               
               {/* End of posts message */}
@@ -2212,9 +2414,9 @@ export default function FeedPage() {
                 <div className="mt-8 text-center py-6 border-t border-gray-200">
                   <div className="flex flex-col items-center justify-center gap-3">
                     <img 
-                      src="https://kbjudvamidagzzfvxgov.supabase.co/storage/v1/object/public/reactions/caplook-128.png" 
+                      src="https://kbjudvamidagzzfvxgov.supabase.co/storage/v1/object/public/reactions/caplook.png" 
                       alt="Captain looking through binoculars" 
-                      className="w-16 h-16 object-contain mb-2"
+                      className="w-24 h-24 object-contain"
                     />
                     <p className="text-teal-600 font-medium text-lg">Ahoy! You've reached the edge of the horizon.</p>
                     <p className="text-gray-500">No more posts to view</p>
@@ -2226,11 +2428,11 @@ export default function FeedPage() {
                       <span>Back to Top</span>
                     </button>
                   </div>
-          </div>
-        )}
-      </div>
+                </div>
+              )}
+            </div>
           )}
-    </div>
+        </div>
       </div>
       
       {/* Right Sidebar */}
@@ -2448,6 +2650,30 @@ export default function FeedPage() {
       close={() => setLightboxOpen(false)}
       slides={activePostImages.map(url => ({ src: url }))}
       index={lightboxIndex}
+    />
+    
+    {/* Lightbox for image viewing */}
+    <Lightbox
+      open={lightboxOpen}
+      close={() => setLightboxOpen(false)}
+      index={lightboxIndex}
+      slides={activePostImages.map(src => ({ src }))}
+    />
+    
+    {/* Kindness Reminder Popup */}
+    <KindnessReminder
+      isOpen={showKindnessReminder}
+      onClose={handleCloseReminder}
+      onContinue={handleContinuePost}
+      onEdit={handleEditPost}
+      message={moderationResult?.message || "Please ensure your content follows our community guidelines."}
+      flaggedContent={moderationResult?.flaggedContent}
+    />
+    <ReportPostModal
+      isOpen={showReportModal}
+      onClose={() => setShowReportModal(false)}
+      onSubmit={handleSubmitReport}
+      postId={reportPostId || ''}
     />
   </TideReactionsProvider>
   );

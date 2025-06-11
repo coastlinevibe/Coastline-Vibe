@@ -64,38 +64,34 @@ export default function CoastlineReactionDisplay({
       console.log(`Adding ${newAnimatedReactions.length} new animated reactions`);
       setAnimatingReactions(prev => [...prev, ...newAnimatedReactions]);
       
-      // Schedule cleanup after animation completes - ensure reactions are removed
+      // Schedule cleanup after animation completes
       newAnimatedReactions.forEach(reaction => {
         setTimeout(() => {
-          console.log(`Removing animated reaction ${reaction.id} after animation completed`);
           setAnimatingReactions(prev => prev.filter(r => r.id !== reaction.id));
         }, 3000); // Animation duration
       });
     }
     
-    // Group reactions by type for the static display
-    // Only include non-animated reactions in the groups
+    // Group reactions by type
     const groups: Record<string, ReactionGroup> = {};
     
-    postReactions
-      .filter(reaction => reaction.reactionType !== 'animated')
-      .forEach(reaction => {
-        const { reactionCode, reactionUrl, username } = reaction;
-        
-        if (!groups[reactionCode]) {
-          groups[reactionCode] = {
-            code: reactionCode,
-            url: reactionUrl,
-            count: 0,
-            users: [],
-          };
-        }
-        
-        groups[reactionCode].count++;
-        if (!groups[reactionCode].users.includes(username)) {
-          groups[reactionCode].users.push(username);
-        }
-      });
+    postReactions.forEach(reaction => {
+      const { reactionCode, reactionUrl, username } = reaction;
+      
+      if (!groups[reactionCode]) {
+        groups[reactionCode] = {
+          code: reactionCode,
+          url: reactionUrl,
+          count: 0,
+          users: [],
+        };
+      }
+      
+      groups[reactionCode].count++;
+      if (!groups[reactionCode].users.includes(username)) {
+        groups[reactionCode].users.push(username);
+      }
+    });
     
     // Convert to array and sort by count (highest first)
     const groupsArray = Object.values(groups).sort((a, b) => b.count - a.count);
@@ -135,10 +131,6 @@ export default function CoastlineReactionDisplay({
             src={reaction.reactionUrl}
             alt={reaction.reactionCode}
             className="w-10 h-10 object-contain"
-            onAnimationEnd={() => {
-              console.log(`Animation ended for reaction ${reaction.id}`);
-              setAnimatingReactions(prev => prev.filter(r => r.id !== reaction.id));
-            }}
           />
         </div>
       ))}

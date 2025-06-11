@@ -121,7 +121,25 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-gray-900 truncate">
-                          {notification.content_snippet}
+                          {notification.type === 'mention' && notification.actor_profile ? (
+                            <span>
+                              <span className="font-semibold">{notification.actor_profile.username}</span> mentioned you
+                            </span>
+                          ) : notification.type === 'comment' && notification.actor_profile ? (
+                            <span>
+                              <span className="font-semibold">{notification.actor_profile.username}</span> commented on your post
+                            </span>
+                          ) : notification.type === 'post_like' && notification.actor_profile ? (
+                            <span>
+                              <span className="font-semibold">{notification.actor_profile.username}</span> liked your post
+                            </span>
+                          ) : notification.type === 'poll' && notification.actor_profile ? (
+                            <span>
+                              <span className="font-semibold">{notification.actor_profile.username}</span> voted on your poll
+                            </span>
+                          ) : (
+                            notification.content_snippet
+                          )}
                         </p>
                         <div className="flex-shrink-0 ml-2">
                           {getNotificationIcon(notification.type)}
