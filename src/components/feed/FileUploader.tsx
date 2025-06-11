@@ -5,8 +5,13 @@ import { createClient } from '@/lib/supabase/client';
 import { File as FileIcon, X, Upload, AlertCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 
+interface FileMetadata {
+  url: string;
+  name: string;
+}
+
 interface FileUploaderProps {
-  onFilesUploaded: (fileUrls: string[]) => void;
+  onFilesUploaded: (files: FileMetadata[]) => void;
   onError?: (error: string) => void;
   maxFiles?: number;
   maxSizeMB?: number;
@@ -115,7 +120,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     setUploadProgress(0);
     setError(null);
     
-    const uploadedUrls: string[] = [];
+    const uploadedFileData: FileMetadata[] = [];
     
     try {
       for (let i = 0; i < selectedFiles.length; i++) {
@@ -136,12 +141,12 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           .from('feedpostfiles')
           .getPublicUrl(filePath);
         
-        uploadedUrls.push(publicUrl);
+        uploadedFileData.push({ url: publicUrl, name: file.name });
         
         setUploadProgress(Math.round(((i + 1) / selectedFiles.length) * 100));
       }
       
-      onFilesUploaded(uploadedUrls);
+      onFilesUploaded(uploadedFileData);
       
       setSelectedFiles([]);
       setUploadProgress(0);

@@ -31,6 +31,11 @@ import { formatDistanceToNow } from 'date-fns';
 import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
 
+interface FileMetadata {
+  url: string;
+  name: string;
+}
+
 export default function FeedPage() {
   const supabase = createClient();
   const params = useParams();
@@ -53,7 +58,7 @@ export default function FeedPage() {
   const MAX_POST_LENGTH = 1000;
   
   // Media upload states
-  const [mediaState, setMediaState] = useState<{ images: string[], video: string | null, files: string[] }>({
+  const [mediaState, setMediaState] = useState<{ images: string[], video: string | null, files: FileMetadata[] }>({
     images: [],
     video: null,
     files: []
@@ -1720,6 +1725,23 @@ export default function FeedPage() {
                   </button>
                 </div>
               )}
+
+                {/* File Previews */}
+                {mediaState.files.map((file, index) => (
+                  <div key={index} className="relative bg-gray-100 p-2 pr-8 rounded-md w-full flex items-center">
+                    <FileIcon className="h-6 w-6 text-gray-500 mr-2 flex-shrink-0" />
+                    <span className="text-sm text-gray-700 truncate" title={file.name}>{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMediaState(prev => ({ ...prev, files: prev.files.filter((_, i) => i !== index) }));
+                      }}
+                      className="absolute top-1/2 right-1 transform -translate-y-1/2 bg-red-500 text-white rounded-full p-1 leading-none hover:bg-red-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
             </div>
         
         <div className="flex justify-between items-center mt-3">
@@ -2011,8 +2033,10 @@ export default function FeedPage() {
                         <div className="mb-3 p-3 bg-gray-50 rounded-md">
                           <h4 className="text-sm font-medium mb-2">Attached Files:</h4>
                           <div className="space-y-2">
-                            {post.files.map((fileUrl: string, index: number) => {
-                              const fileName = fileUrl.split('/').pop() || `File ${index + 1}`;
+                            {post.files.map((file: any, index: number) => {
+                              const isFileObject = typeof file === 'object' && file !== null && 'url' in file && 'name' in file;
+                              const fileUrl = isFileObject ? file.url : file;
+                              const fileName = isFileObject ? file.name : fileUrl.split('/').pop() || `File ${index + 1}`;
                               const fileExt = fileName.split('.').pop()?.toLowerCase();
                               
                               return (

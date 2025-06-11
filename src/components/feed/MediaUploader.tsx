@@ -7,20 +7,19 @@ import VideoUploader from './VideoUploader';
 import FileUploader from './FileUploader';
 import { Image, Video, File as FileIcon } from 'lucide-react';
 
+interface FileMetadata {
+  url: string;
+  name: string;
+}
+
 interface MediaUploaderProps {
-  onMediaSelected: (media: { images: string[], video: string | null, files: string[] }) => void;
-  onVideoSelected?: (file: File, previewUrl: string) => void;
-  onVideoRemoved?: () => void;
+  onMediaSelected: (media: { images: string[], video: string | null, files: FileMetadata[] }) => void;
   onError?: (error: string) => void;
-  communityId: string;
 }
 
 const MediaUploader: React.FC<MediaUploaderProps> = ({ 
   onMediaSelected,
-  onVideoSelected,
-  onVideoRemoved,
-  onError,
-  communityId
+  onError
 }) => {
   const [activeTab, setActiveTab] = useState<'images' | 'video' | 'files'>('images');
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
@@ -53,8 +52,8 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
     setDroppedFiles([]);
   };
 
-  const handleFilesUploaded = (fileUrls: string[]) => {
-    onMediaSelected({ images: [], video: null, files: fileUrls });
+  const handleFilesUploaded = (files: FileMetadata[]) => {
+    onMediaSelected({ images: [], video: null, files: files });
     setDroppedFiles([]);
   };
 
@@ -124,19 +123,15 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
             maxFiles={5}
             maxSizeMB={10}
             initialFiles={droppedFiles}
-            communityId={communityId}
           />
         )}
         
         {activeTab === 'video' && (
           <VideoUploader
             onVideoUploaded={handleVideoUploaded}
-            onVideoSelected={onVideoSelected}
-            onVideoRemoved={onVideoRemoved}
             onError={handleError}
             maxSizeMB={50}
             initialFiles={droppedFiles}
-            communityId={communityId}
           />
         )}
 
@@ -147,7 +142,6 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
             maxFiles={3}
             maxSizeMB={10}
             initialFiles={droppedFiles}
-            communityId={communityId}
           />
         )}
       </div>
