@@ -97,7 +97,7 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     try {
       const fileExt = selectedVideo.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const filePath = `Miami/${fileName}`;
       
       const { data, error } = await supabase.storage
         .from('feedpostvideos')
