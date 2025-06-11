@@ -7,13 +7,17 @@ import { useDropzone } from 'react-dropzone';
 
 interface VideoUploaderProps {
   onVideoUploaded: (videoUrl: string) => void;
+  onVideoSelected?: (file: File, previewUrl: string) => void;
+  onVideoRemoved?: () => void;
   onError?: (error: string) => void;
   maxSizeMB?: number;
   initialFiles?: File[];
 }
 
 const VideoUploader: React.FC<VideoUploaderProps> = ({ 
-  onVideoUploaded, 
+  onVideoUploaded,
+  onVideoSelected,
+  onVideoRemoved,
   onError,
   maxSizeMB = 50,
   initialFiles = []
@@ -53,6 +57,7 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     
     const objectUrl = URL.createObjectURL(file);
     setPreviewUrl(objectUrl);
+    onVideoSelected?.(file, objectUrl);
   };
   
   const onDrop = (acceptedFiles: File[]) => {
@@ -86,6 +91,7 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    onVideoRemoved?.();
   };
   
   const uploadVideo = async () => {

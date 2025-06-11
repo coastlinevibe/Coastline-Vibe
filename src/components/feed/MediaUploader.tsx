@@ -9,11 +9,15 @@ import { Image, Video, File as FileIcon } from 'lucide-react';
 
 interface MediaUploaderProps {
   onMediaSelected: (media: { images: string[], video: string | null, files: string[] }) => void;
+  onVideoSelected?: (file: File, previewUrl: string) => void;
+  onVideoRemoved?: () => void;
   onError?: (error: string) => void;
 }
 
 const MediaUploader: React.FC<MediaUploaderProps> = ({ 
   onMediaSelected,
+  onVideoSelected,
+  onVideoRemoved,
   onError
 }) => {
   const [activeTab, setActiveTab] = useState<'images' | 'video' | 'files'>('images');
@@ -124,6 +128,8 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
         {activeTab === 'video' && (
           <VideoUploader
             onVideoUploaded={handleVideoUploaded}
+            onVideoSelected={onVideoSelected}
+            onVideoRemoved={onVideoRemoved}
             onError={handleError}
             maxSizeMB={50}
             initialFiles={droppedFiles}
