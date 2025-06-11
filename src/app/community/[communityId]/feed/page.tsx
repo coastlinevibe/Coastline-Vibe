@@ -476,7 +476,7 @@ export default function FeedPage() {
 
   const handlePostSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!newPostContent.trim() && mediaState.images.length === 0 && !mediaState.video && mediaState.files.length === 0) {
+    if (!newPostContent.trim() && mediaState.images.length === 0 && !mediaState.videoFile && mediaState.files.length === 0) {
       setValidationMessage('Please enter text to continue!');
       return;
     }
@@ -491,6 +491,30 @@ export default function FeedPage() {
 
     if (user) {
       try {
+        let finalVideoUrl: string | null = null;
+
+        // If there's a video file selected, upload it first
+        if (mediaState.videoFile) {
+          const file = mediaState.videoFile;
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+          const filePath = `Miami/${fileName}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('feedpostvideos')
+            .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+          if (uploadError) {
+            throw new Error(`Error uploading video: ${uploadError.message}`);
+          }
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('feedpostvideos')
+            .getPublicUrl(filePath);
+          
+          finalVideoUrl = publicUrl;
+        }
+
         // Prepare post data
         const postData = {
           content: newPostContent,
@@ -499,7 +523,7 @@ export default function FeedPage() {
           type: postType,
           is_visible: true,
           images: mediaState.images.length > 0 ? mediaState.images : null,
-          video_url: mediaState.video,
+          video_url: finalVideoUrl,
           files: mediaState.files.length > 0 ? mediaState.files : null
         };
         
