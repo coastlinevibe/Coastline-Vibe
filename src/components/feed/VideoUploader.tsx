@@ -145,10 +145,23 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
         <div className="rounded-lg overflow-hidden">
           <div className="relative">
             <video 
-              src={previewUrl || undefined}
-              className="w-full h-auto max-h-[300px] object-contain bg-black"
-              controls
+              src={previewUrl ? `${previewUrl}#t=0.1` : undefined}
+              className="w-full h-auto max-h-[300px] object-contain bg-black rounded-md"
+              preload="metadata"
+              muted
+              playsInline
             />
+            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
+                <button
+                    onClick={() => {
+                        const video = document.getElementById('video-preview') as HTMLVideoElement;
+                        if(video) video.play();
+                    }}
+                    className="text-white bg-black bg-opacity-50 rounded-full p-3"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                </button>
+            </div>
             <button
               type="button"
               onClick={removeVideo}
