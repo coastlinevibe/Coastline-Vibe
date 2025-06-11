@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTideReactions } from '@/context/TideReactionsContext';
 import { TideReaction } from '@/types/tide-reactions';
 import CoastlineReactionBar from './CoastlineReactionBar';
@@ -27,20 +27,9 @@ export default function CoastlineReactionDisplay({
   barPosition = 'bottom',
   sectionType = 'feed'
 }: CoastlineReactionDisplayProps) {
-  const { reactions, addReaction, removeReaction } = useTideReactions();
+  const { reactions, addReaction } = useTideReactions();
   const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>([]);
   const [animatingReactions, setAnimatingReactions] = useState<TideReaction[]>([]);
-  const animationTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  
-  // Cleanup timeouts on unmount
-  useEffect(() => {
-    return () => {
-      // Clear all timeouts when component unmounts
-      Object.values(animationTimeoutsRef.current).forEach(timeout => {
-        clearTimeout(timeout);
-      });
-    };
-  }, []);
   
   // Add debug log
   useEffect(() => {
@@ -75,59 +64,44 @@ export default function CoastlineReactionDisplay({
       console.log(`Adding ${newAnimatedReactions.length} new animated reactions`);
       setAnimatingReactions(prev => [...prev, ...newAnimatedReactions]);
       
-      // Schedule cleanup after animation completes
+      // Schedule cleanup after animation completes - ensure reactions are removed
       newAnimatedReactions.forEach(reaction => {
-        // Clear any existing timeout for this reaction
-        if (animationTimeoutsRef.current[reaction.id]) {
-          clearTimeout(animationTimeoutsRef.current[reaction.id]);
-        }
-        
-        // Set new timeout to remove the reaction after animation completes
-        const timeoutId = setTimeout(() => {
-          console.log(`Animation complete for reaction ${reaction.id}, removing from display`);
+        setTimeout(() => {
+          console.log(`Removing animated reaction ${reaction.id} after animation completed`);
           setAnimatingReactions(prev => prev.filter(r => r.id !== reaction.id));
-          
-          // Also remove from the reaction system to prevent re-animation
-          removeReaction(reaction.id);
-          
-          // Clean up the timeout reference
-          delete animationTimeoutsRef.current[reaction.id];
         }, 3000); // Animation duration
-        
-        // Store the timeout ID
-        animationTimeoutsRef.current[reaction.id] = timeoutId;
       });
     }
     
-    // Group reactions by type
+    // Group reactions by type for the static display
+    // Only include non-animated reactions in the groups
     const groups: Record<string, ReactionGroup> = {};
     
-    postReactions.forEach(reaction => {
-      // Skip animated reactions in the count display
-      if (reaction.reactionType === 'animated') return;
-      
-      const { reactionCode, reactionUrl, username } = reaction;
-      
-      if (!groups[reactionCode]) {
-        groups[reactionCode] = {
-          code: reactionCode,
-          url: reactionUrl,
-          count: 0,
-          users: [],
-        };
-      }
-      
-      groups[reactionCode].count++;
-      if (!groups[reactionCode].users.includes(username)) {
-        groups[reactionCode].users.push(username);
-      }
-    });
+    postReactions
+      .filter(reaction => reaction.reactionType !== 'animated')
+      .forEach(reaction => {
+        const { reactionCode, reactionUrl, username } = reaction;
+        
+        if (!groups[reactionCode]) {
+          groups[reactionCode] = {
+            code: reactionCode,
+            url: reactionUrl,
+            count: 0,
+            users: [],
+          };
+        }
+        
+        groups[reactionCode].count++;
+        if (!groups[reactionCode].users.includes(username)) {
+          groups[reactionCode].users.push(username);
+        }
+      });
     
     // Convert to array and sort by count (highest first)
     const groupsArray = Object.values(groups).sort((a, b) => b.count - a.count);
     console.log(`Grouped into ${groupsArray.length} reaction types`, groupsArray);
     setReactionGroups(groupsArray);
-  }, [reactions, postId, sectionType, animatingReactions, removeReaction]);
+  }, [reactions, postId, sectionType, animatingReactions]);
   
   // Check if there are any reactions to display
   const hasReactions = reactionGroups.length > 0;
@@ -161,6 +135,10 @@ export default function CoastlineReactionDisplay({
             src={reaction.reactionUrl}
             alt={reaction.reactionCode}
             className="w-10 h-10 object-contain"
+            onAnimationEnd={() => {
+              console.log(`Animation ended for reaction ${reaction.id}`);
+              setAnimatingReactions(prev => prev.filter(r => r.id !== reaction.id));
+            }}
           />
         </div>
       ))}
