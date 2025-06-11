@@ -2049,7 +2049,7 @@ export default function FeedPage() {
                               }}
                               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                             >
-                              <Star size={16} className="mr-2" /> Feature Post
+                              <Star size={16} className="mr-2" /> Pin/Unpin Post
                             </button>
                             <button
                               onClick={() => {
