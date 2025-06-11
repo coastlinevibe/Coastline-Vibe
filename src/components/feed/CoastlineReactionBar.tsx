@@ -29,6 +29,7 @@ export default function CoastlineReactionBar({
   const { addReaction, hasUserReacted, isOnline } = useTideReactions();
   const barRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [animatingReaction, setAnimatingReaction] = useState<{code: string, url: string} | null>(null);
   
   // Close the reaction bar when clicking outside
   useEffect(() => {
@@ -44,6 +45,17 @@ export default function CoastlineReactionBar({
     };
   }, []);
   
+  // Clear animation after it completes
+  useEffect(() => {
+    if (animatingReaction) {
+      const timer = setTimeout(() => {
+        setAnimatingReaction(null);
+      }, 1000); // Animation duration
+      
+      return () => clearTimeout(timer);
+    }
+  }, [animatingReaction]);
+  
   const handleReactionClick = (reactionCode: string, reactionUrl: string) => {
     setError(null);
     
@@ -55,16 +67,17 @@ export default function CoastlineReactionBar({
     try {
       console.log(`Adding ${reactionCode} reaction for post ${postId} in ${sectionType} section`);
       
+      // Show animation
+      setAnimatingReaction({ code: reactionCode, url: reactionUrl });
+      
       // Add the reaction with section type in metadata
       addReaction(
         postId,
         reactionCode,
-        'animated',
+        'static', // Changed back to static since we're handling animation here
         reactionUrl,
         { 
-          sectionType,
-          positionX: Math.random(), // Random horizontal position
-          positionY: Math.random()  // Random vertical position
+          sectionType
         }
       );
       
@@ -80,6 +93,22 @@ export default function CoastlineReactionBar({
       ref={barRef}
       className={`relative ${className}`}
     >
+      {/* Animation overlay */}
+      {animatingReaction && (
+        <div className="absolute pointer-events-none animate-reaction-float" style={{ 
+          top: '-20px', 
+          left: '50%', 
+          transform: 'translateX(-50%)',
+          zIndex: 50 
+        }}>
+          <img 
+            src={animatingReaction.url} 
+            alt={animatingReaction.code}
+            className="w-10 h-10 object-contain"
+          />
+        </div>
+      )}
+      
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center justify-center p-2 rounded-full bg-teal-50 hover:bg-teal-100 border border-teal-200"
