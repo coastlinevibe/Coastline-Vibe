@@ -2019,7 +2019,7 @@ export default function FeedPage() {
                     
                     {/* Admin Edit Menu */}
                     {isAdmin && (
-                      <div className="relative mr-2">
+                      <div className="relative">
                         <button
                           onClick={(e) => {
                             e.preventDefault();
@@ -2064,18 +2064,6 @@ export default function FeedPage() {
                           </div>
                         )}
                       </div>
-                    )}
-                    
-                    {/* Admin Delete button */}
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleDeletePost(post.id)}
-                        className="flex items-center bg-red-100 text-red-500 hover:bg-red-200 px-2 py-1 rounded"
-                        title="Delete Post (Admin Only)"
-                      >
-                        <Trash2 size={18} className="mr-1" />
-                        <span>Delete</span>
-                      </button>
                     )}
               </div>
               
