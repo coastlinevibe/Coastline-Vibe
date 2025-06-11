@@ -4,6 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Image, X, Upload, AlertCircle, Plus } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
+import Lightbox from "yet-another-react-lightbox";
+import "yet-another-react-lightbox/styles.css";
 
 interface ImageUploaderProps {
   onImagesUploaded: (imageUrls: string[]) => void;
@@ -27,6 +29,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   useEffect(() => {
     if (initialFiles.length > 0) {
@@ -61,6 +65,11 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     const newUrls = files.map(file => URL.createObjectURL(file));
     setPreviewUrls(prev => [...prev, ...newUrls]);
+  };
+
+  const openLightbox = (index: number) => {
+    setLightboxIndex(index);
+    setLightboxOpen(true);
   };
 
   const onDrop = (acceptedFiles: File[]) => {
@@ -142,20 +151,30 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   return (
     <div className="w-full">
+      <Lightbox
+        open={lightboxOpen}
+        close={() => setLightboxOpen(false)}
+        slides={previewUrls.map(url => ({ src: url }))}
+        index={lightboxIndex}
+      />
+
       {previewUrls.length > 0 ? (
         <div className="mb-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
             {previewUrls.map((url, index) => (
-              <div key={index} className="relative aspect-square">
+              <div key={index} className="relative aspect-square group cursor-pointer" onClick={() => openLightbox(index)}>
                 <img 
                   src={url} 
                   alt={`Preview ${index + 1}`}
                   className="w-full h-full object-cover rounded-md"
                 />
+                 <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center">
+                  <Plus size={32} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
                 <button
                   type="button"
-                  onClick={() => removeImage(index)}
-                  className="absolute top-1 right-1 bg-black bg-opacity-70 text-white p-1 rounded-full hover:bg-opacity-90"
+                  onClick={(e) => { e.stopPropagation(); removeImage(index); }}
+                  className="absolute top-1 right-1 bg-black bg-opacity-70 text-white p-1 rounded-full hover:bg-opacity-90 z-10"
                   disabled={isUploading}
                 >
                   <X size={14} />
