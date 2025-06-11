@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar, File as FileIcon, ArrowUp, Sailboat, Trash2, MoreHorizontal, Edit3, Star, EyeOff } from 'lucide-react';
+import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar, File as FileIcon, ArrowUp, Sailboat, Trash2, MoreHorizontal, Edit3, Star, EyeOff, Share2 } from 'lucide-react';
 import PollCreator from '@/components/feed/PollCreator';
 import PollCard from '@/components/feed/PollCard';
 import FeedFilters, { FeedContentType } from '@/components/feed/FeedFilters';
@@ -25,6 +25,11 @@ import UserTooltipWrapper from '@/components/user/UserTooltipWrapper';
 import { UserTooltipProfileData } from '@/components/user/UserTooltipDisplay';
 import { TideReactionsProvider } from '@/context/TideReactionsContext';
 import CoastlineReactionDisplay from '@/components/feed/CoastlineReactionDisplay';
+import { formatDistanceToNow } from 'date-fns';
+
+// Import Lightbox
+import Lightbox from "yet-another-react-lightbox";
+import "yet-another-react-lightbox/styles.css";
 
 export default function FeedPage() {
   const supabase = createClient();
@@ -100,6 +105,14 @@ export default function FeedPage() {
 
   // Admin options state
   const [activePostMenu, setActivePostMenu] = useState<string | null>(null);
+
+  const [shareSuccess, setShareSuccess] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+
+  // Lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [activePostImages, setActivePostImages] = useState<string[]>([]);
 
   if (!params) {
     return <div>Loading...</div>;
@@ -1389,9 +1402,15 @@ export default function FeedPage() {
     }
   };
 
+  const openLightbox = (postImages: string[], imageIndex: number) => {
+    setActivePostImages(postImages);
+    setLightboxIndex(imageIndex);
+    setLightboxOpen(true);
+  };
+
   return (
     <TideReactionsProvider>
-      <div className="flex min-h-screen max-w-[1440px] mx-auto -ml-12">
+      <div className="flex bg-gray-50/50 min-h-screen">
         {/* Left Sidebar */}
         <div className={`bg-white shadow-md transition-all duration-300 ${leftSidebarOpen ? 'w-64' : 'w-16'} flex-shrink-0 sticky top-0 h-screen overflow-hidden`}>
           <div className="p-4 h-full">
@@ -1918,7 +1937,7 @@ export default function FeedPage() {
                         </span>
                       </div>
                     <div className="text-xs text-gray-500">
-                      {new Date(post.created_at).toLocaleString()}
+                      {formatDistanceToNow(new Date(post.created_at))} ago
                       {post.type !== 'general' && (
                         <span className="ml-2 px-1.5 py-0.5 bg-gray-100 rounded text-xs">
                           {post.type.charAt(0).toUpperCase() + post.type.slice(1)}
@@ -1966,9 +1985,10 @@ export default function FeedPage() {
                             key={index}
                             src={imgUrl}
                             alt={`Post image ${index + 1}`}
-                            className="max-h-64 rounded"
+                            className="max-h-64 rounded cursor-pointer"
+                            onClick={() => openLightbox(post.images, index)}
                           />
-                      ))}
+                        ))}
                       </div>
                     )}
                       
@@ -2015,6 +2035,46 @@ export default function FeedPage() {
                     >
                       <MessageSquare size={18} className="mr-1" />
                       <span>{post.comment_count || 0}</span>
+                    </button>
+                    
+                    {/* Share button */}
+                    <button
+                      onClick={() => {
+                        // Create share URL
+                        const shareUrl = `${window.location.origin}/community/${communityUuid}/feed?post=${post.id}`;
+                        
+                        // Copy to clipboard
+                        navigator.clipboard.writeText(shareUrl)
+                          .then(() => {
+                            // Show copied notification
+                            setShareSuccess(post.id);
+                            setTimeout(() => {
+                              setShareSuccess(null);
+                            }, 3000);
+                          })
+                          .catch((err) => {
+                            console.error("Failed to copy link: ", err);
+                            setShareError(post.id);
+                            setTimeout(() => {
+                              setShareError(null);
+                            }, 3000);
+                          });
+                      }}
+                      className="flex items-center text-gray-500 hover:text-green-500 mr-4 relative"
+                      title="Share post"
+                    >
+                      <Share2 size={18} className="mr-1" />
+                      <span>Share</span>
+                      {shareSuccess === post.id && (
+                        <span className="absolute -bottom-8 left-0 bg-green-100 text-green-800 text-xs px-2 py-1 rounded whitespace-nowrap">
+                          Link copied!
+                        </span>
+                      )}
+                      {shareError === post.id && (
+                        <span className="absolute -bottom-8 left-0 bg-red-100 text-red-800 text-xs px-2 py-1 rounded whitespace-nowrap">
+                          Failed to copy
+                        </span>
+                      )}
                     </button>
                     
                     {/* Admin Edit Menu */}
@@ -2344,6 +2404,13 @@ export default function FeedPage() {
         </div>
       </div>
     </div>
+
+    <Lightbox
+      open={lightboxOpen}
+      close={() => setLightboxOpen(false)}
+      slides={activePostImages.map(url => ({ src: url }))}
+      index={lightboxIndex}
+    />
   </TideReactionsProvider>
   );
 } 
