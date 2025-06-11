@@ -12,13 +12,15 @@ interface MediaUploaderProps {
   onVideoSelected?: (file: File, previewUrl: string) => void;
   onVideoRemoved?: () => void;
   onError?: (error: string) => void;
+  communityId: string;
 }
 
 const MediaUploader: React.FC<MediaUploaderProps> = ({ 
   onMediaSelected,
   onVideoSelected,
   onVideoRemoved,
-  onError
+  onError,
+  communityId
 }) => {
   const [activeTab, setActiveTab] = useState<'images' | 'video' | 'files'>('images');
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
@@ -122,6 +124,7 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
             maxFiles={5}
             maxSizeMB={10}
             initialFiles={droppedFiles}
+            communityId={communityId}
           />
         )}
         
@@ -133,6 +136,7 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
             onError={handleError}
             maxSizeMB={50}
             initialFiles={droppedFiles}
+            communityId={communityId}
           />
         )}
 
@@ -143,6 +147,7 @@ const MediaUploader: React.FC<MediaUploaderProps> = ({
             maxFiles={3}
             maxSizeMB={10}
             initialFiles={droppedFiles}
+            communityId={communityId}
           />
         )}
       </div>

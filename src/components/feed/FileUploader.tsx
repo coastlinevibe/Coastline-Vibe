@@ -12,6 +12,7 @@ interface FileUploaderProps {
   maxSizeMB?: number;
   allowedFileTypes?: string[];
   initialFiles?: File[];
+  communityId: string;
 }
 
 const FileUploader: React.FC<FileUploaderProps> = ({
@@ -20,7 +21,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   maxFiles = 3,
   maxSizeMB = 10,
   allowedFileTypes = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'],
-  initialFiles = []
+  initialFiles = [],
+  communityId
 }) => {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -100,7 +102,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         const file = selectedFiles[i];
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-        const filePath = `Miami/${fileName}`;
+        const filePath = `${communityId}/${fileName}`;
         
         const { data, error } = await supabase.storage
           .from('feedpostfiles')

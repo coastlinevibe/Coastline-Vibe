@@ -11,6 +11,7 @@ interface ImageUploaderProps {
   maxFiles?: number;
   maxSizeMB?: number;
   initialFiles?: File[];
+  communityId: string;
 }
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({
@@ -18,7 +19,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   onError,
   maxFiles = 5,
   maxSizeMB = 10,
-  initialFiles = []
+  initialFiles = [],
+  communityId
 }) => {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -101,7 +103,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         const file = selectedImages[i];
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-        const filePath = `Miami/${fileName}`;
+        const filePath = `${communityId}/${fileName}`;
         
         const { data, error } = await supabase.storage
           .from('feedpostimages')
