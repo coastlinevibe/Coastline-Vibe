@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { File as FileIcon, X, Upload, AlertCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
@@ -12,7 +12,6 @@ interface FileUploaderProps {
   maxSizeMB?: number;
   allowedFileTypes?: string[];
   initialFiles?: File[];
-  communityId: string;
 }
 
 const FileUploader: React.FC<FileUploaderProps> = ({
@@ -21,11 +20,9 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   maxFiles = 3,
   maxSizeMB = 10,
   allowedFileTypes = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'],
-  initialFiles = [],
-  communityId
+  initialFiles = []
 }) => {
   const supabase = createClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -44,8 +41,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     });
     
     if (invalidFiles.length > 0) {
-      setError(`Please select valid file types: ${allowedFileTypes.join(', ')}`);
-      onError?.(`Please select valid file types: ${allowedFileTypes.join(', ')}`);
+      setError(`Invalid file type. Allowed: ${allowedFileTypes.join(', ')}`);
+      onError?.(`Invalid file type. Allowed: ${allowedFileTypes.join(', ')}`);
       return;
     }
     
@@ -67,22 +64,45 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     setError(null);
   };
 
+  const buildAcceptObject = () => {
+    const mimeMap: { [key: string]: string } = {
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      txt: 'text/plain',
+    };
+    
+    const accept: { [key: string]: string[] } = {};
+    allowedFileTypes.forEach(ext => {
+      const mimeType = mimeMap[ext.toLowerCase()];
+      const extension = `.${ext.toLowerCase()}`;
+      if (mimeType) {
+        if (!accept[mimeType]) {
+          accept[mimeType] = [];
+        }
+        accept[mimeType].push(extension);
+      } else {
+        accept[extension] = [];
+      }
+    });
+    return accept;
+  };
+
   const onDrop = (acceptedFiles: File[]) => {
     handleFiles(acceptedFiles);
   };
   
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    accept: buildAcceptObject(),
     maxSize: maxSizeMB * 1024 * 1024,
     maxFiles: maxFiles,
     disabled: isUploading || selectedFiles.length >= maxFiles,
   });
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFiles(Array.from(e.target.files));
-    }
-  };
   
   const removeFile = (index: number) => {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
@@ -102,7 +122,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         const file = selectedFiles[i];
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-        const filePath = `${communityId}/${fileName}`;
+        const filePath = `${fileName}`;
         
         const { data, error } = await supabase.storage
           .from('feedpostfiles')
@@ -125,10 +145,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
       
       setSelectedFiles([]);
       setUploadProgress(0);
-      
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
       
     } catch (err: any) {
       setError(err.message || 'An error occurred while uploading files');
@@ -208,18 +224,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           </div>
         </div>
       )}
-      
-      <input
-        ref={fileInputRef}
-        id="file-upload"
-        name="files"
-        type="file"
-        accept={allowedFileTypes.map(t => `.${t}`).join(',')}
-        multiple
-        className="hidden"
-        onChange={handleFileSelect}
-        disabled={isUploading || selectedFiles.length >= maxFiles}
-      />
       
       {error && (
         <div className="mt-2 flex items-center text-sm text-red-600">
