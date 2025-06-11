@@ -53,18 +53,10 @@ export default function FeedPage() {
   const MAX_POST_LENGTH = 1000;
   
   // Media upload states
-  const [mediaState, setMediaState] = useState<{
-    images: string[],
-    video: string | null,
-    files: string[],
-    videoPreview: string | null,
-    videoFile: File | null
-  }>({
+  const [mediaState, setMediaState] = useState<{ images: string[], video: string | null, files: string[] }>({
     images: [],
     video: null,
-    files: [],
-    videoPreview: null,
-    videoFile: null
+    files: []
   });
   const [showMediaUploader, setShowMediaUploader] = useState(false);
   
@@ -476,7 +468,7 @@ export default function FeedPage() {
 
   const handlePostSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!newPostContent.trim() && mediaState.images.length === 0 && !mediaState.videoFile && mediaState.files.length === 0) {
+    if (!newPostContent.trim() && mediaState.images.length === 0 && !mediaState.video && mediaState.files.length === 0) {
       setValidationMessage('Please enter text to continue!');
       return;
     }
@@ -491,30 +483,6 @@ export default function FeedPage() {
 
     if (user) {
       try {
-        let finalVideoUrl: string | null = null;
-
-        // If there's a video file selected, upload it first
-        if (mediaState.videoFile) {
-          const file = mediaState.videoFile;
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-          const filePath = `Miami/${fileName}`;
-          
-          const { error: uploadError } = await supabase.storage
-            .from('feedpostvideos')
-            .upload(filePath, file, { cacheControl: '3600', upsert: false });
-
-          if (uploadError) {
-            throw new Error(`Error uploading video: ${uploadError.message}`);
-          }
-
-          const { data: { publicUrl } } = supabase.storage
-            .from('feedpostvideos')
-            .getPublicUrl(filePath);
-          
-          finalVideoUrl = publicUrl;
-        }
-
         // Prepare post data
         const postData = {
           content: newPostContent,
@@ -523,7 +491,7 @@ export default function FeedPage() {
           type: postType,
           is_visible: true,
           images: mediaState.images.length > 0 ? mediaState.images : null,
-          video_url: finalVideoUrl,
+          video_url: mediaState.video,
           files: mediaState.files.length > 0 ? mediaState.files : null
         };
         
@@ -537,7 +505,7 @@ export default function FeedPage() {
         } else {
           console.log('Post created successfully!');
           setNewPostContent('');
-          setMediaState({ images: [], video: null, files: [], videoPreview: null, videoFile: null });
+          setMediaState({ images: [], video: null, files: [] });
           setPostType('general');
           fetchPosts(); // Refresh the post list
         }
@@ -1710,59 +1678,33 @@ export default function FeedPage() {
               <span>/{MAX_POST_LENGTH} characters</span>
             </div>
         
-        {/* Image and Video preview area */}
-        {(mediaState.images.length > 0 || mediaState.videoPreview) && (
+        {/* Image preview area */}
+          {mediaState.images.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {/* Image Previews */}
-            {mediaState.images.map((url, index) => (
+              {mediaState.images.map((url, index) => (
               <div key={index} className="relative">
                 <img 
                   src={url} 
                   alt={`Preview ${index}`} 
-                  className="h-20 w-20 object-cover rounded"
+                    className="h-20 w-20 object-cover rounded"
                 />
                 <button
                   type="button"
-                  onClick={() => {
-                    const urlToRevoke = mediaState.images[index];
-                    setMediaState(prev => ({
-                      ...prev,
-                      images: prev.images.filter((_, i) => i !== index)
-                    }));
-                    URL.revokeObjectURL(urlToRevoke);
-                  }}
-                  className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 transform translate-x-1/3 -translate-y-1/3"
+                    onClick={() => {
+                      // Remove image from state and revoke URL
+                      const urlToRevoke = mediaState.images[index];
+                      setMediaState(prev => ({
+                        ...prev,
+                        images: prev.images.filter((_, i) => i !== index)
+                      }));
+                      URL.revokeObjectURL(urlToRevoke);
+                    }}
+                    className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 transform translate-x-1/3 -translate-y-1/3"
                 >
                   <X size={12} />
                 </button>
               </div>
             ))}
-            {/* Video Preview */}
-            {mediaState.videoPreview && (
-              <div className="relative">
-                <video 
-                  src={mediaState.videoPreview} 
-                  className="h-20 w-20 object-cover rounded bg-black"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (mediaState.videoPreview) {
-                      URL.revokeObjectURL(mediaState.videoPreview);
-                    }
-                    setMediaState(prev => ({
-                      ...prev,
-                      video: null,
-                      videoPreview: null,
-                      videoFile: null
-                    }));
-                  }}
-                  className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 transform translate-x-1/3 -translate-y-1/3"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            )}
           </div>
         )}
         
@@ -1902,27 +1844,9 @@ export default function FeedPage() {
                   <div className="relative z-[999999]">
               <MediaUploader 
                 onMediaSelected={(media) => {
-                  console.log("Media selected:", media);
-                  setMediaState(prev => ({ ...prev, ...media }));
+                        console.log("Media selected:", media);
+                  setMediaState(media);
                   setShowMediaUploader(false);
-                }}
-                onVideoSelected={(file, previewUrl) => {
-                  setMediaState(prev => ({
-                    ...prev,
-                    videoFile: file,
-                    videoPreview: previewUrl,
-                    images: [], // Clear images if video is selected
-                    files: [] // Clear files if video is selected
-                  }));
-                  setShowMediaUploader(false);
-                }}
-                onVideoRemoved={() => {
-                  setMediaState(prev => ({
-                    ...prev,
-                    video: null,
-                    videoPreview: null,
-                    videoFile: null
-                  }));
                 }}
                 onError={(error) => {
                   console.error('Media upload error:', error);
@@ -2050,6 +1974,24 @@ export default function FeedPage() {
                           controls
                           className="w-full rounded-lg max-h-[400px]"
                         />
+                      </div>
+                    )}
+                    
+                    {post.video_url && (
+                      <div className="mt-3 rounded-lg overflow-hidden relative">
+                        <video
+                          src={`${post.video_url}#t=0.1`}
+                          className="w-full h-auto max-h-[400px] object-contain bg-black rounded-md"
+                          preload="metadata"
+                          muted
+                          playsInline
+                          onClick={(e) => (e.currentTarget as HTMLVideoElement).play()}
+                        />
+                         <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 pointer-events-none">
+                              <div className="text-white bg-black bg-opacity-50 rounded-full p-3">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                              </div>
+                          </div>
                       </div>
                     )}
                     
