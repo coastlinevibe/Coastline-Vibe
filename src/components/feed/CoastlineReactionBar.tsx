@@ -59,10 +59,12 @@ export default function CoastlineReactionBar({
       addReaction(
         postId,
         reactionCode,
-        'static',
+        'animated',
         reactionUrl,
         { 
-          sectionType
+          sectionType,
+          positionX: Math.random(), // Random horizontal position
+          positionY: Math.random()  // Random vertical position
         }
       );
       
