@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import BusinessEditTabsForm from "../../../../../../components/shared/BusinessEditTabsForm";
+import BusinessMultiStepForm from "../../../../../../components/shared/BusinessMultiStepForm";
+import Link from "next/link";
 
 // Copy BusinessFormState type here for local use
 interface BusinessFormState {
@@ -26,6 +27,7 @@ interface BusinessFormState {
   address: string;
   latitude: string;
   longitude: string;
+  neighborhood?: string;
   thumbnail: File | null;
   cover: File | null;
   videoProvider: string;
@@ -93,6 +95,7 @@ export default function EditBusinessPage() {
           address: data.address || '',
           latitude: data.latitude?.toString() || '',
           longitude: data.longitude?.toString() || '',
+          neighborhood: data.neighborhood || '',
           thumbnail: null,
           cover: null,
           videoProvider: data.video_provider || '',
@@ -110,11 +113,11 @@ export default function EditBusinessPage() {
             sunday: { open: '', close: '' },
           },
           website: data.website || '',
-          email: data.email || '',
-          phone: data.phone || '',
-          facebook: data.facebook || '',
-          twitter: data.twitter || '',
-          linkedin: data.linkedin || '',
+          email: data.contact_email || '',
+          phone: data.contact_phone || '',
+          facebook: data.social_facebook || '',
+          twitter: data.social_twitter || '',
+          linkedin: data.social_linkedin || '',
           businessTypes: data.business_types || [],
           menuName: data.menu_name || '',
           menuPrice: data.menu_price || '',
@@ -129,7 +132,7 @@ export default function EditBusinessPage() {
       }
     };
     if (businessId) fetchBusinessData();
-  }, [businessId]);
+  }, [businessId, supabase]);
 
   const handleComplete = (id: string) => {
     router.push(`/community/${communityId}/business/${id}`);
@@ -159,12 +162,21 @@ export default function EditBusinessPage() {
   return (
     <div className="py-8">
       <div className="max-w-content mx-auto px-4">
+        <div className="mb-4">
+          <Link href={`/community/${communityId}/business/directory/my-businesses`} className="text-primaryTeal font-semibold hover:underline">← Back to Business Menu</Link>
+        </div>
         <div className="mb-6">
           <h1 className="text-2xl font-heading font-bold text-primaryTeal">Edit Business</h1>
           <p className="text-grayLight">Update your business information below</p>
         </div>
-        <BusinessEditTabsForm businessId={businessId} initialData={initialData} onComplete={handleComplete} />
+        <BusinessMultiStepForm 
+          mode="edit" 
+          businessId={businessId} 
+          initialData={initialData} 
+          onComplete={handleComplete}
+          communityId={communityId}
+        />
       </div>
     </div>
   );
-} 
+}

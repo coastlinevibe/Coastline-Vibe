@@ -7,6 +7,7 @@ import { BarChart2, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 interface PollAnalyticsProps {
   pollId: string;
   isCreator: boolean;
+  communityId: string;
 }
 
 interface PollAnalyticsData {
@@ -23,7 +24,7 @@ interface PollAnalyticsData {
   }[];
 }
 
-const PollAnalytics: React.FC<PollAnalyticsProps> = ({ pollId, isCreator }) => {
+const PollAnalytics: React.FC<PollAnalyticsProps> = ({ pollId, isCreator, communityId }) => {
   const supabase = createClient();
   const [analyticsData, setAnalyticsData] = useState<PollAnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,7 +48,8 @@ const PollAnalytics: React.FC<PollAnalyticsProps> = ({ pollId, isCreator }) => {
             created_at
           )
         `)
-        .eq('poll_id', pollId);
+        .eq('poll_id', pollId)
+        .eq('community_id', communityId);
 
       if (optionsError) {
         throw new Error(`Error fetching poll options: ${optionsError.message}`);
@@ -113,7 +115,7 @@ const PollAnalytics: React.FC<PollAnalyticsProps> = ({ pollId, isCreator }) => {
     if (showAnalytics && !analyticsData && !loading) {
       fetchAnalytics();
     }
-  }, [showAnalytics, analyticsData, loading, pollId, isCreator]);
+  }, [showAnalytics, analyticsData, loading, pollId, isCreator, communityId]);
 
   if (!isCreator) {
     return null;

@@ -16,12 +16,22 @@ interface BusinessFormState {
   featuredType: string;
   // Amenities
   amenities: string[];
+  // Facilities
+  facilities: string[];
+  facility_hours: {
+    [key: string]: {
+      open: string;
+      close: string;
+      days: string;
+    };
+  };
   // Location
   country: string;
   city: string;
   address: string;
   latitude: string;
   longitude: string;
+  neighborhood?: string;
   // Media
   thumbnail: File | null;
   cover: File | null;
@@ -56,15 +66,22 @@ interface BusinessFormState {
   menuImage: File | null;
 }
 
-export default function BusinessFormContainer() {
+interface BusinessFormContainerProps {
+  communityId?: string;
+}
+
+export default function BusinessFormContainer({ communityId: propCommunityId }: BusinessFormContainerProps) {
   const params = useParams();
   const router = useRouter();
   const [mode, setMode] = useState<'create' | 'edit'>('create');
   const [isLoading, setIsLoading] = useState(true);
   const [initialData, setInitialData] = useState<BusinessFormState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const businessId = params.businessId as string;
-  const communityId = params.communityId as string;
+  const [submissionSuccess, setSubmissionSuccess] = useState(false);
+  
+  const businessId = params?.businessId as string;
+  // Use the prop communityId if provided, otherwise use from params
+  const communityId = propCommunityId || (params?.communityId as string);
   
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -112,11 +129,14 @@ export default function BusinessFormContainer() {
         subCategory: data.subcategory_id || '',
         featuredType: data.featured_type || '',
         amenities: data.amenities || [],
+        facilities: data.facilities || [],
+        facility_hours: data.facility_hours || {},
         country: data.country || '',
         city: data.city || '',
         address: data.address || '',
         latitude: data.latitude?.toString() || '',
         longitude: data.longitude?.toString() || '',
+        neighborhood: data.neighborhood || '',
         thumbnail: null, // Can't pre-populate File objects
         cover: null,
         videoProvider: data.video_provider || '',
@@ -156,8 +176,16 @@ export default function BusinessFormContainer() {
   };
 
   const handleComplete = (id: string) => {
-    // Redirect to the business view page after successful create/edit
-    router.push(`/community/${communityId}/business/${id}`);
+    // Show success message
+    console.log("Business form submission completed successfully with ID:", id);
+    setSubmissionSuccess(true);
+    
+    // Wait 2 seconds before redirecting
+    setTimeout(() => {
+      console.log("Redirecting to business page:", `/community/${communityId}/business/${id}`);
+      // Redirect to the business view page after successful create/edit
+      router.push(`/community/${communityId}/business/${id}`);
+    }, 2000);
   };
 
   const handleBackClick = () => {
@@ -211,11 +239,21 @@ export default function BusinessFormContainer() {
           </button>
         </div>
         
+        {submissionSuccess && (
+          <div className="mb-6 bg-green-50 border border-green-500 text-green-700 p-4 rounded-md flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="font-medium">Listing Submitted for Approval</span>
+          </div>
+        )}
+        
         <BusinessMultiStepForm 
           mode={mode} 
           businessId={mode === 'edit' ? businessId : undefined}
           initialData={initialData || undefined}
           onComplete={handleComplete}
+          communityId={communityId}
         />
       </div>
     </div>

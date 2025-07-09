@@ -139,6 +139,7 @@ export default function EditPropertyPage() {
       isPetFriendly: form.isPetFriendly,
       imageFiles: imageUrls,
       videoUrl: videoUrl || null,
+      listed_by: form.listed_by,
     };
     console.log('Update data:', updateData);
     const { data, error: updateError } = await supabase
@@ -154,7 +155,7 @@ export default function EditPropertyPage() {
     }
     console.log('Update success');
     setIsUploading(false);
-    router.push(`/properties/${params.id}`);
+    router.push('/properties');
   };
 
   const handleSetMainImage = (idx: number) => {
@@ -180,6 +181,14 @@ export default function EditPropertyPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
+        <div className="mb-6">
+          <a
+            href="/properties"
+            className="inline-block px-4 py-2 rounded bg-cyan-600 text-white font-semibold hover:bg-cyan-700 transition"
+          >
+            ← Back to Listings
+          </a>
+        </div>
         <h1 className="text-2xl font-bold mb-4">Edit Property</h1>
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Basic Info */}
@@ -193,6 +202,27 @@ export default function EditPropertyPage() {
               <div>
                 <label className="block font-medium mb-1">Description</label>
                 <textarea name="description" value={form.description} onChange={handleChange} className="w-full border rounded px-2 py-1" required placeholder="Describe the property, features, and highlights..." />
+              </div>
+              <div>
+                <label className="block font-medium mb-1">I am the: <span className="text-red-500">*</span></label>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    className={`px-4 py-2 rounded-l border font-semibold ${form.listed_by === 'owner' ? 'bg-cyan-600 text-white' : 'bg-gray-100 text-cyan-700'}`}
+                    onClick={() => setForm((prev: any) => ({ ...prev, listed_by: 'owner' }))}
+                    aria-pressed={form.listed_by === 'owner'}
+                  >
+                    Owner
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-4 py-2 rounded-r border font-semibold ${form.listed_by === 'agent' ? 'bg-cyan-600 text-white' : 'bg-gray-100 text-cyan-700'}`}
+                    onClick={() => setForm((prev: any) => ({ ...prev, listed_by: 'agent' }))}
+                    aria-pressed={form.listed_by === 'agent'}
+                  >
+                    Agent
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block font-medium mb-1">Price</label>
@@ -230,10 +260,18 @@ export default function EditPropertyPage() {
               <div>
                 <label className="block font-medium mb-1">Property Type</label>
                 <select name="propertyType" value={form.propertyType} onChange={handleChange} className="w-full border rounded px-2 py-1">
-                  <option>Apartment</option>
-                  <option>House</option>
+                  <option>Apartment / Flat</option>
+                  <option>House / Villa</option>
                   <option>Studio</option>
                   <option>Townhouse</option>
+                  <option>Condo / Condominium</option>
+                  <option>Duplex</option>
+                  <option>Penthouse</option>
+                  <option>Loft</option>
+                  <option>Bungalow</option>
+                  <option>Cottage</option>
+                  <option>Commercial Space</option>
+                  <option>Land / Plot</option>
                   <option>Other</option>
                 </select>
               </div>
@@ -242,6 +280,15 @@ export default function EditPropertyPage() {
                 <select name="listingType" value={form.listingType} onChange={handleChange} className="w-full border rounded px-2 py-1">
                   <option>Rent</option>
                   <option>Sale</option>
+                  <option>Short Term Rental</option>
+                  <option>Shared Accommodation</option>
+                  <option>Sublet</option>
+                  <option>Co-living</option>
+                  <option>Vacation Rental</option>
+                  <option>Commercial Lease</option>
+                  <option>Lease to Own</option>
+                  <option>Auction</option>
+                  <option>Exchange</option>
                 </select>
               </div>
               <div>
@@ -296,6 +343,7 @@ export default function EditPropertyPage() {
               />
               <label htmlFor="property-image-upload" className={`cursor-pointer inline-block px-4 py-2 bg-cyan-100 text-cyan-700 rounded hover:bg-cyan-200 transition mb-2 ${(form.imageFiles?.length || 0) >= 10 ? 'opacity-50 cursor-not-allowed' : ''}`}>Select Images</label>
               <div className="text-xs text-gray-500 mb-2">Drag and drop or select up to 10 images. <span className="font-semibold text-cyan-700">{form.imageFiles?.length || 0}/10</span> selected</div>
+              <div className="text-xs text-gray-700 mb-2">Accepted image types: <span className="font-semibold">JPG, PNG, GIF, WEBP</span></div>
               <div className="grid grid-cols-4 gap-2 mt-2">
                 {imagePreviews.map((src, idx) => (
                   <div key={idx} className="relative group">
@@ -336,7 +384,7 @@ export default function EditPropertyPage() {
                   }
                 }}
               >
-                <label className="block font-medium mb-2">Property Video (optional, max 1)</label>
+                <label className="block font-medium mb-2">Property Video (optional, max 2)</label>
                 <input
                   type="file"
                   accept="video/*"
@@ -346,7 +394,8 @@ export default function EditPropertyPage() {
                   disabled={isUploading || !!videoFile}
                 />
                 <label htmlFor="property-video-upload" className={`cursor-pointer inline-block px-4 py-2 bg-cyan-100 text-cyan-700 rounded hover:bg-cyan-200 transition mb-2 ${videoFile ? 'opacity-50 cursor-not-allowed' : ''}`}>Select Video</label>
-                <div className="text-xs text-gray-500 mb-2">Drag and drop or select a video file. <span className="font-semibold text-cyan-700">{videoFile ? '1/1 selected' : '0/1 selected'}</span></div>
+                <div className="text-xs text-gray-500 mb-2">Drag and drop or select up to 2 video files. <span className="font-semibold text-cyan-700">{videoFile ? (Array.isArray(videoFile) ? videoFile.length : 1) : 0}/2 selected</span></div>
+                <div className="text-xs text-gray-700 mb-2">Accepted video types: <span className="font-semibold">MP4, MOV, AVI, WEBM</span></div>
                 {videoPreview && (
                   <div className="flex flex-col items-center mt-2">
                     <div className="flex items-center gap-2 text-sm text-cyan-900 font-medium">
@@ -365,7 +414,22 @@ export default function EditPropertyPage() {
           </div>
           {/* Submission Feedback */}
           {submitError && <div className="text-xs text-red-500 mt-1">{submitError}</div>}
-          <button type="submit" className="w-full py-2 bg-teal-500 text-white rounded hover:bg-teal-600 transition" disabled={isUploading}>Save Changes</button>
+          <div className="flex gap-4 mt-6">
+            <button
+              type="button"
+              className="w-1/2 py-2 bg-gray-200 text-cyan-900 rounded hover:bg-gray-300 transition"
+              onClick={() => window.location.href = '/properties'}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="w-1/2 py-2 bg-teal-500 text-white rounded hover:bg-teal-600 transition"
+              disabled={isUploading}
+            >
+              Save Changes
+            </button>
+          </div>
         </form>
       </div>
     </div>

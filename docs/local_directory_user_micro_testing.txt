@@ -1,0 +1,99 @@
+Local Directory Micro-Testing Checklist: User (Browser) View
+
+A. Basic Features
+1. Directory UI & Navigation
+   - Navigate to /community/{id}/directory.
+   - Confirm header "{Community} – Business Directory."
+   - Verify tagline "Discover local businesses by type, area, or rating."
+   - Ensure search bar ("Search businesses...") is visible.
+   - Confirm filters panel shows Category, Area/Neighborhood, Rating, Radius.
+   - "Clear Filters" disabled until a filter is applied.
+
+2. Search & Filters
+   - Type a business type (e.g., "Cafe") → only matching businesses listed.
+   - Select multiple categories (e.g., "Restaurants" + "Shops") → verify OR/AND logic per spec.
+   - Select an area (e.g., "Brickell") → confirm correct filtering.
+   - Set Rating ≥ 4★ → confirm only businesses ≥4★.
+   - Adjust radius filter → listings update live.
+   - Click "Clear Filters" → reset to full list.
+
+3. Listing Cards & Map Views
+   - Each card shows: logo, name, category icon, rating, "Featured" badge if any.
+   - Hover card → quick-view overlay with address snippet.
+   - Click logo/title → navigates to business detail page.
+   - Switch to "Map View" → confirm pins cluster vs. list toggle.
+   - Click pin → tooltip with name, rating, "View Profile."
+   - Draw radius → only pins within shape displayed.
+   - Clear shape → all pins reappear.
+
+4. Business Detail Page
+   - Verify breadcrumb "Directory → [BusinessName]."
+   - Header: business name, category, hours ("Open Now" badge).
+   - Contact CTA: "Visit Website," "Call," or "Email."
+   - Photo gallery: thumbnails → lightbox → navigate & close.
+   - Embedded map: pin, info window, "Get Directions."
+   - Details: description, address, phone (click-to-call), email button, website link.
+   - Hours table + "Open Now" indicator.
+   - Reviews: average star rating, sample reviews or "No reviews yet."
+   - "Write a Review" box: star input + textarea → test validation, submission.
+   - Pagination of reviews / "See All Reviews."
+
+5. Claim Business Flow
+   - Unclaimed detail → "Claim This Business" button visible.
+   - Click → multi-step modal: upload docs, phone OTP, email link.
+   - Test each validation: missing doc, invalid phone, wrong OTP, expired link.
+   - Complete flow → "Claim Approved" toast.
+   - Confirm "Owned by [UserName]" label + "Edit Business Profile" button.
+
+6. Reviews & Ratings
+   - Submit first review: test star-only validation, text-only optional.
+   - Verify review appears, average rating updates on detail & card.
+   - Edit own review: "⋮ → Edit" → modify & save → "Edited" label.
+   - Delete own review → confirm removal & rating recalculated.
+   - Report another's review → "Reason" dropdown → confirm moderation queue entry.
+
+7. Contact & Inquiry Tracking
+   - On detail, click "Call" / "Email" / "Message."
+   - As logged-in user, send a message → confirm inquiry success toast.
+
+8. Pagination / Infinite Scroll
+   - Scroll → more cards load or "Next Page" appears.
+   - Click "Next" → new results load; confirm end-of-list messaging.
+
+B. WOW Features
+1. Verified Business Badges
+   - Identify a verified business → confirm green check badge on card & detail.
+   - Filter "Verified Only" → only verified businesses.
+
+2. AI-Generated Content
+   - In "Edit Profile," click "AI Suggest Text" → spinner → suggested description.
+   - Copy suggestion to form → Save → confirm updated description.
+   - Create promo → "AI Suggest Offer" → suggestions appear; copy & publish.
+
+3. Local Deals & Events Integration
+   - Deal cards under directory listing; clicking pushes to feed and detail.
+   - RSVP to events from detail; shows in your calendar and in-app notifications.
+
+4. Map-Based Discovery Widgets
+   - Live mini-map clusters update as you pan/zoom.
+   - "Hot Now" poll embedded in the sidebar affects what you see.
+
+5. Instant Chat Inquiry
+   - Click "Message" on detail → ephemeral 3-person "Rapid Chat" rooms for 10 mins.
+
+6. Social & Sponsored Snippets
+   - Carousel of "Local Picks" and sponsored posts in right rail.
+
+C. Edge-Case & Error Handling
+   - File uploads (wrong type/size), invalid addresses, network timeouts, OTP/email link expiries.
+   - All tested in user flow.
+
+D. Integration Touchpoints
+   - Feed, Properties, Marketplace, Groups: contextual "action buttons" for businesses (e.g. share a deal to the feed), opt-in and write through an events bus.
+
+E. Critical Information Points
+   - Users only ever get the browser-view checklist; no dashboard access.
+   - Directory listing pages are world-readable.
+   - Business table (JSONB for amenities/tags, geospatial index on location) separate from users/properties.
+   - Rapid Chats and stickers are ephemeral; reviews, claims, inquiries are persistent.
+   - Use this checklist to validate every micro-interaction for Local Directory from the visitor standpoint—ensuring clear separation, robust error handling, and scalability. 

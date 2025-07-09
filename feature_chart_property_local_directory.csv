@@ -1,0 +1,26 @@
+Section,Main Feature,Sub-Feature / Detail,Status
+Property,Property Listings,View property details,Current
+Property,Property Listings,Filter/search properties,Current
+Property,Property Listings,Property images/gallery,Current
+Property,Property Listings,Map/location integration,Planned
+Property,Property Listings,Save/favorite properties,Future
+Property,Property Listings,Contact/inquiry form,Current
+Property,Property Listings,Amenities display,Current
+Property,Property Listings,Price display,Current
+Property,Property Listings,Availability calendar,Planned
+Property,Property Listings,User reviews/ratings,Future
+Property,Property Management,Add/edit property,Current
+Property,Property Management,Delete property,Current
+Property,Property Management,Manage bookings,Planned
+Property,Property Management,Analytics/statistics,Future
+Local Directory,Business Listings,View business details,Current
+Local Directory,Business Listings,Filter/search businesses,Current
+Local Directory,Business Listings,Business images/gallery,Current
+Local Directory,Business Listings,Map/location integration,Planned
+Local Directory,Business Listings,Save/favorite businesses,Future
+Local Directory,Business Listings,Contact business,Current
+Local Directory,Business Listings,Business categories/tags,Current
+Local Directory,Business Listings,User reviews/ratings,Future
+Local Directory,Directory Management,Add/edit business,Current
+Local Directory,Directory Management,Delete business,Current
+Local Directory,Directory Management,Analytics/statistics,Future 

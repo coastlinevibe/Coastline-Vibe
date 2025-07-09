@@ -2,10 +2,21 @@
 
 import { useState, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import type { Database } from "@/types/supabase";
 import { BusinessCard } from "@/components/BusinessCard";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { Filter, List, Map as MapIcon, SlidersHorizontal } from "lucide-react";
+
+// Import our new filter components
+import AdvancedFilterSidebar from "@/components/shared/AdvancedFilterSidebar";
+import ActiveFiltersTags from "@/components/shared/ActiveFiltersTags";
+
+// Dynamically import the map component to avoid SSR issues with mapbox-gl
+const BusinessMapView = dynamic(
+  () => import("@/components/shared/BusinessMapView"),
+  { ssr: false }
+);
 
 // Add types for query responses
 type Category = {
@@ -37,10 +48,14 @@ type Business = {
   subcategory?: { id: string; name: string };
   category_name?: string;
   subcategory_name?: string;
+  rating?: number;
+  contact_phone?: string;
+  contact_email?: string;
+  location?: { latitude: number; longitude: number } | null;
 };
 
 export default function BusinessDirectoryPage() {
-  const supabase = createBrowserClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   const params = useParams();
   const communityId = (params?.communityId as string) || '';
   const router = useRouter();
@@ -48,13 +63,25 @@ export default function BusinessDirectoryPage() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("");
-  const [subDirectory, setSubDirectory] = useState("");
   const [loading, setLoading] = useState(false);
   const [communityUuid, setCommunityUuid] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
-
+  const [neighborhoods, setNeighborhoods] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  
+  // Enhanced filter state
+  const [filters, setFilters] = useState<Record<string, any>>({
+    search: "",
+    category: "",
+    location: {},
+    amenities: [],
+    price: {},
+    hours: {},
+    rating: 0,
+    sort: "featured"
+  });
+  
   // Fetch user role
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -81,11 +108,25 @@ export default function BusinessDirectoryPage() {
   // Get community UUID from slug
   useEffect(() => {
     const fetchCommunityUuid = async () => {
-      if (!communityId) return; // Ensure slug is available
+      console.log("Fetching community UUID for slug:", communityId);
+      
+      // Debug: Log the communities table to check if the community exists
+      const { data: allCommunities, error: communityListError } = await supabase
+        .from('communities')
+        .select('id, name, slug')
+        .limit(10);
+        
+      if (communityListError) {
+        console.error("Error fetching communities list:", communityListError);
+      } else {
+        console.log("Available communities:", allCommunities);
+      }
+      
+      // Now try to find the specific community by slug
       const { data: communityData, error: communityError } = await supabase
-        .from("communities")
-        .select("id")
-        .eq("slug", communityId) // Use the slug here
+        .from('communities')
+        .select('id')
+        .eq('slug', communityId)
         .single();
       
       if (communityError) {
@@ -98,6 +139,7 @@ export default function BusinessDirectoryPage() {
         console.log("Found community UUID:", communityData.id);
         setCommunityUuid(communityData.id);
       } else {
+        console.log("No community found with slug:", communityId);
         setCommunityUuid(null); // Set to null if no data
       }
     };
@@ -106,9 +148,6 @@ export default function BusinessDirectoryPage() {
       fetchCommunityUuid();
     }
   }, [supabase, communityId]);
-
-  // Only show subcategories that match the selected category
-  const filteredSubcategories = subcategories.filter(sc => sc.category_id === category);
 
   // Get categories and subcategories
   useEffect(() => {
@@ -125,39 +164,94 @@ export default function BusinessDirectoryPage() {
   // Fetch businesses for the community
   useEffect(() => {
     if (!communityUuid) return; // Wait until we have the community UUID
-    
     setLoading(true);
-    
-    // Fetch businesses from the database
+
+    // If no filters/search, fetch first 12 businesses
+    const noFilters = Object.keys(filters).every(key => {
+      if (key === 'search' || key === 'category') return !filters[key];
+      if (key === 'rating') return filters[key] === 0;
+      if (key === 'sort') return filters[key] === 'featured';
+      if (key === 'amenities') return !filters[key].length;
+      if (key === 'location' || key === 'price' || key === 'hours') {
+        return Object.keys(filters[key]).length === 0;
+      }
+      return true;
+    });
+
+    if (noFilters) {
+      supabase
+        .from("businesses")
+        .select(`
+          *,
+          category:category_id(id, name),
+          subcategory:subcategory_id(id, name)
+        `)
+        .eq("community_id", communityUuid)
+        .limit(12)
+        .then(res => {
+          setLoading(false);
+          if (!res.error) {
+            const transformedData = res.data.map(business => ({
+              ...business,
+              category_name: business.category?.name,
+              subcategory_name: business.subcategory?.name
+            }));
+            setBusinesses(transformedData);
+          } else {
+            console.error("Error fetching all businesses:", res.error);
+          }
+        });
+      return;
+    }
+
+    // Otherwise, run the searchBusinesses logic
+    searchBusinesses();
+  }, [supabase, communityUuid, filters]);
+
+  // Fetch unique neighborhoods for the current community
+  useEffect(() => {
+    if (!communityUuid) return;
     supabase
       .from("businesses")
-      .select(`
-        *,
-        category:category_id(id, name),
-        subcategory:subcategory_id(id, name)
-      `)
+      .select("neighborhood")
       .eq("community_id", communityUuid)
       .then(res => {
-        setLoading(false);
-        if (!res.error) {
-          console.log("All businesses:", res.data);
-          const transformedData = res.data.map(business => ({
-            ...business,
-            category_name: business.category?.name,
-            subcategory_name: business.subcategory?.name
-          }));
-          setBusinesses(transformedData);
-        } else {
-          console.error("Error fetching all businesses:", res.error);
+        if (!res.error && res.data) {
+          const unique = Array.from(new Set(res.data.map(b => b.neighborhood).filter(Boolean)));
+          setNeighborhoods(unique);
         }
       });
   }, [supabase, communityUuid]);
 
   // Search businesses function
   const searchBusinesses = () => {
-    if (!communityUuid) return; // Don't search if we don't have the community UUID
+    if (!communityUuid) {
+      console.error("Cannot search: community UUID is missing");
+      return;
+    }
+    
+    console.log("Searching businesses with filters:", {
+      community: communityUuid,
+      filters
+    });
     
     setLoading(true);
+    
+    // Debug: First check if any businesses exist at all for this community
+    supabase
+      .from("businesses")
+      .select("id, name")
+      .eq("community_id", communityUuid)
+      .then(res => {
+        if (!res.error) {
+          console.log("All businesses in community (without filters):", res.data);
+          if (res.data.length === 0) {
+            console.log("No businesses found for this community at all");
+          }
+        } else {
+          console.error("Error in preliminary business check:", res.error);
+        }
+      });
     
     // Build the query
     let query = supabase
@@ -170,22 +264,80 @@ export default function BusinessDirectoryPage() {
       .eq("community_id", communityUuid);
     
     // Add filters if they exist
-    if (search) {
-      query = query.ilike("name", `%${search}%`);
+    if (filters.search) {
+      query = query.ilike("name", `%${filters.search}%`);
     }
     
-    if (category) {
-      query = query.eq("category_id", category);
+    if (filters.category) {
+      query = query.eq("category_id", filters.category);
     }
     
-    if (subDirectory) {
-      query = query.eq("subcategory_id", subDirectory);
+    if (filters.location?.neighborhood) {
+      query = query.eq("neighborhood", filters.location.neighborhood);
+    }
+    
+    if (filters.location?.radius && filters.location?.coordinates) {
+      query = query.filter(
+        "location",
+        "st_d_within",
+        `SRID=4326;POINT(${filters.location.coordinates.lng} ${filters.location.coordinates.lat}),${filters.location.radius * 1000}`
+      );
+    }
+    
+    if (filters.rating > 0) {
+      query = query.gte("rating", filters.rating);
+    }
+    
+    if (filters.amenities && filters.amenities.length > 0) {
+      // Assuming amenities are stored in a JSONB column called 'amenities'
+      filters.amenities.forEach((amenity: string) => {
+        query = query.contains('amenities', [amenity]);
+      });
+    }
+    
+    if (filters.hours?.openNow) {
+      // This would require a more complex query to check current time against business hours
+      // For now, we'll just log that this filter was applied
+      console.log("Open Now filter applied - would need server-side implementation");
+    }
+    
+    if (filters.price?.tier) {
+      query = query.eq('price_tier', filters.price.tier);
+    } else if (filters.price?.range) {
+      query = query
+        .gte('price_min', filters.price.range.min)
+        .lte('price_max', filters.price.range.max);
+    }
+    
+    // Apply sorting
+    switch (filters.sort) {
+      case "rating_high":
+        query = query.order("rating", { ascending: false });
+        break;
+      case "rating_low":
+        query = query.order("rating", { ascending: true });
+        break;
+      case "name_asc":
+        query = query.order("name", { ascending: true });
+        break;
+      case "name_desc":
+        query = query.order("name", { ascending: false });
+        break;
+      case "newest":
+        query = query.order("created_at", { ascending: false });
+        break;
+      case "featured":
+      default:
+        query = query.order("is_featured", { ascending: false }).order("rating", { ascending: false });
+        break;
     }
     
     // Execute the query
     query.then(res => {
       setLoading(false);
       if (!res.error) {
+        console.log("Search results:", res.data.length, "businesses found");
+        console.log("Result details:", res.data);
         const transformedData = res.data.map(business => ({
           ...business,
           category_name: business.category?.name,
@@ -198,163 +350,252 @@ export default function BusinessDirectoryPage() {
     });
   };
 
-  // Dummy icons for categories (replace with real icons as needed)
-  const categoryIcons: Record<string, string> = {
-    "Health & Medical": "💊",
-    "Restaurants & Cafés": "🍽️",
-    "Shopping": "🛍️",
-    "Beauty & Spa": "💅",
-    "Hotels": "🏨",
-    "Food & Drink": "🥤",
-    "Other": "⭐",
+  // Handle filter changes
+  const handleFilterChange = (key: string, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
-
-  // Dummy popular categories (replace with real logic as needed)
-  const popularCategories = categories.slice(0, 6);
+  
+  // Handle removing a filter
+  const handleRemoveFilter = (key: string, subKey?: string) => {
+    if (key === 'amenities' && subKey) {
+      setFilters(prev => ({
+        ...prev,
+        amenities: prev.amenities.filter((item: string) => item !== subKey)
+      }));
+    } else {
+      setFilters(prev => {
+        const newFilters = { ...prev };
+        if (key === 'location' || key === 'price' || key === 'hours') {
+          newFilters[key] = {};
+        } else if (key === 'amenities') {
+          newFilters[key] = [];
+        } else if (key === 'rating') {
+          newFilters[key] = 0;
+        } else if (key === 'sort') {
+          newFilters[key] = 'featured';
+        } else {
+          newFilters[key] = '';
+        }
+        return newFilters;
+      });
+    }
+  };
+  
+  // Clear all filters
+  const handleClearAllFilters = () => {
+    setFilters({
+      search: "",
+      category: "",
+      location: {},
+      amenities: [],
+      price: {},
+      hours: {},
+      rating: 0,
+      sort: "featured"
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-teal-50 to-blue-50">
       {/* Development Note: Display user role for context */}
       {userRole && (
         <div className="mb-4 p-3 bg-sky-100 text-sky-700 rounded-md text-sm">
-          You're viewing the business directory as a {userRole === 'community admin' ? 'community administrator' : 'regular member'}.
+          {userRole === 'community admin' && (
+            <>You're viewing the business directory as a community administrator. You can create and manage all businesses.</>
+          )}
+          {userRole === 'business' && (
+            <>You're viewing the business directory as a business account. You can create and manage your own businesses.</>
+          )}
+          {userRole !== 'community admin' && userRole !== 'business' && (
+            <>You're viewing the business directory as a regular member. You can view businesses but not create them.</>
+          )}
         </div>
       )}
       
-      {/* 1. Hero/Search Banner */}
-      <section className="w-full bg-gradient-to-r from-primaryTeal/60 to-seafoam/40 py-16 flex flex-col items-center justify-center text-center relative">
-        <h1 className="text-3xl md:text-4xl font-heading font-extrabold text-offWhite mb-8 drop-shadow">Discover Local Businesses Near You.</h1>
-        <div className="flex justify-center w-full max-w-content mx-auto">
+      {/* Navigation tabs for business and admin users */}
+      {(userRole === 'business' || userRole === 'community admin') && (
+        <div className="mb-6 flex flex-wrap gap-2">
+          <Link
+            href={`/community/${communityId}/business/directory`}
+            className="px-4 py-2 bg-white rounded-md shadow-sm border border-gray-200 text-cyan-700 font-medium hover:bg-gray-50 transition-colors"
+          >
+            All Businesses
+          </Link>
+          <Link
+            href={`/community/${communityId}/business/directory/my-businesses`}
+            className="px-4 py-2 bg-white rounded-md shadow-sm border border-gray-200 text-cyan-700 font-medium hover:bg-gray-50 transition-colors"
+          >
+            My Businesses
+          </Link>
+          <Link
+            href={`/community/${communityId}/business/create`}
+            className="px-4 py-2 bg-primaryTeal rounded-md shadow-sm text-white font-medium hover:bg-teal-600 transition-colors"
+          >
+            + Create Business
+          </Link>
+        </div>
+      )}
+      
+      {/* 1. Modern Search/Filter Bar */}
+      <section className="w-full bg-gradient-to-r from-primaryTeal/60 to-seafoam/40 py-12 md:py-16 flex flex-col items-center justify-center text-center relative">
+        <h1 className="text-3xl md:text-4xl font-heading font-extrabold text-offWhite mb-2 drop-shadow">
+          {communityId ? `${communityId} – Business Directory` : 'Business Directory'}
+        </h1>
+        <p className="text-lg text-offWhite mb-6 md:mb-8 font-body drop-shadow">
+          Discover local businesses by type, area, or rating.
+        </p>
+        
+        <div className="flex justify-center w-full max-w-content mx-auto px-4">
           <form
-            className="flex flex-row items-center w-full max-w-content gap-3"
+            className="flex flex-col sm:flex-row items-center w-full max-w-2xl gap-3 bg-white rounded-xl shadow-subtle p-2"
             onSubmit={e => { 
               e.preventDefault();
               searchBusinesses();
             }}
           >
-            <div className="bg-offWhite rounded-xl shadow-subtle p-4 flex items-center gap-2 flex-1">
-              <input
-                type="text"
-                placeholder="What are you looking for?"
-                className="px-3 py-1.5 rounded-md border border-grayLight bg-sand text-darkCharcoal font-body focus:ring-2 focus:ring-primaryTeal focus:border-primaryTeal focus:outline-none transition"
-                style={{ flex: '0 0 22%' }}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-              <select
-                className="px-3 py-1.5 rounded-md border border-grayLight bg-sand text-darkCharcoal font-body focus:ring-2 focus:ring-primaryTeal focus:border-primaryTeal focus:outline-none transition"
-                value={category}
-                onChange={e => { setCategory(e.target.value); setSubDirectory(""); }}
+            <input
+              type="text"
+              placeholder="What are you finding?"
+              className="w-full sm:flex-1 px-4 py-3 rounded-lg border-none bg-transparent text-darkCharcoal font-body focus:ring-2 focus:ring-primaryTeal focus:outline-none text-base"
+              value={filters.search}
+              onChange={e => handleFilterChange('search', e.target.value)}
+            />
+            <div className="flex gap-2 w-full sm:w-auto">
+              <button
+                type="submit"
+                className="flex-1 sm:flex-none px-6 py-3 rounded-lg bg-primaryTeal text-offWhite font-semibold font-body text-base hover:bg-seafoam transition shadow-elevated"
               >
-                <option value="">Select Category</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-              {category ? (
-                <select
-                  className="px-3 py-1.5 rounded-md border border-grayLight bg-sand text-darkCharcoal font-body focus:ring-2 focus:ring-primaryTeal focus:border-primaryTeal focus:outline-none transition"
-                  value={subDirectory}
-                  onChange={e => setSubDirectory(e.target.value)}
-                >
-                  <option value="">Sub category</option>
-                  {filteredSubcategories.map(sc => (
-                    <option key={sc.id} value={sc.id}>{sc.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  placeholder="Sub category"
-                  className="flex-1 px-3 py-1.5 rounded-md border border-grayLight bg-sand text-grayLight font-body focus:outline-none transition"
-                  value=""
-                  disabled
-                />
-              )}
+                Search
+              </button>
+              <button
+                type="button"
+                className="flex-1 sm:flex-none px-5 py-3 rounded-lg bg-white border border-primaryTeal text-primaryTeal font-semibold font-body text-base hover:bg-primaryTeal hover:text-white transition shadow-sm"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              >
+                <SlidersHorizontal size={18} className="inline-block mr-2" />
+                Filters
+              </button>
             </div>
-            <button
-              type="submit"
-              className="px-5 py-3 rounded-md bg-primaryTeal text-offWhite font-semibold font-body hover:bg-seafoam transition ml-2 shadow-elevated"
-              style={{ minWidth: '120px' }}
-            >
-              Search
-            </button>
           </form>
         </div>
       </section>
-
-      {/* 2. Category Quick-Links */}
-      <section className="w-full max-w-content mx-auto mt-8 flex flex-wrap justify-center gap-3">
-        {categories.slice(0, 7).map(cat => (
-          <button
-            key={cat.id}
-            className="flex items-center gap-2 px-4 py-2 rounded-pill bg-seafoam text-white font-semibold font-body shadow-subtle border-none hover:bg-primaryTeal transition"
-            onClick={() => setCategory(cat.id)}
-          >
-            <span>{categoryIcons[cat.name] || "⭐"}</span>
-            {cat.name}
-          </button>
-        ))}
-        <button
-          className="flex items-center gap-2 px-4 py-2 rounded-pill bg-primaryTeal text-offWhite font-semibold font-body shadow-subtle border-none hover:bg-seafoam transition"
-          onClick={() => setCategory("")}
-        >
-          <span>🔄</span> All Categories
-        </button>
-      </section>
-
-      {/* 3. Popular Categories Strip */}
-      <section className="w-full max-w-content mx-auto mt-10 overflow-x-auto pb-2">
-        <div className="flex gap-6 min-w-max">
-          {popularCategories.map(cat => (
-            <div key={cat.id} className="flex flex-col items-center bg-offWhite rounded-card shadow-subtle px-6 py-4 min-w-[140px]">
-              <div className="text-3xl mb-2">{categoryIcons[cat.name] || "⭐"}</div>
-              <div className="font-semibold text-primaryTeal font-heading">{cat.name}</div>
-              <div className="text-xs text-grayLight mt-1">-- Listings</div>
+      
+      {/* Main Content with Advanced Filter Sidebar */}
+      <div className="container mx-auto px-4 py-8">
+        {/* View Toggle and Sort Controls */}
+        <div className="flex flex-wrap items-center justify-between mb-6">
+          <div className="flex items-center space-x-2 mb-4 sm:mb-0">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-2 rounded-md flex items-center ${
+                viewMode === 'list' 
+                  ? 'bg-primaryTeal text-white' 
+                  : 'bg-white text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <List size={18} className="mr-2" />
+              List View
+            </button>
+            <button
+              onClick={() => setViewMode('map')}
+              className={`px-3 py-2 rounded-md flex items-center ${
+                viewMode === 'map' 
+                  ? 'bg-primaryTeal text-white' 
+                  : 'bg-white text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <MapIcon size={18} className="mr-2" />
+              Map View
+            </button>
+          </div>
+          
+          <div className="flex items-center">
+            <label className="text-sm text-gray-600 mr-2">Sort by:</label>
+            <select
+              value={filters.sort}
+              onChange={(e) => handleFilterChange('sort', e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-primaryTeal focus:border-primaryTeal"
+            >
+              <option value="featured">Featured</option>
+              <option value="rating_high">Highest Rated</option>
+              <option value="rating_low">Lowest Rated</option>
+              <option value="name_asc">Name (A-Z)</option>
+              <option value="name_desc">Name (Z-A)</option>
+              <option value="newest">Newest</option>
+            </select>
+          </div>
+        </div>
+        
+        {/* Active Filters Tags */}
+        <ActiveFiltersTags 
+          filters={filters} 
+          onRemoveFilter={handleRemoveFilter}
+          className="mb-6" 
+        />
+        
+        {/* Main Content with Sidebar */}
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Advanced Filter Sidebar - only shown when showAdvancedFilters is true */}
+          {showAdvancedFilters && (
+            <div className="lg:w-72 flex-shrink-0">
+              <AdvancedFilterSidebar
+                filters={filters}
+                onFilterChange={handleFilterChange}
+                onClearAllFilters={handleClearAllFilters}
+                neighborhoods={neighborhoods}
+                isCollapsible={true}
+              />
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* 4. Results Grid */}
-      <section className="w-full max-w-content mx-auto mt-12">
-        {loading && <p className="text-center text-primaryTeal font-body">Loading...</p>}
-        <div className="text-center text-slate-500 my-10">
-          <p>Community ID: {communityId} | Total businesses: {businesses.length}</p>
-          {businesses.length === 0 && (
-            <>
-              <p>No businesses found.</p>
-              <p className="text-xs mt-4 text-slate-400">Debug info: 
-                {loading ? "Loading..." : "Completed loading"}
-              </p>
-            </>
           )}
+          
+          {/* Business Listings */}
+          <div className={`flex-1 ${showAdvancedFilters ? 'lg:ml-4' : ''}`}>
+            {loading ? (
+              <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primaryTeal"></div>
+              </div>
+            ) : viewMode === 'list' ? (
+              businesses.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {businesses.map((business) => (
+                    <BusinessCard key={business.id} business={business} />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 bg-white rounded-lg shadow">
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">No businesses found</h3>
+                  <p className="text-gray-500">Try adjusting your filters or search terms.</p>
+                </div>
+              )
+            ) : (
+              <div className="h-[600px] rounded-lg overflow-hidden shadow-lg">
+                <BusinessMapView 
+                  businesses={businesses.map(business => ({
+                    id: business.id,
+                    name: business.name,
+                    description: business.description || '',
+                    logo_url: business.logo_url,
+                    cover_image_url: business.cover_image_url,
+                    location: business.location,
+                    rating: business.rating,
+                    category_name: business.category_name || '',
+                    is_featured: business.is_featured
+                  }))} 
+                  initialViewState={{
+                    longitude: -80.19,
+                    latitude: 25.76,
+                    zoom: 11
+                  }}
+                  communityId={communityId}
+                />
+              </div>
+            )}
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {businesses.map(b => (
-            <BusinessCard 
-              key={b.id} 
-              business={{
-                id: b.id,
-                name: b.name,
-                description: b.description,
-                image_url: b.logo_url || b.cover_image_url || undefined,
-                is_featured: b.is_featured,
-                category: b.category_name,
-                category_name: b.category_name,
-                subcategory_name: b.subcategory_name
-              }}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* 5. Pagination / Load More */}
-      <section className="w-full flex justify-center mt-10 mb-16">
-        <button className="px-6 py-2 rounded-pill bg-offWhite shadow-subtle border border-grayLight text-primaryTeal font-semibold font-body hover:bg-seafoam hover:text-white transition">
-          Load More
-        </button>
-      </section>
+      </div>
     </div>
   );
 } 

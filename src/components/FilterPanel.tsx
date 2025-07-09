@@ -1,3 +1,11 @@
+/**
+ * DEPRECATED: This is an older version of the filter panel.
+ * The community business directory has integrated filtering directly in:
+ * src/app/community/[communityId]/business/directory/page.tsx
+ * 
+ * This file is kept for reference only and should not be used for new development.
+ */
+
 "use client";
 
 import { useState, useEffect } from "react";

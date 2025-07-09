@@ -6,6 +6,7 @@ import { Loader2, BarChart } from 'lucide-react';
 
 interface PollEmbedProps {
   pollId: string;
+  communityId: string;
   compact?: boolean;
 }
 
@@ -24,7 +25,7 @@ interface PollData {
   user_vote?: string | null;
 }
 
-const PollEmbed: React.FC<PollEmbedProps> = ({ pollId, compact = false }) => {
+const PollEmbed: React.FC<PollEmbedProps> = ({ pollId, communityId, compact = false }) => {
   const supabase = createClient();
   const [poll, setPoll] = useState<PollData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,6 +57,7 @@ const PollEmbed: React.FC<PollEmbedProps> = ({ pollId, compact = false }) => {
           .from('polls')
           .select('id, question, is_closed')
           .eq('id', pollId)
+          .eq('community_id', communityId)
           .single();
 
         if (pollError) {
@@ -77,6 +79,7 @@ const PollEmbed: React.FC<PollEmbedProps> = ({ pollId, compact = false }) => {
             .from('poll_votes')
             .select('poll_option_id')
             .eq('poll_id', pollId)
+            .eq('community_id', communityId)
             .eq('user_id', currentUserId)
             .maybeSingle();
 
@@ -144,7 +147,8 @@ const PollEmbed: React.FC<PollEmbedProps> = ({ pollId, compact = false }) => {
         .insert({
           poll_id: pollId,
           poll_option_id: optionId,
-          user_id: currentUserId
+          user_id: currentUserId,
+          community_id: communityId
         });
 
       if (voteError) {

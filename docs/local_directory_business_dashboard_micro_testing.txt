@@ -1,0 +1,118 @@
+Local Directory Micro-Testing Checklist: Business (Dashboard) View
+
+
+1. Create Account
+-User visits the site and clicks “Sign Up” or “Create Account.”
+- User fills out the registration form (email, password, etc.).
+- Upon successful registration:
+  - User is logged in automatically (or prompted to log in).
+
+---
+
+2. Role Assignment
+- User is assigned a role** (either by default or via a selection step—if you have a “Become a Business” option).
+- If the user is not yet a business, they may need to select “I am a business owner” or similar to proceed to the business dashboard flow.
+
+---
+
+### **3. Business Profile Check**
+- **After login/role selection:**
+  - The app checks if the user has a business profile (`businesses` table entry linked to their user ID).
+- **If NO business profile exists:**
+  - User is directed to the business dashboard, with the “Listings” (profile setup) section active.
+  - The multi-step business profile form is shown for the user to complete.
+- **If a business profile exists:**
+  - User is taken to the dashboard overview.
+
+---
+
+### **4. Complete Business Profile**
+- **User completes the multi-step business profile form** (Info, Location, Amenities, Media, SEO, Schedule, etc.).
+- On successful completion, the business profile is created/updated in the database.
+
+---
+
+### **5. Unified Dashboard Experience**
+- **User now sees the full business dashboard** with sidebar navigation (Overview, Listings, Inquiries, Analytics, Settings).
+- User can edit their profile, manage listings, view analytics, etc., all from within the dashboard.
+
+---
+
+### **6. No Separate Flows**
+- There is **no separate onboarding page** for business profile setup—everything is managed within the dashboard.
+- The dashboard always provides access to the profile setup/edit form under “Listings.”
+
+---
+
+## **Summary**
+- **Create Account → Role Assignment → Business Profile Check → Profile Setup (if needed) → Unified Dashboard**
+- This matches your requirements for a seamless, in-dashboard business management experience.
+
+---
+
+**If you want to add a “choose role” step, auto-redirect logic, or onboarding prompts, let me know! Otherwise, this flow is confirmed and ready for further enhancements or testing.**
+
+A. Basic Features
+1. Unified Business Dashboard
+   - Log in or create a business account.
+   - Access the unified dashboard (no user vs business split).
+   - Sidebar: Overview, Listings, Inquiries, Analytics (free tier shows prompt to upgrade), Settings.
+
+2. Manage Listings
+   - Create/Edit multi-step form: Info → Location → Amenities → Media → SEO → Schedule.
+   - Test required fields and validation at each step.
+   - Upload invalid logo (.exe) → "Unsupported file type."
+   - Upload valid image → preview updates.
+   - Approval workflow: Pending ↔ Approved states.
+   - Modify listing details, amenities, media, schedule → Save → confirm updates.
+   - Delete listing → confirm removal from dashboard and directory.
+
+3. View Inquiries
+   - Inbox of contact-form submissions, callback requests, chat invites.
+   - Mark as read/archived.
+   - As business owner, see new inquiries from users.
+
+4. Profile & Claim Management
+   - "Claim My Business" flows for new owners; edit profile once claimed.
+   - Upload docs, phone OTP, email link; test all validation and edge cases.
+   - Upon approval: "Owned by [User]" label and "Edit Business Profile" link.
+
+B. WOW Features
+1. Boost & Featured Placements
+   - "Boost Listing" budgets slider; live preview in feed carousel.
+   - Test feature unlocks after subscription.
+
+2. Verified Badges
+   - Upload license/ID → admin approval → "Verified Local Partner" badge.
+   - Filter your own listings by badge status.
+   - Admin: revoke verification → badge disappears; filter updates.
+
+3. Analytics & Export
+   - Impressions, clicks, "Get Directions" taps charted by day/week.
+   - CSV export of lead data.
+   - Free tier: "Analytics" → upgrade banner.
+   - Premium tier: verify charts (views, inquiries, promotions) & CSV export.
+
+4. AI Content Assist
+   - Auto-generate business description, suggest promo offers, auto-tag amenities.
+   - Copy suggestions to form → Save → confirm updates.
+
+5. Integration Add-Ons
+   - Sync to/from Google My Business and Facebook in one click.
+   - Download co-branded collateral (window stickers, email signatures).
+   - Push deals to FB/GMB → confirm posts appear externally.
+   - Revoke access → confirm sync disabled.
+
+C. Edge-Case & Error Handling
+   - File uploads (wrong type/size), invalid addresses, network timeouts, OTP/email link expiries.
+   - All tested in business dashboard flow.
+
+D. Integration Touchpoints
+   - Feed, Properties, Marketplace, Groups: contextual "action buttons" for businesses (e.g. share a deal to the feed), opt-in and write through an events bus.
+
+E. Critical Information Points
+   - Businesses only ever get the dashboard-view checklist; no browser-only view.
+   - Management pages enforce business ownership via row-level security.
+   - Business table (JSONB for amenities/tags, geospatial index on location) separate from users/properties.
+   - Reviews, claims, inquiries are persistent in the business dashboard.
+   - Use this checklist to validate every micro-interaction for Local Directory from the business standpoint—ensuring clear separation, robust error handling, and scalability. 

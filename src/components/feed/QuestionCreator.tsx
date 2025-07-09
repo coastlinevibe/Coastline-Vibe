@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { HelpCircle, Loader2, Tag, X } from 'lucide-react';
+import PoliteRewriter from './PoliteRewriter';
 
 interface QuestionCreatorProps {
   communityId: string;
@@ -45,6 +46,14 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({ communityId, onQuesti
     } else if (e.key === 'Escape') {
       setShowTagSuggestions(false);
     }
+  };
+
+  const handleRewriteTitle = (rewrittenText: string) => {
+    setTitle(rewrittenText);
+  };
+
+  const handleRewriteContent = (rewrittenText: string) => {
+    setContent(rewrittenText);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -133,6 +142,15 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({ communityId, onQuesti
             className="w-full p-2 border border-gray-300 rounded-md"
             disabled={isCreating}
           />
+          
+          {/* Title Polite Rewriter */}
+          <div className="mt-1">
+            <PoliteRewriter
+              originalText={title} 
+              onRewritten={handleRewriteTitle}
+              disabled={isCreating || !title.trim()}
+            />
+          </div>
         </div>
 
         <div className="mb-4">
@@ -148,6 +166,15 @@ const QuestionCreator: React.FC<QuestionCreatorProps> = ({ communityId, onQuesti
             className="w-full p-2 border border-gray-300 rounded-md"
             disabled={isCreating}
           />
+          
+          {/* Content Polite Rewriter */}
+          <div className="mt-1">
+            <PoliteRewriter
+              originalText={content} 
+              onRewritten={handleRewriteContent}
+              disabled={isCreating || !content.trim()}
+            />
+          </div>
         </div>
 
         <div className="mb-4">

@@ -4,9 +4,9 @@ import { useParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 
 export default function BusinessSidebar() {
-  const params = useParams();
-  const pathname = usePathname();
-  const communityId = params.communityId as string;
+  const params = useParams() || {};
+  const pathname = usePathname() || '';
+  const communityId = (params && typeof params === 'object' && 'communityId' in params) ? params.communityId as string : '';
   
   const menuItems = [
     { 
@@ -25,11 +25,6 @@ export default function BusinessSidebar() {
       active: pathname === `/community/${communityId}/business/directory`
     },
     { 
-      name: 'Create Business', 
-      path: `/community/${communityId}/business/create`,
-      active: pathname.includes('/business/create')
-    },
-    { 
       name: 'Leads', 
       path: `/community/${communityId}/business/directory/leads`,
       active: pathname.includes('/leads')
@@ -43,6 +38,11 @@ export default function BusinessSidebar() {
       name: 'Analytics', 
       path: `/community/${communityId}/business/directory/analytics`,
       active: pathname.includes('/analytics')
+    },
+    { 
+      name: 'Owner Verification', 
+      path: `/community/${communityId}/business/directory/owner-verification`,
+      active: pathname.includes('/owner-verification')
     },
     { 
       name: 'Settings', 
@@ -76,14 +76,7 @@ export default function BusinessSidebar() {
         </ul>
       </nav>
       
-      <div className="mt-auto p-4 border-t border-grayLight">
-        <Link 
-          href={`/community/${communityId}/business/create`}
-          className="block w-full py-2 bg-primaryTeal text-white text-center rounded-md hover:bg-seafoam transition-colors"
-        >
-          New Business Listing
-        </Link>
-      </div>
+      {/* Remove the New Business Listing button at the bottom */}
     </div>
   );
 } 

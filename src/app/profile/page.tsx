@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
+import LocationPreferences from '@/components/feed/LocationPreferences';
 
 export default function ProfilePage() {
   const supabase = createBrowserClient(
@@ -111,11 +112,11 @@ export default function ProfilePage() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
         const userId = session.user.id;
-        // Fetch pending friend requests where recipient is current user
+        // Fetch pending friend requests where friend_id is current user
         const { data: requests, error: reqError } = await supabase
           .from('friend_requests')
-          .select('id, sender_id, reason, status, created_at, profiles:sender_id(username, avatar_url)')
-          .eq('recipient_id', userId)
+          .select('id, user_id, reason, status, created_at, profiles:user_id(username, avatar_url)')
+          .eq('friend_id', userId)
           .eq('status', 'pending')
           .order('created_at', { ascending: false });
         if (reqError) throw reqError;
@@ -132,23 +133,6 @@ export default function ProfilePage() {
   const handleAccept = async (id: string) => {
     // 1. Update the friend request status
     await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', id);
-
-    // 2. Fetch the sender and recipient IDs for this request
-    const { data: request, error } = await supabase
-      .from('friend_requests')
-      .select('sender_id, recipient_id')
-      .eq('id', id)
-      .single();
-    if (!error && request) {
-      // 3. Insert into friends table (bidirectional) with status
-      const { error: insertError } = await supabase.from('friends').insert([
-        { user_id: request.sender_id, friend_id: request.recipient_id, status: 'accepted' },
-        { user_id: request.recipient_id, friend_id: request.sender_id, status: 'accepted' },
-      ]);
-      if (insertError) {
-        console.error('Error inserting into friends table:', insertError);
-      }
-    }
     setPendingRequests((prev) => prev.filter((r) => r.id !== id));
   };
   const handleReject = async (id: string) => {
@@ -267,6 +251,13 @@ export default function ProfilePage() {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+        {/* Hyperlocal Feed Settings */}
+        <div>
+          <div className="font-semibold text-cyan-900 mb-2 text-lg">Hyperlocal Feed Settings</div>
+          {profile.community_id && (
+            <LocationPreferences userId={profile.id} communityId={profile.community_id} />
           )}
         </div>
         {/* My Market Items */}

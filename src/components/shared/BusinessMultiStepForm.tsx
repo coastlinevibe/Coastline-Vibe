@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 // Import Lucide icons for social media
 import { Globe, Mail, Phone, Facebook, Twitter, Linkedin } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 
 const TABS = [
-  'Basic',
+  'Basic Info',
   'Amenities',
   'Facilities',
   'Location',
@@ -13,8 +13,8 @@ const TABS = [
   'SEO',
   'Schedule',
   'Contact',
-  'Type',
-  'Finish',
+  'Business Type',
+  'Review'
 ];
 
 // Define the form state type
@@ -42,6 +42,7 @@ interface BusinessFormState {
   address: string;
   latitude: string;
   longitude: string;
+  neighborhood?: string;
   // Media
   thumbnail: File | null;
   cover: File | null;
@@ -82,13 +83,15 @@ interface BusinessMultiStepFormProps {
   businessId?: string;
   initialData?: BusinessFormState;
   onComplete: (businessId: string) => void;
+  communityId?: string; // Add this new prop
 }
 
 export default function BusinessMultiStepForm({ 
   mode = 'create', 
   businessId,
   initialData,
-  onComplete 
+  onComplete,
+  communityId: propCommunityId // Add this new parameter
 }: BusinessMultiStepFormProps) {
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -96,9 +99,9 @@ export default function BusinessMultiStepForm({
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
   const [step, setStep] = useState(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState<BusinessFormState>(initialData || {
     // Basic
     title: '',
@@ -117,6 +120,7 @@ export default function BusinessMultiStepForm({
     address: '',
     latitude: '',
     longitude: '',
+    neighborhood: '',
     // Media
     thumbnail: null,
     cover: null,
@@ -150,6 +154,56 @@ export default function BusinessMultiStepForm({
     menuItems: [],
     menuImage: null,
   });
+
+  // State for database categories and subcategories
+  const [dbCategories, setDbCategories] = useState<{id: string, name: string}[]>([]);
+  const [dbSubcategories, setDbSubcategories] = useState<{id: string, name: string, category_id: string}[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+  
+  // Load categories and subcategories from database
+  useEffect(() => {
+    const fetchCategoriesAndSubcategories = async () => {
+      setIsLoadingCategories(true);
+      
+      try {
+        // Fetch categories
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('categories')
+          .select('id, name');
+          
+        if (categoriesError) {
+          console.error("Error fetching categories:", categoriesError);
+        } else if (categoriesData) {
+          console.log("Loaded categories from database:", categoriesData);
+          setDbCategories(categoriesData);
+        }
+        
+        // Fetch subcategories
+        const { data: subcategoriesData, error: subcategoriesError } = await supabase
+          .from('subcategories')
+          .select('id, name, category_id');
+          
+        if (subcategoriesError) {
+          console.error("Error fetching subcategories:", subcategoriesError);
+        } else if (subcategoriesData) {
+          console.log("Loaded subcategories from database:", subcategoriesData);
+          setDbSubcategories(subcategoriesData);
+        }
+      } catch (err) {
+        console.error("Error loading categories and subcategories:", err);
+      } finally {
+        setIsLoadingCategories(false);
+      }
+    };
+    
+    fetchCategoriesAndSubcategories();
+  }, [supabase]);
+  
+  // Get filtered subcategories based on selected category
+  const getFilteredSubcategories = () => {
+    if (!form.category) return [];
+    return dbSubcategories.filter(sub => sub.category_id === form.category);
+  };
 
   // Updated category options to match the database
   const categories = [
@@ -280,8 +334,528 @@ export default function BusinessMultiStepForm({
     return form.category ? (subCategoriesMap[form.category] || []) : [];
   };
 
-  // Handle form submission
-  const handleSubmit = async () => {
+  // Helper function to check if category and subcategory exist
+  const validateCategoryAndSubcategory = async () => {
+    console.log("Validating category and subcategory...");
+    
+    // Check if category exists
+    const { data: categoryData, error: categoryError } = await supabase
+      .from('categories')
+      .select('id, name')
+      .eq('id', form.category);
+      
+    if (categoryError) {
+      console.error("Error checking category:", categoryError);
+      return false;
+    }
+    
+    if (!categoryData || categoryData.length === 0) {
+      console.error(`Category ID '${form.category}' does not exist in the database`);
+      return false;
+    }
+    
+    console.log("Found category:", categoryData[0]);
+    
+    // Check if subcategory exists and belongs to the category
+    const { data: subcategoryData, error: subcategoryError } = await supabase
+      .from('subcategories')
+      .select('id, name, category_id')
+      .eq('id', form.subCategory);
+      
+    if (subcategoryError) {
+      console.error("Error checking subcategory:", subcategoryError);
+      return false;
+    }
+    
+    if (!subcategoryData || subcategoryData.length === 0) {
+      console.error(`Subcategory ID '${form.subCategory}' does not exist in the database`);
+      return false;
+    }
+    
+    console.log("Found subcategory:", subcategoryData[0]);
+    
+    // Check if subcategory belongs to the selected category
+    if (subcategoryData[0].category_id !== form.category) {
+      console.error(`Subcategory '${form.subCategory}' does not belong to category '${form.category}'`);
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Add a function to save the current tab data
+  const saveCurrentTabData = async () => {
+    try {
+      console.log(`Saving data for tab ${step}...`);
+      setIsSubmitting(true);
+      setError(null);
+      
+      // Get the current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setError("You must be logged in to save business information");
+        setIsSubmitting(false);
+        return false;
+      }
+
+      // First check if we have a communityId from props
+      let communityId = propCommunityId;
+      
+      // If not provided in props, try to extract from URL
+      if (!communityId) {
+        // Extract from URL or use fallback methods as before
+        const pathParts = window.location.pathname.split('/');
+        const communityIdIndex = pathParts.findIndex(part => part === 'community') + 1;
+        const communitySlug = communityIdIndex > 0 && communityIdIndex < pathParts.length ? pathParts[communityIdIndex] : null;
+        
+        if (communitySlug) {
+          const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (uuidPattern.test(communitySlug)) {
+            communityId = communitySlug;
+          } else {
+            const { data: communityData } = await supabase
+              .from('communities')
+              .select('id')
+              .eq('slug', communitySlug)
+              .single();
+              
+            if (communityData) {
+              communityId = communityData.id;
+            }
+          }
+        }
+        
+        // Fallback to user's default community
+        if (!communityId) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('community_id')
+            .eq('id', user.id)
+            .single();
+          
+          if (profileData) {
+            communityId = profileData.community_id;
+          }
+        }
+      }
+      
+      if (!communityId) {
+        setError("Could not determine which community this business belongs to");
+        setIsSubmitting(false);
+        return false;
+      }
+
+      // Prepare the data based on current tab
+      let tabData: Record<string, any> = {};
+      
+      // Common fields for all tabs
+      if (mode === 'create') {
+        tabData.user_id = user.id;
+        tabData.community_id = communityId;
+        tabData.approval_status = 'pending';
+        tabData.is_approved = false;
+      }
+      
+      // Tab-specific data
+      switch(step) {
+        case 0: // Basic Info
+          tabData = {
+            ...tabData,
+            name: form.title,
+            description: form.description,
+            category_id: form.category,
+            subcategory_id: form.subCategory,
+            featured_type: form.featuredType || null
+          };
+          break;
+          
+        case 1: // Amenities
+          tabData = {
+            ...tabData,
+            amenities: form.amenities || []
+          };
+          break;
+          
+        case 2: // Facilities
+          tabData = {
+            ...tabData,
+            facilities: form.facilities || [],
+            facility_hours: form.facility_hours || {}
+          };
+          break;
+          
+        case 3: // Location
+          tabData = {
+            ...tabData,
+            address: form.address,
+            city: form.city,
+            country: form.country,
+            latitude: form.latitude ? parseFloat(form.latitude) : null,
+            longitude: form.longitude ? parseFloat(form.longitude) : null,
+            neighborhood: form.neighborhood || null
+          };
+          break;
+          
+        case 4: // Media
+          // Media uploads are handled separately
+          // Just create a placeholder for now
+          tabData = {
+            ...tabData,
+            video_provider: form.videoProvider || null,
+            video_url: form.videoUrl || null
+          };
+          break;
+          
+        case 5: // SEO
+          tabData = {
+            ...tabData,
+            tags: form.tags || [],
+            meta_tags: form.metaTags || []
+          };
+          break;
+          
+        case 6: // Schedule
+          tabData = {
+            ...tabData,
+            schedule: form.schedule || {}
+          };
+          break;
+          
+        case 7: // Contact
+          tabData = {
+            ...tabData,
+            contact_email: form.email,
+            contact_phone: form.phone,
+            website: form.website || null,
+            social_facebook: form.facebook || null,
+            social_twitter: form.twitter || null,
+            social_linkedin: form.linkedin || null
+          };
+          break;
+          
+        case 8: // Business Type
+          tabData = {
+            ...tabData,
+            business_types: form.businessTypes || [],
+            menu_name: form.menuName || null,
+            menu_price: form.menuPrice || null,
+            menu_items: form.menuItems || []
+          };
+          break;
+          
+        default:
+          // No specific data for review tab
+          break;
+      }
+      
+      console.log(`Data to save for tab ${step}:`, tabData);
+      
+      // Skip if no data to update
+      if (Object.keys(tabData).length <= (mode === 'create' ? 3 : 0)) {
+        console.log("No data to update for this tab");
+        setIsSubmitting(false);
+        return true;
+      }
+      
+      // First check if business already exists
+      let currentBusinessId = mode === 'edit' ? businessId : null;
+      
+      if (!currentBusinessId) {
+        // Check if we've already started creating this business
+        const existingBusinessKey = `business_draft_${user.id}_${communityId}`;
+        const savedId = localStorage.getItem(existingBusinessKey);
+        
+        if (savedId) {
+          currentBusinessId = savedId;
+          console.log("Found existing business draft:", currentBusinessId);
+        }
+      }
+      
+      if (currentBusinessId) {
+        // Update existing business
+        console.log("Updating existing business:", currentBusinessId);
+        try {
+          const { data: updatedBusiness, error: updateError } = await supabase
+            .from('businesses')
+            .update(tabData)
+            .eq('id', currentBusinessId)
+            .select()
+            .single();
+            
+          if (updateError) {
+            console.error("Error updating business tab data:", updateError);
+            
+            // Check if it's a schema-related error
+            if (updateError.message && updateError.message.includes('column') && updateError.message.includes('does not exist')) {
+              // Log more details about the attempted update
+              console.error("Schema error detected. Attempted to update these fields:", Object.keys(tabData));
+              setError(`Database schema error: ${updateError.message}. The administrator has been notified.`);
+            } else {
+              setError(`Error updating: ${updateError.message}`);
+            }
+            
+            setIsSubmitting(false);
+            return false;
+          }
+          
+          console.log("Tab data updated successfully:", updatedBusiness);
+          setSuccessMessage(`Section ${TABS[step]} saved successfully!`);
+          
+          // Handle file uploads if needed
+          if (step === 4) {
+            await handleFileUploads(currentBusinessId);
+          }
+          
+          setIsSubmitting(false);
+          return true;
+        } catch (err) {
+          console.error("Unexpected error during update:", err);
+          setError(`Unexpected error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          setIsSubmitting(false);
+          return false;
+        }
+      } else {
+        // Create new business record
+        console.log("Creating new business with initial data:", tabData);
+        try {
+          const { data: newBusiness, error: createError } = await supabase
+            .from('businesses')
+            .insert({
+              ...tabData,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+            
+          if (createError) {
+            console.error("Error creating business:", createError);
+            
+            // Check if it's a schema-related error
+            if (createError.message && createError.message.includes('column') && createError.message.includes('does not exist')) {
+              // Log more details about the attempted insertion
+              console.error("Schema error detected. Attempted to insert these fields:", Object.keys(tabData));
+              setError(`Database schema error: ${createError.message}. The administrator has been notified.`);
+            } else {
+              setError(`Error creating business: ${createError.message}`);
+            }
+            
+            setIsSubmitting(false);
+            return false;
+          }
+          
+          if (!newBusiness) {
+            console.error("No business data returned after creation");
+            setError("Failed to create business: No data returned");
+            setIsSubmitting(false);
+            return false;
+          }
+          
+          console.log("New business created successfully:", newBusiness);
+          
+          // Save the business ID for future updates
+          const existingBusinessKey = `business_draft_${user.id}_${communityId}`;
+          localStorage.setItem(existingBusinessKey, newBusiness.id);
+          
+          setSuccessMessage(`Business created! Section ${TABS[step]} saved successfully.`);
+          
+          // Handle file uploads if needed
+          if (step === 4) {
+            await handleFileUploads(newBusiness.id);
+          }
+          
+          setIsSubmitting(false);
+          return true;
+        } catch (err) {
+          console.error("Unexpected error during creation:", err);
+          setError(`Unexpected error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          setIsSubmitting(false);
+          return false;
+        }
+      }
+    } catch (err) {
+      console.error("Error saving tab data:", err);
+      setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setIsSubmitting(false);
+      return false;
+    }
+  };
+  
+  // Handle file uploads separately
+  const handleFileUploads = async (businessId: string) => {
+    console.log("Processing file uploads for business:", businessId);
+    
+    try {
+      // Handle thumbnail upload
+      if (form.thumbnail) {
+        console.log("Uploading thumbnail");
+        const thumbnailPath = `businesses/${businessId}/thumbnail`;
+        const { error: thumbnailError } = await supabase.storage
+          .from('business-uploads')
+          .upload(thumbnailPath, form.thumbnail, { upsert: true });
+        
+        if (thumbnailError) {
+          console.error("Error uploading thumbnail:", thumbnailError);
+        } else {
+          const { data: thumbnailData } = supabase.storage
+            .from('business-uploads')
+            .getPublicUrl(thumbnailPath);
+            
+          // Update business with thumbnail URL
+          await supabase
+            .from('businesses')
+            .update({ thumbnail_url: thumbnailData.publicUrl })
+            .eq('id', businessId);
+            
+          console.log("Thumbnail uploaded and saved:", thumbnailData.publicUrl);
+        }
+      }
+      
+      // Handle cover image upload
+      if (form.cover) {
+        console.log("Uploading cover image");
+        const coverPath = `businesses/${businessId}/cover`;
+        const { error: coverError } = await supabase.storage
+          .from('business-uploads')
+          .upload(coverPath, form.cover, { upsert: true });
+        
+        if (coverError) {
+          console.error("Error uploading cover image:", coverError);
+        } else {
+          const { data: coverData } = supabase.storage
+            .from('business-uploads')
+            .getPublicUrl(coverPath);
+            
+          // Update business with cover URL
+          await supabase
+            .from('businesses')
+            .update({ cover_url: coverData.publicUrl })
+            .eq('id', businessId);
+            
+          console.log("Cover image uploaded and saved:", coverData.publicUrl);
+        }
+      }
+      
+      // Handle gallery images upload
+      if (form.gallery && form.gallery.length > 0) {
+        console.log(`Uploading ${form.gallery.length} gallery images`);
+        const galleryUrls: string[] = [];
+        
+        for (let i = 0; i < form.gallery.length; i++) {
+          const galleryPath = `businesses/${businessId}/gallery/${i}`;
+          const { error: galleryError } = await supabase.storage
+            .from('business-uploads')
+            .upload(galleryPath, form.gallery[i], { upsert: true });
+          
+          if (galleryError) {
+            console.error(`Error uploading gallery image ${i}:`, galleryError);
+          } else {
+            const { data: galleryData } = supabase.storage
+              .from('business-uploads')
+              .getPublicUrl(galleryPath);
+              
+            galleryUrls.push(galleryData.publicUrl);
+            console.log(`Gallery image ${i} uploaded:`, galleryData.publicUrl);
+          }
+        }
+        
+        if (galleryUrls.length > 0) {
+          // Update business with gallery URLs
+          await supabase
+            .from('businesses')
+            .update({ gallery_urls: galleryUrls })
+            .eq('id', businessId);
+            
+          console.log("Gallery images uploaded and saved:", galleryUrls);
+        }
+      }
+      
+      // Handle menu image upload
+      if (form.menuImage) {
+        console.log("Uploading menu image");
+        const menuImagePath = `businesses/${businessId}/menu`;
+        const { error: menuImageError } = await supabase.storage
+          .from('business-uploads')
+          .upload(menuImagePath, form.menuImage, { upsert: true });
+        
+        if (menuImageError) {
+          console.error("Error uploading menu image:", menuImageError);
+        } else {
+          const { data: menuImageData } = supabase.storage
+            .from('business-uploads')
+            .getPublicUrl(menuImagePath);
+            
+          // Update business with menu image URL
+          await supabase
+            .from('businesses')
+            .update({ menu_image_url: menuImageData.publicUrl })
+            .eq('id', businessId);
+            
+          console.log("Menu image uploaded and saved:", menuImageData.publicUrl);
+        }
+      }
+      
+      return true;
+    } catch (err) {
+      console.error("Error handling file uploads:", err);
+      return false;
+    }
+  };
+
+  // Update the next/prev handlers to save data when moving between tabs
+  const handleNext = async () => {
+    // Validate current tab before proceeding
+    let isValid = true;
+    
+    // Basic tab validation
+    if (step === 0 && (!form.title || !form.description || !form.category || !form.subCategory)) {
+      setError("Please fill in all required fields in the Basic Info section");
+      isValid = false;
+    }
+    
+    // Location validation
+    if (step === 3 && (!form.country || !form.city || !form.address)) {
+      setError("Please fill in all required location fields");
+      isValid = false;
+    }
+    
+    // Contact validation 
+    if (step === 7 && (!form.email || !form.phone)) {
+      setError("Please provide at least email and phone contact information");
+      isValid = false;
+    }
+    
+    // Business type validation
+    if (step === 8 && (!form.businessTypes || form.businessTypes.length === 0)) {
+      setError("Please select at least one business type");
+      isValid = false;
+    }
+    
+    if (!isValid) {
+      return;
+    }
+    
+    // Clear any previous error or success messages
+    setError(null);
+    setSuccessMessage(null);
+    
+    // Save the current tab data
+    const saveResult = await saveCurrentTabData();
+    
+    // If saving was successful or we're on the review step, proceed to next tab
+    if (saveResult || step === 9) {
+      setStep(step + 1);
+    }
+  };
+  
+  // Modified form navigation
+  const handlePrev = () => {
+    setStep(step - 1);
+    setError(null); // Clear any error messages
+    setSuccessMessage(null); // Clear any success messages
+  };
+  
+  // Submit final review
+  const handleFinalSubmit = async () => {
     try {
       setIsSubmitting(true);
       setError(null);
@@ -291,338 +865,55 @@ export default function BusinessMultiStepForm({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setError("You must be logged in to submit a business listing");
+        setIsSubmitting(false);
         return;
       }
-
-      // Get URL parameters to extract current community
-      const params = new URLSearchParams(window.location.search);
-      const pathParts = window.location.pathname.split('/');
-      const communitySlug = pathParts.find(part => part !== '' && part !== 'community' && !part.includes('business'));
       
-      // Get the actual community UUID based on the slug
-      let communityId;
-      if (communitySlug) {
-        const { data: communityData } = await supabase
-          .from('communities')
-          .select('id')
-          .eq('slug', communitySlug)
-          .single();
-          
-        if (communityData) {
-          communityId = communityData.id;
-        }
-      }
-      
-      if (!communityId) {
-        // Fallback - get user's default community from profile
-        const { data: profileData, error: profileFetchError } = await supabase
-          .from('profiles')
-          .select('community_id')
-          .eq('id', user.id)
-          .single();
-
-        if (profileFetchError) {
-          console.error("Error fetching profile:", profileFetchError);
-          setError("Failed to fetch user profile. Please try again.");
-          return;
-        }
-        
-        communityId = profileData.community_id;
-      }
-      
-      if (!communityId) {
-        setError("Could not determine which community this business belongs to.");
-        return;
-      }
-
-      // Now update the profile to have business role and pending approval
-      const { error: profileUpdateError } = await supabase
+      // Fetch the user's profile to check approval status
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .update({ 
-          role: 'business',
-          is_approved: false
-        })
-        .eq('id', user.id);
-
-      if (profileUpdateError) {
-        console.error("Error updating profile:", profileUpdateError);
-        setError("Failed to update user profile. Please try again.");
-        return;
-      }
-
-      // Basic validation
-      if (!form.title || !form.description || !form.category || !form.subCategory) {
-        setError("Please fill in all required fields in the Basic Info section");
-        setStep(0); // Go back to the first step
-        return;
-      }
-
-      // Location validation
-      if (!form.country || !form.city || !form.address) {
-        setError("Please fill in all required location fields");
-        setStep(2); // Go to location step
-        return;
-      }
-
-      // Contact validation
-      if (!form.email || !form.phone) {
-        setError("Please provide at least email and phone contact information");
-        setStep(6); // Go to contact step
-        return;
-      }
-
-      // First, update the user's profile to have a business role and pending approval status
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ 
-          role: 'business',
-          is_approved: false
-        })
-        .eq('id', user.id);
-
+        .select('is_approved')
+        .eq('id', user.id)
+        .single();
       if (profileError) {
-        console.error("Error updating profile:", profileError);
-        setError("Failed to update user profile. Please try again.");
+        setError("Could not verify your business account approval status. Please try again later.");
+        setIsSubmitting(false);
         return;
       }
-
-      // Get category and subcategory IDs from the database
-      const { data: categoryData, error: categoryError } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('name', categories.find(c => c.value === form.category)?.label)
-        .single();
-
-      if (categoryError || !categoryData) {
-        setError("Error finding category. Please try again.");
+      if (!profile || !profile.is_approved) {
+        setError("Your business account must be approved before you can submit a business listing. Please contact support or wait for admin approval.");
+        setIsSubmitting(false);
         return;
       }
-
-      const { data: subcategoryData, error: subcategoryError } = await supabase
-        .from('subcategories')
-        .select('id')
-        .eq('category_id', categoryData.id)
-        .eq('name', subCategoriesMap[form.category]?.find(s => s.value === form.subCategory)?.label)
-        .single();
-
-      if (subcategoryError || !subcategoryData) {
-        setError("Error finding subcategory. Please try again.");
-        return;
-      }
-
-      // Prepare business data
-      const businessData: Record<string, any> = {
-        name: form.title,
-          description: form.description,
-          category_id: categoryData.id,
-          subcategory_id: subcategoryData.id,
-        featured_type: form.featuredType || null,
-          amenities: form.amenities,
-        facilities: form.facilities,
-        facility_hours: form.facility_hours,
-        address: form.address,
-        city: form.city,
-        country: form.country,
-        location_lat: form.latitude ? parseFloat(form.latitude) : null,
-        location_lng: form.longitude ? parseFloat(form.longitude) : null,
-        contact_email: form.email,
-        contact_phone: form.phone,
-        website: form.website || null,
-        social_facebook: form.facebook || null,
-        social_twitter: form.twitter || null,
-        social_linkedin: form.linkedin || null,
-          business_types: form.businessTypes,
-        menu_name: form.menuName || null,
-        menu_price: form.menuPrice || null,
-          menu_items: form.menuItems,
-        schedule: form.schedule,
-        tags: form.tags,
-        meta_tags: form.metaTags,
-        video_provider: form.videoProvider || null,
-        video_url: form.videoUrl || null,
-        owner_id: user.id,
-        community_id: communityId,
-        status: 'pending',
-        is_approved: false
-      };
-
-      // Add created_at only for new businesses
-      if (mode === 'create') {
-        businessData.created_at = new Date().toISOString();
-      }
-
-      let business;
       
-      if (mode === 'create') {
-        // Create business record
-        const { data: newBusiness, error: businessError } = await supabase
-          .from('businesses')
-          .insert(businessData)
-        .select()
-        .single();
-
-      if (businessError) {
-        setError(businessError.message);
+      // Get the business ID from localStorage
+      const communityId = propCommunityId || getCommunitySugFromUrl();
+      const existingBusinessKey = `business_draft_${user.id}_${communityId}`;
+      const currentBusinessId = localStorage.getItem(existingBusinessKey) || (mode === 'edit' ? businessId : null);
+      
+      if (!currentBusinessId) {
+        setError("Could not find business record to finalize");
+        setIsSubmitting(false);
         return;
-        }
-        
-        business = newBusiness;
-      } else {
-        // Update existing business
-        const { data: updatedBusiness, error: businessError } = await supabase
-          .from('businesses')
-          .update(businessData)
-          .eq('id', businessId)
-          .select()
-          .single();
-
-        if (businessError) {
-          setError(businessError.message);
-          return;
-        }
-        
-        business = updatedBusiness;
       }
-
-      // Handle file uploads if needed
-      if (form.thumbnail) {
-        console.log("Uploading thumbnail to business-uploads bucket");
-        const thumbnailPath = `businesses/${business.id}/thumbnail`;
-        const { error: thumbnailError } = await supabase.storage
-          .from('business-uploads')
-          .upload(thumbnailPath, form.thumbnail, { upsert: true });
-        
-        if (thumbnailError) {
-          console.error("Error uploading thumbnail:", thumbnailError);
-        } else {
-          console.log("Thumbnail uploaded successfully");
-          // Get the public URL for the thumbnail
-          const { data: thumbnailData } = supabase.storage
-            .from('business-uploads')
-            .getPublicUrl(thumbnailPath);
-            
-          console.log("Thumbnail public URL:", thumbnailData.publicUrl);
-          // Update business record with thumbnail URL
-          await supabase
-            .from('businesses')
-            .update({ thumbnail_url: thumbnailData.publicUrl })
-            .eq('id', business.id);
-        }
-      }
-
-      // Handle cover image upload
-      if (form.cover) {
-        const coverPath = `businesses/${business.id}/cover`;
-        const { error: coverError } = await supabase.storage
-          .from('business-uploads')
-          .upload(coverPath, form.cover, { upsert: true });
-        
-        if (coverError) {
-          console.error("Error uploading cover image:", coverError);
-        } else {
-          // Get the public URL for the cover image
-          const { data: coverData } = supabase.storage
-            .from('business-uploads')
-            .getPublicUrl(coverPath);
-            
-          // Update business record with cover URL
-          await supabase
-            .from('businesses')
-            .update({ cover_url: coverData.publicUrl })
-            .eq('id', business.id);
-        }
-      }
-
-      // Handle gallery images upload
-      if (form.gallery && form.gallery.length > 0) {
-        console.log(`Uploading ${form.gallery.length} gallery images to business-uploads bucket`);
-        const galleryUrls: string[] = [];
-        
-        for (let i = 0; i < form.gallery.length; i++) {
-          try {
-          const galleryPath = `businesses/${business.id}/gallery/${i}`;
-            console.log(`Uploading gallery image ${i} to path: ${galleryPath}`);
-            
-          const { error: galleryError } = await supabase.storage
-              .from('business-uploads')
-              .upload(galleryPath, form.gallery[i], { upsert: true });
-          
-          if (galleryError) {
-            console.error(`Error uploading gallery image ${i}:`, galleryError);
-          } else {
-              console.log(`Gallery image ${i} uploaded successfully`);
-            // Get the public URL for the gallery image
-            const { data: galleryData } = supabase.storage
-                .from('business-uploads')
-              .getPublicUrl(galleryPath);
-              
-              console.log(`Gallery image ${i} public URL:`, galleryData.publicUrl);
-            galleryUrls.push(galleryData.publicUrl);
-            }
-          } catch (err) {
-            console.error(`Error processing gallery image ${i}:`, err);
-          }
-        }
-        
-        if (galleryUrls.length > 0) {
-          console.log(`Updating business record with ${galleryUrls.length} gallery URLs:`, galleryUrls);
-          // Update business record with gallery URLs
-          try {
-            const { error: updateError } = await supabase
-            .from('businesses')
-            .update({ gallery_urls: galleryUrls })
-            .eq('id', business.id);
-              
-            if (updateError) {
-              console.error("Error updating business with gallery URLs:", updateError);
-            } else {
-              console.log("Business updated with gallery URLs successfully");
-            }
-          } catch (err) {
-            console.error("Error updating business with gallery URLs:", err);
-          }
-        }
-      }
-
-      // Handle menu image upload
-      if (form.menuImage) {
-        const menuImagePath = `businesses/${business.id}/menu`;
-        const { error: menuImageError } = await supabase.storage
-          .from('business-uploads')
-          .upload(menuImagePath, form.menuImage, { upsert: true });
-        
-        if (menuImageError) {
-          console.error("Error uploading menu image:", menuImageError);
-        } else {
-          // Get the public URL for the menu image
-          const { data: menuImageData } = supabase.storage
-            .from('business-uploads')
-            .getPublicUrl(menuImagePath);
-            
-          // Update business record with menu image URL
-          await supabase
-            .from('businesses')
-            .update({ menu_image_url: menuImageData.publicUrl })
-            .eq('id', business.id);
-        }
-      }
-
-      // Set success message
-      setSuccessMessage(
-        mode === 'create'
-          ? "Your business has been successfully submitted and is now pending approval by administrators."
-          : "Your business information has been successfully updated."
-      );
       
-      // Call the onComplete callback
-      onComplete(business.id);
-      
+      // Finalize submission (no approval fields updated here)
+      setSuccessMessage("Your business has been successfully submitted.");
+      onComplete(currentBusinessId);
+      setIsSubmitting(false);
     } catch (err) {
       console.error("Error submitting business:", err);
-      setError("An unexpected error occurred. Please try again.");
-    } finally {
+      setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       setIsSubmitting(false);
     }
+  };
+  
+  // Helper to extract community slug from URL
+  const getCommunitySugFromUrl = () => {
+    if (typeof window === 'undefined') return null;
+    const pathParts = window.location.pathname.split('/');
+    const communityIdIndex = pathParts.findIndex(part => part === 'community') + 1;
+    return communityIdIndex > 0 && communityIdIndex < pathParts.length ? pathParts[communityIdIndex] : null;
   };
 
   return (
@@ -680,15 +971,17 @@ export default function BusinessMultiStepForm({
                   id="category"
                   className="w-full border border-grayLight rounded-md px-3 py-2 bg-sand focus:ring-2 focus:ring-primaryTeal focus:border-primaryTeal focus:outline-none" 
                   value={form.category}
-                  onChange={(e) => {
-                    const newCategory = e.target.value;
-                    setForm({...form, category: newCategory, subCategory: ''});
-                  }}
+                  onChange={(e) => setForm({...form, category: e.target.value, subCategory: ''})}
+                  required
                 >
                   <option value="">Select category</option>
-                  {categories.map(category => (
-                    <option key={category.value} value={category.value}>{category.label}</option>
-                  ))}
+                  {isLoadingCategories ? (
+                    <option value="" disabled>Loading categories...</option>
+                  ) : (
+                    dbCategories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))
+                  )}
                 </select>
                 {form.category === 'accommodations' && (
                   <div className="mt-2 px-3 py-2 bg-primaryTeal/10 border border-primaryTeal/30 rounded-md text-sm font-medium text-primaryTeal flex items-center gap-2">
@@ -708,8 +1001,8 @@ export default function BusinessMultiStepForm({
                   disabled={!form.category}
                 >
                   <option value="">Select sub-category</option>
-                  {getSubCategories().map(subCat => (
-                    <option key={subCat.value} value={subCat.value}>{subCat.label}</option>
+                  {getFilteredSubcategories().map(subCat => (
+                    <option key={subCat.id} value={subCat.id}>{subCat.name}</option>
                   ))}
                 </select>
                 {!form.category && (
@@ -1021,6 +1314,16 @@ export default function BusinessMultiStepForm({
                     />
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <label htmlFor="neighborhood" className="text-sm font-medium text-darkCharcoal">Neighborhood</label>
+                  <input
+                    id="neighborhood"
+                    className="w-full border border-grayLight rounded-md px-3 py-2 bg-sand focus:ring-2 focus:ring-primaryTeal focus:border-primaryTeal focus:outline-none"
+                    placeholder="Enter neighborhood name"
+                    value={form.neighborhood || ''}
+                    onChange={e => setForm({ ...form, neighborhood: e.target.value })}
+                  />
+                </div>
               </div>
               
               <div className="border border-grayLight rounded-lg overflow-hidden bg-white">
@@ -1072,8 +1375,9 @@ export default function BusinessMultiStepForm({
                       <p className="text-xs text-grayLight">Recommended: 400x300px, max 2MB</p>
                     </div>
                     {form.thumbnail && (
-                      <div className="mt-4 p-2 bg-white rounded border border-seafoam">
+                      <div className="mt-4 p-2 bg-white rounded border border-seafoam flex flex-col items-center">
                         <p className="text-sm text-darkCharcoal truncate">{form.thumbnail.name}</p>
+                        <GalleryImagePreview file={form.thumbnail} />
                       </div>
                     )}
                   </div>
@@ -1101,8 +1405,10 @@ export default function BusinessMultiStepForm({
                       <p className="text-xs text-grayLight">Recommended: 1200x600px, max 5MB</p>
                     </div>
                     {form.cover && (
-                      <div className="mt-4 p-2 bg-white rounded border border-seafoam">
+                      <div className="mt-4 p-2 bg-white rounded border border-seafoam flex flex-col items-center">
                         <p className="text-sm text-darkCharcoal truncate">{form.cover.name}</p>
+                        {/* Show image preview if possible */}
+                        <CoverImagePreview file={form.cover} />
                       </div>
                     )}
                   </div>
@@ -1162,8 +1468,9 @@ export default function BusinessMultiStepForm({
                     {form.gallery.length > 0 && (
                       <div className="mt-4 grid grid-cols-3 gap-2">
                         {form.gallery.slice(0, 3).map((file, index) => (
-                          <div key={index} className="p-2 bg-white rounded border border-seafoam">
+                          <div key={index} className="p-2 bg-white rounded border border-seafoam flex flex-col items-center">
                             <p className="text-xs text-darkCharcoal truncate">{file.name}</p>
+                            <GalleryImagePreview file={file} />
                           </div>
                         ))}
                         {form.gallery.length > 3 && (
@@ -1898,21 +2205,6 @@ export default function BusinessMultiStepForm({
                 </div>
               </div>
             </div>
-            
-            {error && (
-              <div className="bg-coralAccent/20 p-4 rounded-md border border-coralAccent text-darkCharcoal">
-                <p>{error}</p>
-              </div>
-            )}
-
-            {successMessage && (
-              <div className="bg-seafoam/20 p-4 rounded-md border border-primaryTeal text-darkCharcoal">
-                <p className="flex items-center gap-2">
-                  <span className="text-xl text-primaryTeal">✓</span>
-                  {successMessage}
-                </p>
-              </div>
-            )}
 
             <div className="flex justify-center gap-4 pt-4">
               <button 
@@ -1925,7 +2217,7 @@ export default function BusinessMultiStepForm({
               <button 
                 className="px-6 py-3 rounded-md bg-primaryTeal text-offWhite font-semibold hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle" 
                 type="button"
-                onClick={handleSubmit}
+                onClick={handleFinalSubmit}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? 'Submitting...' : 'Submit Business Listing'}
@@ -1939,30 +2231,68 @@ export default function BusinessMultiStepForm({
         <button
           className="px-4 py-2 rounded-md bg-transparent text-primaryTeal font-semibold hover:underline transition-colors disabled:opacity-50 disabled:no-underline"
           type="button"
-          onClick={() => setStep(s => Math.max(0, s - 1))}
-          disabled={step === 0}
+          onClick={handlePrev}
+          disabled={step === 0 || isSubmitting}
         >
           Back
         </button>
         <button
           className="px-4 py-2 rounded-md bg-primaryTeal text-offWhite font-semibold hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle disabled:opacity-50"
           type="button"
-          onClick={() => {
-            if (step === TABS.length - 1) {
-              handleSubmit();
-            } else {
-              setStep(s => Math.min(TABS.length - 1, s + 1));
-            }
-          }}
-          disabled={isSubmitting || (step === TABS.length - 1)}
+          onClick={step === TABS.length - 1 ? handleFinalSubmit : handleNext}
+          disabled={isSubmitting}
         >
-          {step === TABS.length - 1 
-            ? (isSubmitting 
-              ? 'Submitting...' 
-              : mode === 'create' ? 'Create Business' : 'Save Changes') 
-            : 'Next'}
+          {isSubmitting
+            ? (step === TABS.length - 1 ? 'Submitting...' : 'Saving...')
+            : (step === TABS.length - 1 
+              ? (mode === 'create' ? 'Submit Business' : 'Save Changes') 
+              : 'Save & Continue')}
         </button>
       </div>
+      
+      {/* Status messages */}
+      {(error || successMessage) && (
+        <div className={`p-3 mt-4 rounded-md ${error ? 'bg-coralAccent/20 border border-coralAccent' : 'bg-seafoam/20 border border-primaryTeal'}`}>
+          <p className="flex items-center gap-2 text-darkCharcoal">
+            {error ? (
+              <svg className="w-5 h-5 text-coralAccent" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-primaryTeal" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            {error || successMessage}
+          </p>
+        </div>
+      )}
     </div>
   );
 } 
+
+// Add this helper component at the bottom of the file:
+
+function CoverImagePreview({ file }: { file: File }) {
+  const [src, setSrc] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    const reader = new FileReader();
+    reader.onload = (e) => setSrc(e.target?.result as string);
+    reader.readAsDataURL(file);
+    return () => { setSrc(null); };
+  }, [file]);
+  if (!src) return null;
+  return <img src={src} alt="Cover preview" className="mt-2 max-h-32 rounded shadow" />;
+}
+
+function GalleryImagePreview({ file }: { file: File }) {
+  const [src, setSrc] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    const reader = new FileReader();
+    reader.onload = (e) => setSrc(e.target?.result as string);
+    reader.readAsDataURL(file);
+    return () => { setSrc(null); };
+  }, [file]);
+  if (!src) return null;
+  return <img src={src} alt="Gallery preview" className="mt-2 max-h-20 rounded shadow" />;
+}

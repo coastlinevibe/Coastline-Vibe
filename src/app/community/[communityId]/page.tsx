@@ -10,6 +10,9 @@ import Image from 'next/image';
 import { UserCircle2, ChevronDown, ChevronUp, ShieldCheck, MessageSquare, Heart, AtSign, Sailboat } from 'lucide-react';
 import FeedPostItem from '@/components/feed/FeedPostItem';
 import LocationVerificationForm from '@/components/profile/LocationVerificationForm';
+import { createClient } from '@/lib/supabase/client';
+import { cookies } from 'next/headers';
+import { formatDistanceToNow } from 'date-fns';
 
 // Define a more specific Profile type for this page's needs
 interface Profile {
@@ -45,7 +48,7 @@ interface WishlistItem {
 // Define a more generic NotificationItem interface
 interface GenericNotification {
   id: string;
-  type: 'mention' | 'post_like' | 'new_comment' | 'PROPERTY_INQUIRY' | 'MARKET_INTERACTION' | 'BUSINESS_INTERACTION' | string;
+  type: 'mention' | 'post_like' | 'new_comment' | 'PROPERTY_INQUIRY' | 'MARKET_INTERACTION' | 'BUSINESS_INTERACTION' | 'FRIEND_REQUEST' | string;
   actor: {
     id: string;
     username: string | null;
@@ -119,6 +122,31 @@ export default function CommunityLandingPage() {
     actor_username?: string | null;
     target_entity_id?: string | null; // post_id for posts, parent_post_id for comments for linking
   }
+
+  // Add state for inquiry modal
+  const [inquiryModal, setInquiryModal] = useState<{ open: boolean, inquiryId: string | null, inquiry: any }>({ open: false, inquiryId: null, inquiry: null });
+
+  // Add state for chat modal
+  const [chatModal, setChatModal] = useState<{ open: boolean, friend: any, messages: any[] }>({ open: false, friend: null, messages: [] });
+
+  // Add state for chat input and loading
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState('');
+
+  // Add state for community members and search
+  const [members, setMembers] = useState<any[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [membersLoading, setMembersLoading] = useState(false);
+
+  const [addFriendLoading, setAddFriendLoading] = useState<string | null>(null);
+
+  // Add state for friend request modal
+  const [friendModal, setFriendModal] = useState<{ open: boolean, recipientId: string | null }>({ open: false, recipientId: null });
+  const [friendReason, setFriendReason] = useState('');
+  const [friendError, setFriendError] = useState('');
+
+  const [membersCollapsed, setMembersCollapsed] = useState(true);
 
   const fetchUserActivity = useCallback(async () => {
     if (!profile?.id || !communityId || !supabase) {
@@ -315,21 +343,49 @@ export default function CommunityLandingPage() {
   }, [communityId, supabase]);
 
   const fetchPendingRequests = async () => {
-    if (!profile?.id) return;
+    if (!profile || !profile.id) return;
     setPendingLoading(true);
     setPendingError('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const userId = session.user.id;
-      const { data: requests, error: reqError } = await supabase
+      // Fetch both incoming and outgoing pending requests
+      const { data: incoming, error: incomingError } = await supabase
         .from('friend_requests')
-        .select('id, sender_id, reason, status, created_at, profiles:sender_id(username, avatar_url)')
-        .eq('recipient_id', userId)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
-      if (reqError) throw reqError;
-      setPendingRequests(requests || []);
+        .select('id, user_id, friend_id, reason, status, created_at, user:profiles!user_id(username, avatar_url)')
+        .eq('friend_id', profile.id)
+        .eq('status', 'pending');
+      const { data: outgoing, error: outgoingError } = await supabase
+        .from('friend_requests')
+        .select('id, user_id, friend_id, reason, status, created_at, friend:profiles!friend_id(username, avatar_url)')
+        .eq('user_id', profile.id)
+        .eq('status', 'pending');
+      if (incomingError || outgoingError) {
+        console.error('Supabase join error:', incomingError, outgoingError);
+        // Fallback: fetch without join
+        const { data: incomingSimple } = await supabase
+          .from('friend_requests')
+          .select('id, user_id, friend_id, reason, status, created_at')
+          .eq('friend_id', profile.id)
+          .eq('status', 'pending');
+        const { data: outgoingSimple } = await supabase
+          .from('friend_requests')
+          .select('id, user_id, friend_id, reason, status, created_at')
+          .eq('user_id', profile.id)
+          .eq('status', 'pending');
+        const normalized = [
+          ...(incomingSimple || []),
+          ...(outgoingSimple || [])
+        ];
+        setPendingRequests(normalized);
+        setPendingError('');
+        setPendingLoading(false);
+        return;
+      }
+      // Normalize to always use .user for display
+      const normalized = [
+        ...(incoming || []).map(r => ({ ...r, profiles: r.user })),
+        ...(outgoing || []).map(r => ({ ...r, profiles: r.friend }))
+      ];
+      setPendingRequests(normalized);
     } catch (err: any) {
       setPendingError('Failed to load pending friend requests.');
     } finally {
@@ -339,13 +395,32 @@ export default function CommunityLandingPage() {
 
   const fetchFriends = async () => {
     if (!profile?.id) return;
+    // 1. Get all accepted friend relationships
     const { data, error } = await supabase
-      .from('friends')
-      .select('friend_id, profiles:friend_id(username, avatar_url)')
-      .eq('user_id', profile.id)
+      .from('friend_requests')
+      .select('user_id, friend_id, status')
+      .or(`user_id.eq.${profile.id},friend_id.eq.${profile.id}`)
       .eq('status', 'accepted');
     if (!error && data) {
-      setFriends(data);
+      // 2. Get the other user's ID for each friend
+      const friendIds = data.map(r => (r.user_id === profile.id ? r.friend_id : r.user_id));
+      if (friendIds.length === 0) {
+        setFriends([]);
+        return;
+      }
+      // 3. Fetch all friend profiles in one query
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url')
+        .in('id', friendIds);
+      if (profilesError) {
+        setFriends(friendIds.map(id => ({ friend_id: id, profiles: null })));
+        return;
+      }
+      // 4. Map friendId to profile
+      const profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p]));
+      const friendsList = friendIds.map(id => ({ friend_id: id, profiles: profileMap[id] || null }));
+      setFriends(friendsList);
     }
   };
 
@@ -521,7 +596,7 @@ export default function CommunityLandingPage() {
     if (!error) {
       const request = pendingRequests.find(r => r.id === id);
       if (request) {
-        setFriends([...friends, { friend_id: request.sender_id, profiles: request.profiles }]);
+        setFriends([...friends, { friend_id: request.user_id, profiles: request.profiles }]);
         setPendingRequests(pendingRequests.filter(r => r.id !== id));
       }
     }
@@ -536,22 +611,20 @@ export default function CommunityLandingPage() {
     // Logic for deleting account
   };
 
-  const getFilteredNotifications = useCallback(() => {
+  function getFilteredNotifications() {
     if (activeNotificationTab === 'Chatter') {
-      return notifications.filter(n => 
-        n.type === 'mention' || 
-        n.type === 'post_like' || 
-        n.type === 'new_comment'
+      return notifications.filter(n =>
+        (n.type === 'post_like' || n.type === 'new_comment')
       );
     } else if (activeNotificationTab === 'Property') {
-      return notifications.filter(n => n.type === 'PROPERTY_INQUIRY' /* Add other property types */);
+      return notifications.filter(n => n.type === 'PROPERTY_INQUIRY');
     } else if (activeNotificationTab === 'Market') {
-      return notifications.filter(n => n.type === 'MARKET_INTERACTION' /* Add other market types */);
+      return notifications.filter(n => n.type === 'MARKET_INTERACTION');
     } else if (activeNotificationTab === 'Directory') {
-      return notifications.filter(n => n.type === 'BUSINESS_INTERACTION' /* Add other directory types */);
+      return notifications.filter(n => n.type === 'BUSINESS_INTERACTION');
     }
     return [];
-  }, [notifications, activeNotificationTab]);
+  }
 
   const handleVerificationSubmitSuccess = () => {
     setIsVerificationFormVisible(false);
@@ -561,6 +634,191 @@ export default function CommunityLandingPage() {
   const handleVerificationCancel = () => {
     setIsVerificationFormVisible(false);
   };
+
+  // Function to fetch inquiry details
+  async function fetchInquiry(inquiryId: string) {
+    if (!inquiryId) return;
+    const { data, error } = await supabase
+      .from('property_inquiries')
+      .select('*, property:property_id(title)')
+      .eq('id', inquiryId)
+      .single();
+    if (!error && data) {
+      setInquiryModal({ open: true, inquiryId, inquiry: data });
+    }
+  }
+
+  // Fetch messages when chat modal opens or friend changes
+  useEffect(() => {
+    let interval: any;
+    async function fetchMessages() {
+      if (!chatModal.open || !profile?.id || !communityUuid || !chatModal.friend?.friend_id) return;
+      try {
+        const res = await fetch(`/api/messages/thread?community_id=${communityUuid}&user_id=${profile.id}&friend_id=${chatModal.friend.friend_id}`);
+        const data = await res.json();
+        if (res.ok) {
+          setChatModal((prev) => ({ ...prev, messages: data.messages || [] }));
+        }
+      } catch {}
+    }
+    if (chatModal.open && chatModal.friend?.friend_id) {
+      fetchMessages();
+      interval = setInterval(fetchMessages, 5000);
+    }
+    return () => interval && clearInterval(interval);
+  }, [chatModal.open, chatModal.friend, profile?.id, communityUuid]);
+
+  // Handle send message
+  async function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    setChatError('');
+    if (!chatInput.trim()) return;
+    setChatLoading(true);
+    try {
+      const res = await fetch('/api/messages/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          community_id: communityUuid,
+          user_id: profile ? profile.id : undefined,
+          friend_id: chatModal.friend ? chatModal.friend.friend_id : undefined,
+          content: chatInput.trim(),
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setChatError(data.error || 'Failed to send message.');
+        setChatLoading(false);
+        return;
+      }
+      setChatInput('');
+      // Refetch messages after sending
+      const threadRes = profile && chatModal.friend ? await fetch(`/api/messages/thread?community_id=${communityUuid}&user_id=${profile.id}&friend_id=${chatModal.friend.friend_id}`) : null;
+      const threadData = threadRes ? await threadRes.json() : null;
+      if (threadRes && threadRes.ok) {
+        setChatModal((prev) => ({ ...prev, messages: threadData.messages || [] }));
+      }
+    } catch {
+      setChatError('Failed to send message.');
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
+  // Fetch community members (except self)
+  useEffect(() => {
+    async function fetchMembers() {
+      if (!communityUuid || !profile?.id) return;
+      setMembersLoading(true);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, role')
+        .eq('community_id', communityUuid)
+        .neq('id', profile.id);
+      if (!error && data) setMembers(data);
+      setMembersLoading(false);
+    }
+    fetchMembers();
+  }, [communityUuid, profile?.id]);
+
+  // Helper to check friend status
+  function getFriendStatus(userId: string) {
+    if (friends.some(f => f.friend_id === userId || f.user_id === userId)) return 'friends';
+    if (pendingRequests.some(r => r.user_id === userId || r.friend_id === userId)) return 'pending';
+    return 'none';
+  }
+
+  // Update handleAddFriend to use user_id and friend_id instead of sender_id and recipient_id in the request body and local state.
+  async function handleAddFriend(recipientId: string, reason: string) {
+    if (!profile?.id || !communityUuid) return;
+    if (!reason.trim()) {
+      setFriendError('Please enter a reason for your friend request.');
+      return;
+    }
+    setAddFriendLoading(recipientId);
+    setFriendError('');
+    try {
+      const res = await fetch('/api/friends/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          community_id: communityUuid,
+          user_id: profile.id,
+          friend_id: recipientId,
+          reason: reason.trim()
+        })
+      });
+      if (res.ok) {
+        setPendingRequests(prev => [...prev, { user_id: profile.id, friend_id: recipientId, status: 'pending', reason }]);
+        setFriendModal({ open: false, recipientId: null });
+        setFriendReason('');
+      } else {
+        const data = await res.json();
+        setFriendError(data.error || 'Failed to send friend request.');
+      }
+    } finally {
+      setAddFriendLoading(null);
+    }
+  }
+
+  // Poll for real-time updates
+  useEffect(() => {
+    let interval: any;
+    async function refreshAll() {
+      if (!communityUuid || !profile || !profile.id) return;
+      // Refresh members
+      const { data: membersData } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, role')
+        .eq('community_id', communityUuid)
+        .neq('id', profile.id);
+      if (membersData) setMembers(membersData);
+      // Refresh friends
+      const { data: friendsData } = await supabase
+        .from('friend_requests')
+        .select('friend_id, user_id, status, profiles:friend_id(username, avatar_url)')
+        .eq('status', 'accepted')
+        .or(`user_id.eq.${profile.id},friend_id.eq.${profile.id}`);
+      if (friendsData) setFriends(friendsData);
+      // Refresh pending requests
+      const { data: pendingData } = await supabase
+        .from('friend_requests')
+        .select('id, user_id, friend_id, status, profiles:user_id(username, avatar_url)')
+        .eq('status', 'pending')
+        .or(`user_id.eq.${profile.id},friend_id.eq.${profile.id}`);
+      if (pendingData) setPendingRequests(pendingData);
+    }
+    refreshAll();
+    interval = setInterval(refreshAll, 5000);
+    return () => clearInterval(interval);
+  }, [communityUuid, profile?.id]);
+
+  // Cancel friend request
+  const [cancelLoading, setCancelLoading] = useState<string | null>(null);
+  async function handleCancelRequest(requestId: string) {
+    if (!profile) return;
+    setCancelLoading(requestId);
+    try {
+      await supabase.from('friend_requests').delete().eq('id', requestId);
+      setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+    } finally {
+      setCancelLoading(null);
+    }
+  }
+
+  // Accept friend request
+  async function handleAcceptFriendRequest(requestId: string, userId: string, friendId: string) {
+    if (!profile) return;
+    await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', requestId);
+    setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+    await fetchFriends(); // Refresh friends list after accepting
+  }
+  // Reject friend request
+  async function handleRejectFriendRequest(requestId: string) {
+    if (!profile) return;
+    await supabase.from('friend_requests').update({ status: 'rejected' }).eq('id', requestId);
+    setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+  }
 
   if (loading) {
     return <div className="flex justify-center items-center h-screen">Loading...</div>;
@@ -589,8 +847,6 @@ export default function CommunityLandingPage() {
       );
   }
   
-  const displayedNotifications = getFilteredNotifications();
-
   const getAvatarUrl = (actor: GenericNotification['actor']) => {
     if (actor?.avatar_url) return actor.avatar_url;
     const name = actor?.username || 'User';
@@ -599,8 +855,6 @@ export default function CommunityLandingPage() {
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case 'mention':
-        return <AtSign className="h-5 w-5 text-blue-500" />;
       case 'post_like':
         return <Heart className="h-5 w-5 text-red-500" />;
       case 'new_comment':
@@ -795,13 +1049,39 @@ export default function CommunityLandingPage() {
                         {pendingRequests.map(req => (
                             <li key={req.id} className="flex items-center justify-between p-2 border-b">
                                 <div className="flex items-center space-x-2">
-                                    <Image src={req.profiles?.avatar_url || getAvatarUrl({id: req.sender_id, username: req.profiles?.username, avatar_url: null})} alt={req.profiles?.username || 'User'} width={32} height={32} className="rounded-full" />
-                                    <span>{req.profiles?.username || 'A user'}</span>
-                  </div>
-                                <div className="space-x-1">
-                                    <button onClick={() => handleAccept(req.id)} className="px-2 py-1 text-xs bg-green-500 text-white rounded">Accept</button>
-                                    <button onClick={() => handleReject(req.id)} className="px-2 py-1 text-xs bg-red-500 text-white rounded">Reject</button>
-                  </div>
+                                    <Image src={req.profiles?.avatar_url || getAvatarUrl({id: req.user_id, username: req.profiles?.username, avatar_url: null})} alt={req.profiles?.username || 'User'} width={32} height={32} className="rounded-full" />
+                                    <div>
+                                        <span>{req.profiles?.username || 'A user'}</span>
+                                        {req.reason && (
+                                            <div className="text-xs text-slate-500 mt-1 max-w-xs break-words">Reason: {req.reason}</div>
+                                        )}
+                                    </div>
+                                </div>
+                                {profile && req.user_id === profile.id && (
+                                    <button
+                                        className="px-2 py-1 text-xs bg-red-500 text-white rounded"
+                                        onClick={() => handleCancelRequest(req.id)}
+                                        disabled={cancelLoading === req.id}
+                                    >
+                                        {cancelLoading === req.id ? 'Cancelling...' : 'Cancel'}
+                                    </button>
+                                )}
+                                {profile && req.friend_id === profile.id && (
+                                    <div className="flex gap-2">
+                                        <button
+                                            className="px-2 py-1 text-xs bg-green-500 text-white rounded"
+                                            onClick={() => handleAcceptFriendRequest(req.id, req.user_id, req.friend_id)}
+                                        >
+                                            Accept
+                                        </button>
+                                        <button
+                                            className="px-2 py-1 text-xs bg-red-500 text-white rounded"
+                                            onClick={() => handleRejectFriendRequest(req.id)}
+                                        >
+                                            Reject
+                                        </button>
+                                    </div>
+                                )}
                 </li>
               ))}
             </ul>
@@ -816,8 +1096,14 @@ export default function CommunityLandingPage() {
                     <li key={friend.friend_id} className="flex items-center space-x-2 p-2 border-b">
                        <Image src={friend.profiles?.avatar_url || getAvatarUrl({id: friend.friend_id, username: friend.profiles?.username, avatar_url: null})} alt={friend.profiles?.username || 'User'} width={32} height={32} className="rounded-full" />
                        <span>{friend.profiles?.username || 'A user'}</span>
-                </li>
-              ))}
+                       <button
+                         className="ml-auto px-3 py-1 rounded bg-sky-100 text-sky-800 text-xs font-medium border border-sky-200 hover:bg-sky-200"
+                         onClick={() => setChatModal({ open: true, friend, messages: [] })}
+                       >
+                         Message
+                       </button>
+                    </li>
+                  ))}
             </ul>
               ) : <p className="text-slate-500">No friends yet.</p>}
             </div>
@@ -855,45 +1141,47 @@ export default function CommunityLandingPage() {
                   </div>
 
                   <div className="space-y-3">
-                    {displayedNotifications.length > 0 ? (
-                      displayedNotifications.map(notification => (
+                    {getFilteredNotifications().length > 0 ? (
+                      getFilteredNotifications().map(notification => (
                         <div key={notification.id} className={`p-3 rounded-md flex items-start space-x-3 ${notification.is_read ? 'bg-slate-50' : 'bg-blue-50'}`}>
                           <div className="flex-shrink-0">
                             {getNotificationIcon(notification.type)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-2">
-                                    <Image 
-                                        src={getAvatarUrl(notification.actor)}
-                                        alt={notification.actor?.username || 'User'}
-                                        width={24} 
-                                        height={24} 
-                                        className="rounded-full"
-                                    />
-                                    <span className="text-sm font-medium text-slate-800 truncate">
-                                        {notification.actor?.username || 'Someone'}
-                                    </span>
-                                </div>
-                                <span className="text-xs text-slate-500 whitespace-nowrap">
-                                    {new Date(notification.created_at).toLocaleDateString()} {new Date(notification.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              <div className="flex items-center space-x-2">
+                                <Image 
+                                  src={getAvatarUrl(notification.actor)}
+                                  alt={notification.actor && notification.actor.username ? notification.actor.username : 'User'}
+                                  width={24} 
+                                  height={24} 
+                                  className="rounded-full"
+                                />
+                                <span className="text-sm font-medium text-slate-800 truncate">
+                                  {notification.actor && notification.actor.username ? notification.actor.username : 'Someone'}
                                 </span>
+                              </div>
+                              <span className="text-xs text-slate-500 whitespace-nowrap">
+                                {new Date(notification.created_at).toLocaleDateString()} {new Date(notification.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
                             </div>
                             <p className="text-sm text-slate-700 mt-1 truncate">
-                                {notification.content_snippet || ' interacted with you.'}
+                              {notification.type === 'FRIEND_REQUEST'
+                                ? 'sent you a friend request.'
+                                : notification.content_snippet || ' interacted with you.'}
                             </p>
-                            {(notification.type === 'mention' || notification.type === 'post_like' || notification.type === 'new_comment') && notification.target_entity_id && communityId && (
-                                <Link href={`/community/${communityId}/feed#post-${notification.target_entity_id}`} legacyBehavior>
-                                    <a className="mt-1 text-xs text-blue-600 hover:underline">
-                                    View Post
-                                    </a>
-                                </Link>
+                            {(notification.type === 'post_like' || notification.type === 'new_comment') && notification.target_entity_id && communityId && (
+                              <Link href={`/community/${communityId}/feed#post-${notification.target_entity_id}`} legacyBehavior>
+                                <a className="mt-1 text-xs text-blue-600 hover:underline">
+                                  View Post
+                                </a>
+                              </Link>
                             )}
                           </div>
                         </div>
                       ))
                     ) : (
-                      <p className="text-slate-500 text-center py-4">No {activeNotificationTab.toLowerCase()} notifications.</p>
+                      <p className="text-slate-500">No notifications.</p>
                     )}
                   </div>
                 </>
@@ -1040,6 +1328,55 @@ export default function CommunityLandingPage() {
                 <button onClick={() => setShowBusinessDashPrompt(false)} className="mt-3 text-sm text-blue-200 hover:text-white">Dismiss</button>
               </div>
             )}
+
+            {/* Community Members Section */}
+            <div className="bg-white p-6 rounded-lg shadow mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">Community Members</h2>
+                <button
+                  className="px-3 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300"
+                  onClick={() => setMembersCollapsed(c => !c)}
+                >
+                  {membersCollapsed ? 'Show' : 'Hide'}
+                </button>
+              </div>
+              {!membersCollapsed && (
+                <>
+                  <input
+                    type="text"
+                    className="w-full mb-4 px-3 py-2 border rounded"
+                    placeholder="Search members..."
+                    value={memberSearch}
+                    onChange={e => setMemberSearch(e.target.value)}
+                  />
+                  <ul>
+                    {members.map(member => {
+                      const status = getFriendStatus(member.id);
+                      return (
+                        <li key={member.id} className="flex items-center space-x-2 p-2 border-b">
+                          <Image src={member.avatar_url || getAvatarUrl({id: member.id, username: member.username, avatar_url: null})} alt={member.username} width={32} height={32} className="rounded-full" />
+                          <span>{member.username}</span>
+                          <span className="text-xs text-slate-400 ml-2">{member.role}</span>
+                          {status === 'none' && (
+                            <button
+                              className="ml-auto px-3 py-1 rounded bg-teal-100 text-teal-800 text-xs font-medium border border-teal-200 hover:bg-teal-200"
+                              onClick={() => setFriendModal({ open: true, recipientId: member.id })}
+                              disabled={addFriendLoading === member.id}
+                            >
+                              {addFriendLoading === member.id ? 'Sending...' : 'Add Friend'}
+                            </button>
+                          )}
+                          {status === 'pending' && <span className="ml-auto px-3 py-1 rounded bg-yellow-100 text-yellow-800 text-xs font-medium border border-yellow-200">Pending</span>}
+                          {status === 'friends' && <span className="ml-auto px-3 py-1 rounded bg-green-100 text-green-800 text-xs font-medium border border-green-200">Friends</span>}
+                        </li>
+                      );
+                    })}
+                    {members.length === 0 && <li className="text-slate-500 text-sm">No other members found.</li>}
+                  </ul>
+                </>
+              )}
+            </div>
+
           </div>
         </div>
       </main>
@@ -1087,6 +1424,105 @@ export default function CommunityLandingPage() {
           </div>
         </div>
       )}
-      </div>
-    );
+
+      {/* Inquiry Modal */}
+      {inquiryModal.open && inquiryModal.inquiry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="relative w-full max-w-md mx-auto bg-white rounded-xl shadow-lg p-6 border border-cyan-100">
+            <button
+              onClick={() => setInquiryModal({ open: false, inquiryId: null, inquiry: null })}
+              className="absolute top-3 right-3 p-2 rounded-full bg-cyan-100 hover:bg-cyan-200 border border-cyan-200 text-cyan-700"
+              aria-label="Close inquiry details"
+            >
+              <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <h3 className="text-lg font-bold text-cyan-900 mb-2">Inquiry Details</h3>
+            <div className="mb-2 text-sm"><span className="font-semibold">Name:</span> {inquiryModal.inquiry.name}</div>
+            <div className="mb-2 text-sm"><span className="font-semibold">Email:</span> {inquiryModal.inquiry.email}</div>
+            {inquiryModal.inquiry.phone && <div className="mb-2 text-sm"><span className="font-semibold">Phone:</span> {inquiryModal.inquiry.phone}</div>}
+            <div className="mb-2 text-sm"><span className="font-semibold">Property:</span> {inquiryModal.inquiry.property?.title || inquiryModal.inquiry.property_id}</div>
+            <div className="mb-2 text-sm"><span className="font-semibold">Message:</span> {inquiryModal.inquiry.message}</div>
+            <div className="mb-2 text-xs text-cyan-700"><span className="font-semibold">Sent:</span> {new Date(inquiryModal.inquiry.created_at).toLocaleString()}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Modal */}
+      {chatModal.open && chatModal.friend && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="relative w-full max-w-md mx-auto bg-white rounded-xl shadow-lg p-6 border border-cyan-100 flex flex-col">
+            <button
+              onClick={() => setChatModal({ open: false, friend: null, messages: [] })}
+              className="absolute top-3 right-3 p-2 rounded-full bg-sky-100 hover:bg-sky-200 border border-sky-200 text-sky-700"
+              aria-label="Close chat"
+            >
+              <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <h3 className="text-lg font-bold text-sky-900 mb-2">Chat with {chatModal.friend.profiles?.username || 'Friend'}</h3>
+            <div className="flex-1 overflow-y-auto mb-3 bg-sky-50 rounded p-2">
+              {chatModal.messages.length === 0 && <div className="text-slate-500 text-sm text-center">No messages yet.</div>}
+              {chatModal.messages.map((msg, i) => (
+                <div key={msg.id || i} className={`mb-2 flex ${msg.user_id === profile.id ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`px-3 py-2 rounded-lg max-w-xs text-sm ${msg.user_id === profile.id ? 'bg-sky-500 text-white' : 'bg-sky-100 text-sky-900'}`}>
+                    {msg.content}
+                    <div className="text-xs text-slate-400 mt-1 text-right">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <form className="flex gap-2 mt-2" onSubmit={handleSendMessage}>
+              <input
+                type="text"
+                className="flex-1 border rounded px-2 py-1 text-sm"
+                placeholder="Type a message..."
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                disabled={chatLoading}
+              />
+              <button type="submit" className="px-4 py-1 rounded bg-sky-500 text-white font-semibold hover:bg-sky-600 transition" disabled={chatLoading || !chatInput.trim()}>Send</button>
+            </form>
+            {chatError && <div className="text-xs text-red-500 mt-2">{chatError}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Friend Request Modal */}
+      {friendModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900">Send Friend Request</h3>
+            <textarea
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm mb-3 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Reason for friend request (required)"
+              value={friendReason}
+              onChange={e => setFriendReason(e.target.value)}
+              rows={3}
+              maxLength={300}
+              autoFocus
+            />
+            {friendError && <div className="text-red-500 text-sm mb-3 p-2 bg-red-100 rounded-md">{friendError}</div>}
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => { setFriendModal({ open: false, recipientId: null }); setFriendReason(''); setFriendError(''); }}
+                className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => friendModal.recipientId && handleAddFriend(friendModal.recipientId, friendReason)}
+                className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                disabled={!friendReason.trim() || addFriendLoading === friendModal.recipientId}
+              >
+                {addFriendLoading === friendModal.recipientId ? 'Sending...' : 'Send Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 } 

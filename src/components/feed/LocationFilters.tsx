@@ -132,6 +132,7 @@ const LocationFilters: React.FC<LocationFiltersProps> = ({
                   userId={userId} 
                   communityId={communityId} 
                   onPreferencesChanged={handlePreferencesChanged}
+                  compact={true}
                 />
               </div>
             </SheetContent>
@@ -176,6 +177,7 @@ const LocationFilters: React.FC<LocationFiltersProps> = ({
                 userId={userId} 
                 communityId={communityId} 
                 onPreferencesChanged={handlePreferencesChanged}
+                compact={true}
               />
             </div>
           </SheetContent>

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { Montserrat, Open_Sans } from "next/font/google";
 import './globals.css';
+import '../styles/reaction-animations.css';
 import Header from '../components/Header';
 import PointerModeToggle from '../components/PointerModeToggle';
 import { NotificationProvider } from '@/context/NotificationContext';
+import { ToastProvider } from '@/components/ui/toast';
+import { Translator } from "@/components/translator";
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -35,8 +38,12 @@ export default function RootLayout({
           <PointerModeToggle />
         </div>
         <NotificationProvider>
-          <Header />
-          {children}
+          <ToastProvider>
+            <Translator>
+              <Header />
+              {children}
+            </Translator>
+          </ToastProvider>
         </NotificationProvider>
       </body>
     </html>

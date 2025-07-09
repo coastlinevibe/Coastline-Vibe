@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { useState } from "react";
 
 interface BusinessCardProps {
   business: {
@@ -13,19 +14,27 @@ interface BusinessCardProps {
     subcategory_name?: string;
     rating?: number;
     description?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
   };
 }
 
 export function BusinessCard({ business }: BusinessCardProps) {
   // Get communityId from URL params
   const params = useParams();
-  const communityId = params.communityId as string;
+  const communityId = params?.communityId as string || '';
+  const [showHoverCard, setShowHoverCard] = useState(false);
 
   return (
-    <div className="bg-gradient-to-br from-sky-50 to-cyan-50 rounded-2xl shadow-lg p-5 flex flex-col border border-cyan-100">
+    <div 
+      className="bg-gradient-to-br from-sky-50 to-cyan-50 rounded-2xl shadow-lg p-5 flex flex-col border border-cyan-100 relative group overflow-hidden"
+      onMouseEnter={() => setShowHoverCard(true)}
+      onMouseLeave={() => setShowHoverCard(false)}
+    >
       <div className="relative mb-3">
         <img
-          src={business.image_url || '/placeholder-business.jpg'}
+          src={business.image_url || '/placeholder-property.jpg'}
           alt={business.name}
           className="w-full h-36 object-cover rounded-xl border-2 border-sky-100 shadow-sm bg-white"
         />
@@ -53,6 +62,66 @@ export function BusinessCard({ business }: BusinessCardProps) {
       </div>
       <div className="flex gap-2 mt-4">
         <a href={`/community/${communityId}/business/${business.id}`} className="px-3.5 py-1.5 rounded bg-teal-100 text-teal-700 text-xs font-medium hover:bg-teal-200 transition text-sm text-center w-full">View</a>
+      </div>
+
+      {/* Quick View Hover Card */}
+      <div 
+        className={`absolute inset-0 bg-gradient-to-br from-cyan-900/95 to-teal-900/95 rounded-2xl p-5 flex flex-col text-white z-10 transform transition-all duration-300 ${
+          showHoverCard ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'
+        }`}
+      >
+        <div className="flex items-center mb-3">
+          <h3 className="font-semibold text-lg">{business.name}</h3>
+          {business.rating && business.rating > 0 && (
+            <div className="ml-auto bg-yellow-400/20 text-yellow-300 px-2 py-0.5 rounded text-xs font-semibold flex items-center">
+              <svg className="w-3.5 h-3.5 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.967a1 1 0 00.95.69h4.178c.969 0 1.371 1.24.588 1.81l-3.385 2.46a1 1 0 00-.364 1.118l1.287 3.966c.3.922-.755 1.688-1.54 1.118l-3.385-2.46a1 1 0 00-1.175 0l-3.385 2.46c-.784.57-1.838-.196-1.54-1.118l1.287-3.966a1 1 0 00-.364-1.118l-3.385-2.46c-.783-.57-.38-1.81.588-1.81h4.178a1 1 0 00.95-.69l1.286-3.967z" /></svg>
+              {business.rating.toFixed(1)}
+            </div>
+          )}
+        </div>
+        
+        {business.category_name && (
+          <div className="inline-block bg-teal-700/50 text-cyan-100 px-2 py-0.5 rounded-full text-xs mb-3">
+            {business.category_name}{business.subcategory_name && ` • ${business.subcategory_name}`}
+          </div>
+        )}
+        
+        {business.address && (
+          <div className="mb-2 flex">
+            <svg className="w-4 h-4 mr-2 text-cyan-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <div className="text-sm text-cyan-50">{business.address}</div>
+          </div>
+        )}
+        
+        {business.phone && (
+          <div className="mb-2 flex">
+            <svg className="w-4 h-4 mr-2 text-cyan-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            </svg>
+            <div className="text-sm text-cyan-50">{business.phone}</div>
+          </div>
+        )}
+        
+        {business.email && (
+          <div className="mb-2 flex">
+            <svg className="w-4 h-4 mr-2 text-cyan-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <div className="text-sm text-cyan-50 truncate">{business.email}</div>
+          </div>
+        )}
+        
+        <div className="mt-auto pt-3">
+          <a 
+            href={`/community/${communityId}/business/${business.id}`} 
+            className="block w-full py-2 text-center rounded-lg bg-white text-teal-700 font-medium text-sm hover:bg-cyan-50 transition shadow-md"
+          >
+            View Full Details
+          </a>
+        </div>
       </div>
     </div>
   );

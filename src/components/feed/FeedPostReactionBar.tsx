@@ -4,19 +4,8 @@ import { useState } from 'react';
 import { Smile } from 'lucide-react';
 import { FeedReactionsClient, ReactionType } from '@/lib/supabase/feed-reactions-client';
 
-// Define coastal-themed emojis
-const COASTAL_EMOJIS = [
-  { code: 'wave', emoji: '🌊', name: 'Wave' },
-  { code: 'sun', emoji: '🌅', name: 'Sunset' },
-  { code: 'beach', emoji: '🏖️', name: 'Beach' },
-  { code: 'palm', emoji: '🌴', name: 'Palm Tree' },
-  { code: 'shell', emoji: '🐚', name: 'Shell' },
-  { code: 'fish', emoji: '🐠', name: 'Fish' },
-  { code: 'boat', emoji: '⛵', name: 'Sailboat' },
-  { code: 'dolphin', emoji: '🐬', name: 'Dolphin' },
-  { code: 'island', emoji: '🏝️', name: 'Island' },
-  { code: 'swim', emoji: '🏊', name: 'Swimming' },
-];
+// Empty coastal emojis list - removed all default emojis
+const COASTAL_EMOJIS: Array<{code: string, emoji: string, name: string}> = [];
 
 interface FeedPostReactionBarProps {
   postId: string;

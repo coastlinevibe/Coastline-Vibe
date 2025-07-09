@@ -30,7 +30,11 @@ type Property = {
   videoUrl?: string;
 };
 
-const PropertyCard = ({ property, onDelete }: { property: Property; onDelete?: () => void }) => {
+interface PropertiesPageProps {
+  communityId: string;
+}
+
+function PropertyCard({ property, onDelete, favoriteIds, userId, onToggleFavorite }: { property: Property; onDelete?: () => void; favoriteIds: string[]; userId: string | null; onToggleFavorite?: (propertyId: string, isFav: boolean) => void }) {
   // Build gallery: only images for the card
   const galleryItems: { type: 'video' | 'image'; url: string }[] = [];
   if (property.imageFiles && property.imageFiles.length > 0) {
@@ -80,9 +84,27 @@ const PropertyCard = ({ property, onDelete }: { property: Property; onDelete?: (
   const handleVideoPlay = () => setIsVideoPlaying(true);
   const handleVideoPause = () => setIsVideoPlaying(false);
 
+  const isFavorite = favoriteIds.includes(property.id);
+  const handleFavClick = () => {
+    if (onToggleFavorite) onToggleFavorite(property.id, isFavorite);
+  };
+
   return (
     <div className="bg-gradient-to-br from-sky-50 to-cyan-50 rounded-2xl shadow-lg p-5 flex flex-col relative border border-cyan-100">
       <div className="relative group">
+        {/* Favorite Star Icon */}
+        <button
+          className={`absolute top-2 right-2 z-10 p-1 rounded-full border ${isFavorite ? 'bg-yellow-200 text-yellow-600 border-yellow-300' : 'bg-white text-gray-400 border-gray-200'} hover:bg-yellow-100`}
+          onClick={handleFavClick}
+          aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          disabled={!userId}
+        >
+          {isFavorite ? (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20" className="w-6 h-6"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.967a1 1 0 00.95.69h4.18c.969 0 1.371 1.24.588 1.81l-3.385 2.46a1 1 0 00-.364 1.118l1.287 3.966c.3.922-.755 1.688-1.54 1.118l-3.386-2.46a1 1 0 00-1.175 0l-3.386 2.46c-.784.57-1.838-.196-1.54-1.118l1.287-3.966a1 1 0 00-.364-1.118l-3.385-2.46c-.783-.57-.38-1.81.588-1.81h4.18a1 1 0 00.95-.69l1.286-3.967z" /></svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20" stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.967a1 1 0 00.95.69h4.18c.969 0 1.371 1.24.588 1.81l-3.385 2.46a1 1 0 00-.364 1.118l1.287 3.966c.3.922-.755 1.688-1.54 1.118l-3.386-2.46a1 1 0 00-1.175 0l-3.386 2.46c-.784.57-1.838-.196-1.54-1.118l1.287-3.966a1 1 0 00-.364-1.118l-3.385-2.46c-.783-.57-.38-1.81.588-1.81h4.18a1 1 0 00.95-.69l1.286-3.967z" /></svg>
+          )}
+        </button>
         {galleryItems[imgIdx].type === 'video' ? (
           <div className="relative">
             <video
@@ -154,7 +176,12 @@ const PropertyCard = ({ property, onDelete }: { property: Property; onDelete?: (
           {property.listingType}
         </span>
       </div>
-      <h3 className="font-semibold text-lg mb-1 text-cyan-900">{property.title}</h3>
+      <h3 className="font-semibold text-lg mb-1 text-cyan-900">
+        <Link href={`/properties/${property.id}`} className="hover:underline">
+          {property.title}
+        </Link>
+      </h3>
+      <div className="text-xs text-cyan-500 mb-1">Listed: {new Date(property.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</div>
       <div className="text-cyan-700 text-sm mb-2">
         {property.city}, {property.location}
       </div>
@@ -197,14 +224,15 @@ const PropertyCard = ({ property, onDelete }: { property: Property; onDelete?: (
       </div>
     </div>
   );
-};
+}
 
-export default function PropertiesPage() {
+export default function PropertiesPage({ communityId }: PropertiesPageProps) {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'All' | 'Rent' | 'Sale'>('All');
+  const [sortOrder, setSortOrder] = useState<'high' | 'low' | 'newest'>('low');
   
   // Filter sidebar state
   const [selectedFilters, setSelectedFilters] = useState<Record<string, any>>({});
@@ -237,9 +265,36 @@ export default function PropertiesPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Fetch current user and their property favorites
+  useEffect(() => {
+    const fetchUserAndFavorites = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        // Fetch property favorites for this user and community
+        let favQuery = supabase
+          .from('property_favorites')
+          .select('property_id')
+          .eq('user_id', user.id);
+        if (communityId) {
+          favQuery = favQuery.eq('community_id', communityId);
+        }
+        const { data: favs } = await favQuery;
+        if (favs) {
+          setFavoriteIds(favs.map((f: any) => f.property_id));
+        }
+      }
+    };
+    fetchUserAndFavorites();
+  }, [communityId]);
+
   useEffect(() => {
     fetchProperties();
-  }, [activeTab, selectedFilters]);
+  }, [activeTab, selectedFilters, sortOrder]);
 
   const fetchProperties = async () => {
     try {
@@ -302,8 +357,14 @@ export default function PropertiesPage() {
         }
       }
 
-      // Apply sorting - default to newest first
-      query = query.order('created_at', { ascending: false });
+      // Apply sorting
+      if (sortOrder === 'high') {
+        query = query.order('price', { ascending: false });
+      } else if (sortOrder === 'low') {
+        query = query.order('price', { ascending: true });
+      } else if (sortOrder === 'newest') {
+        query = query.order('created_at', { ascending: false });
+      }
 
       console.log('Executing query...');
       const { data, error } = await query;
@@ -346,6 +407,47 @@ export default function PropertiesPage() {
     }
   };
 
+  // Add handler to toggle favorite
+  const handleToggleFavorite = async (propertyId: string, isFav: boolean) => {
+    if (!userId) return;
+    if (isFav) {
+      // Remove from favorites
+      let delQuery = supabase
+        .from('property_favorites')
+        .delete()
+        .eq('user_id', userId)
+        .eq('property_id', propertyId);
+      if (communityId) {
+        delQuery = delQuery.eq('community_id', communityId);
+      }
+      await delQuery;
+      setFavoriteIds(ids => ids.filter(id => id !== propertyId));
+    } else {
+      // Add to favorites
+      const insertData: any = { user_id: userId, property_id: propertyId };
+      if (communityId) insertData.community_id = communityId;
+      await supabase
+        .from('property_favorites')
+        .insert(insertData);
+      setFavoriteIds(ids => [...ids, propertyId]);
+    }
+  };
+
+  const listingTypes = [
+    'All',
+    'Rent',
+    'Sale',
+    'Short Term Rental',
+    'Shared Accommodation',
+    'Sublet',
+    'Co-living',
+    'Vacation Rental',
+    'Commercial Lease',
+    'Lease to Own',
+    'Auction',
+    'Exchange'
+  ];
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 flex gap-6">
@@ -371,6 +473,8 @@ export default function PropertiesPage() {
               value={selectedFilters.type} 
               onChange={(value) => handleFilterChange('type', value)}
             />
+            {/* Property Options label below Property Type */}
+            <div className="px-2 py-1 text-xs font-semibold text-cyan-700 uppercase tracking-wide">Property Options</div>
             <PriceFilter 
               filterKey="price" 
               value={selectedFilters.price} 
@@ -393,30 +497,75 @@ export default function PropertiesPage() {
         <main className="flex-1">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold">Properties</h1>
+              <h1 className="text-2xl font-bold">Miami Properties</h1>
+              <div className="text-cyan-700 text-base font-medium mt-1">Find rentals, sales, and short/long-term stays</div>
               {loading && <p className="text-sm text-gray-500">Loading...</p>}
               {error && <p className="text-sm text-red-500">{error}</p>}
             </div>
-            <Link href="/properties/create" className="px-4 py-2 rounded bg-teal-500 text-white font-semibold hover:bg-teal-600 transition">
-              Create Property
-            </Link>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 select-none">
+                <span className="text-sm font-medium">Show Favorite Properties</span>
+                <button
+                  type="button"
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none border ${showFavoritesOnly ? 'bg-teal-500 border-teal-500' : 'bg-gray-200 border-gray-300'}`}
+                  onClick={() => setShowFavoritesOnly(fav => !fav)}
+                  aria-pressed={showFavoritesOnly}
+                >
+                  <span
+                    className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${showFavoritesOnly ? 'translate-x-6' : 'translate-x-0'}`}
+                    style={{ transform: showFavoritesOnly ? 'translateX(1.5rem)' : 'translateX(0)' }}
+                  />
+                </button>
+                <span className={`text-xs ml-1 font-semibold ${showFavoritesOnly ? 'text-teal-700' : 'text-gray-400'}`}>{showFavoritesOnly ? 'On' : 'Off'}</span>
+              </div>
+              <Link href="/properties/create" className="px-6 py-2 rounded bg-teal-500 text-white font-semibold hover:bg-teal-600 transition">
+                Create New Listing
+              </Link>
+            </div>
           </div>
 
-          {/* Listing Type Tabs */}
-          <div className="flex gap-2 mb-6">
-            {['All', 'Rent', 'Sale'].map((tab) => (
+          {/* Listing Type Tabs and Sort Toggle */}
+          <div className="flex gap-2 mb-6 items-center">
+            {/* DEBUG: Show current options state visually */}
+            <div className="bg-yellow-100 border border-yellow-400 text-yellow-900 px-3 py-1 rounded text-xs mr-4">
+              <div><b>DEBUG</b></div>
+              <div>activeTab: {JSON.stringify(activeTab)}</div>
+              <div>sortOrder: {JSON.stringify(sortOrder)}</div>
+              <div>selectedFilters: {JSON.stringify(selectedFilters)}</div>
+            </div>
+            <select
+              className="px-4 py-2 rounded-lg font-medium border border-cyan-200 bg-white text-cyan-700"
+              value={activeTab}
+              onChange={e => setActiveTab(e.target.value as typeof activeTab)}
+            >
+              {listingTypes.map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+            <div className="ml-4 flex items-center gap-1">
+              <span className="text-sm text-cyan-700 font-medium">Sort:</span>
               <button
-                key={tab}
-                className={`px-4 py-2 rounded-lg font-medium ${
-                  activeTab === tab
-                    ? 'bg-teal-500 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-                onClick={() => setActiveTab(tab as 'All' | 'Rent' | 'Sale')}
+                className={`px-3 py-1 rounded-l border border-cyan-200 text-sm font-medium ${sortOrder === 'low' ? 'bg-cyan-500 text-white' : 'bg-gray-100 text-cyan-700'}`}
+                onClick={() => setSortOrder('low')}
+                type="button"
               >
-                {tab}
+                Low
               </button>
-            ))}
+              <button
+                className={`px-3 py-1 border-t border-b border-cyan-200 text-sm font-medium ${sortOrder === 'high' ? 'bg-cyan-500 text-white' : 'bg-gray-100 text-cyan-700'}`}
+                onClick={() => setSortOrder('high')}
+                type="button"
+              >
+                High
+              </button>
+              <button
+                className={`px-3 py-1 rounded-r border border-cyan-200 text-sm font-medium ${sortOrder === 'newest' ? 'bg-cyan-500 text-white' : 'bg-gray-100 text-cyan-700'}`}
+                onClick={() => setSortOrder('newest')}
+                type="button"
+              >
+                Newest
+              </button>
+            </div>
           </div>
 
           {/* Active Filters Summary */}
@@ -456,11 +605,17 @@ export default function PropertiesPage() {
 
           {/* Property Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {properties.map((property) => (
+            {(showFavoritesOnly
+              ? properties.filter(p => favoriteIds.includes(p.id))
+              : properties
+            ).map((property) => (
               <div key={property.id} className="relative">
                 <PropertyCard
                   property={property}
                   onDelete={() => setDeleteId(property.id)}
+                  favoriteIds={favoriteIds}
+                  userId={userId}
+                  onToggleFavorite={handleToggleFavorite}
                 />
                 {deleteId === property.id && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">

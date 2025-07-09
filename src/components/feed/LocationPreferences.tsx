@@ -15,6 +15,7 @@ interface LocationPreferencesProps {
   userId: string;
   communityId: string;
   onPreferencesChanged?: () => void;
+  compact?: boolean;
 }
 
 interface LocationPreference {
@@ -34,7 +35,8 @@ interface LocationPreference {
 const LocationPreferences: React.FC<LocationPreferencesProps> = ({
   userId,
   communityId,
-  onPreferencesChanged
+  onPreferencesChanged,
+  compact = false
 }) => {
   const supabase = createClient();
   const { toast } = useToast();
@@ -229,36 +231,37 @@ const LocationPreferences: React.FC<LocationPreferencesProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4 space-y-6">
-      <div className="border-b pb-4">
-        <h3 className="text-lg font-medium">Location Settings</h3>
-        <p className="text-sm text-gray-500">Customize your hyperlocal feed experience</p>
+    <div className={compact ? "bg-white rounded-lg shadow-sm p-2 space-y-3 max-w-xs text-sm max-h-[80vh] overflow-y-auto" : "bg-white rounded-lg shadow-sm p-4 space-y-6"}>
+      <div className={compact ? "border-b pb-2 mb-2" : "border-b pb-4"}>
+        <h3 className={compact ? "text-base font-semibold" : "text-lg font-medium"}>Location Settings</h3>
+        <p className={compact ? "text-xs text-gray-500" : "text-sm text-gray-500"}>Customize your hyperlocal feed experience</p>
       </div>
 
       <div className="space-y-6">
         {/* Current Location */}
-        <div className="space-y-2">
+        <div className={compact ? "space-y-1" : "space-y-2"}>
           <div className="flex justify-between items-center">
-            <Label className="text-sm font-medium">Your Location</Label>
+            <Label className={compact ? "text-xs font-medium" : "text-sm font-medium"}>Your Location</Label>
             <Button 
-              size="sm" 
+              size={compact ? "sm" : "sm"} 
               variant="outline" 
               onClick={getCurrentLocation}
               disabled={gettingLocation}
+              className={compact ? "px-2 py-1 text-xs" : undefined}
             >
-              <Navigation className="h-4 w-4 mr-2" />
+              <Navigation className={compact ? "h-3 w-3 mr-1" : "h-4 w-4 mr-2"} />
               {gettingLocation ? 'Getting location...' : 'Update Location'}
             </Button>
           </div>
-          <div className="text-sm">
+          <div className={compact ? "text-xs" : "text-sm"}>
             {currentLocation.locationName ? (
               <div className="flex items-center text-gray-700">
-                <MapPin className="h-4 w-4 mr-1" />
+                <MapPin className={compact ? "h-3 w-3 mr-1" : "h-4 w-4 mr-1"} />
                 {currentLocation.locationName}
               </div>
             ) : (
               <div className="flex items-center text-gray-500">
-                <MapPin className="h-4 w-4 mr-1" />
+                <MapPin className={compact ? "h-3 w-3 mr-1" : "h-4 w-4 mr-1"} />
                 No location set
               </div>
             )}
@@ -266,10 +269,10 @@ const LocationPreferences: React.FC<LocationPreferencesProps> = ({
         </div>
 
         {/* Radius Slider */}
-        <div className="space-y-2">
+        <div className={compact ? "space-y-1" : "space-y-2"}>
           <div className="flex justify-between">
-            <Label className="text-sm font-medium">Feed Radius</Label>
-            <span className="text-sm font-medium">{preferences.feed_radius_km} km</span>
+            <Label className={compact ? "text-xs font-medium" : "text-sm font-medium"}>Feed Radius</Label>
+            <span className={compact ? "text-xs font-medium" : "text-sm font-medium"}>{preferences.feed_radius_km} km</span>
           </div>
           <Slider
             value={[preferences.feed_radius_km]}
@@ -278,28 +281,27 @@ const LocationPreferences: React.FC<LocationPreferencesProps> = ({
             step={1}
             onValueChange={(value) => setPreferences({ ...preferences, feed_radius_km: value[0] })}
           />
-          <p className="text-xs text-gray-500">
+          <p className={compact ? "text-[11px] text-gray-500" : "text-xs text-gray-500"}>
             Show posts within {preferences.feed_radius_km} km of your current location
           </p>
         </div>
 
         {/* Neighborhood Preferences */}
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Preferred Neighborhoods</Label>
+        <Label className={compact ? "text-xs font-medium" : "text-sm font-medium"}>Preferred Neighborhoods</Label>
           <div className="flex gap-2">
             <Input
               placeholder="Add neighborhood"
               value={newNeighborhood}
               onChange={(e) => setNewNeighborhood(e.target.value)}
-              className="flex-1"
+            className={compact ? "flex-1 text-xs py-1 px-2" : "flex-1"}
             />
-            <Button size="sm" onClick={addNeighborhood}>Add</Button>
+          <Button size={compact ? "sm" : "sm"} onClick={addNeighborhood} className={compact ? "px-2 py-1 text-xs" : undefined}>Add</Button>
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
             {preferences.preferred_neighborhoods.length > 0 ? (
               preferences.preferred_neighborhoods.map((neighborhood) => (
-                <Badge key={neighborhood} variant="secondary" className="flex items-center gap-1">
-                  <Home className="h-3 w-3" />
+              <Badge key={neighborhood} variant="secondary" className={compact ? "flex items-center gap-1 text-xs px-2 py-1" : "flex items-center gap-1"}>
+                <Home className={compact ? "h-3 w-3" : "h-3 w-3"} />
                   {neighborhood}
                   <button
                     className="ml-1 rounded-full hover:bg-gray-200 p-0.5"
@@ -310,27 +312,25 @@ const LocationPreferences: React.FC<LocationPreferencesProps> = ({
                 </Badge>
               ))
             ) : (
-              <p className="text-xs text-gray-500">No preferred neighborhoods added</p>
+            <p className={compact ? "text-[11px] text-gray-500" : "text-xs text-gray-500"}>No preferred neighborhoods added</p>
             )}
-          </div>
         </div>
 
         {/* Interests */}
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Interests</Label>
+        <Label className={compact ? "text-xs font-medium" : "text-sm font-medium"}>Interests</Label>
           <div className="flex gap-2">
             <Input
               placeholder="Add interest"
               value={newInterest}
               onChange={(e) => setNewInterest(e.target.value)}
-              className="flex-1"
+            className={compact ? "flex-1 text-xs py-1 px-2" : "flex-1"}
             />
-            <Button size="sm" onClick={addInterest}>Add</Button>
+          <Button size={compact ? "sm" : "sm"} onClick={addInterest} className={compact ? "px-2 py-1 text-xs" : undefined}>Add</Button>
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
             {preferences.interests.length > 0 ? (
               preferences.interests.map((interest) => (
-                <Badge key={interest} variant="outline" className="flex items-center gap-1">
+              <Badge key={interest} variant="outline" className={compact ? "flex items-center gap-1 text-xs px-2 py-1" : "flex items-center gap-1"}>
                   {interest}
                   <button
                     className="ml-1 rounded-full hover:bg-gray-200 p-0.5"
@@ -341,17 +341,16 @@ const LocationPreferences: React.FC<LocationPreferencesProps> = ({
                 </Badge>
               ))
             ) : (
-              <p className="text-xs text-gray-500">No interests added</p>
+            <p className={compact ? "text-[11px] text-gray-500" : "text-xs text-gray-500"}>No interests added</p>
             )}
-          </div>
         </div>
 
         {/* Toggle Switches */}
-        <div className="space-y-4">
+        <div className={compact ? "space-y-1" : "space-y-4"}>
           <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Hide Distant Posts</Label>
-              <p className="text-xs text-gray-500">
+            <div className={compact ? "space-y-0.5" : "space-y-0.5"}>
+              <Label className={compact ? "text-xs font-medium" : "text-sm font-medium"}>Hide Distant Posts</Label>
+              <p className={compact ? "text-[11px] text-gray-500" : "text-xs text-gray-500"}>
                 Only show posts within your selected radius
               </p>
             </div>
@@ -362,9 +361,9 @@ const LocationPreferences: React.FC<LocationPreferencesProps> = ({
           </div>
 
           <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Verified Locations Only</Label>
-              <p className="text-xs text-gray-500">
+            <div className={compact ? "space-y-0.5" : "space-y-0.5"}>
+              <Label className={compact ? "text-xs font-medium" : "text-sm font-medium"}>Verified Locations Only</Label>
+              <p className={compact ? "text-[11px] text-gray-500" : "text-xs text-gray-500"}>
                 Show only posts with verified locations
               </p>
             </div>
@@ -377,8 +376,9 @@ const LocationPreferences: React.FC<LocationPreferencesProps> = ({
 
         {/* Save Button */}
         <Button 
-          className="w-full" 
+          className={compact ? "w-full text-xs py-1 px-2" : "w-full"} 
           onClick={savePreferences}
+          size={compact ? "sm" : "sm"}
         >
           Save Preferences
         </Button>

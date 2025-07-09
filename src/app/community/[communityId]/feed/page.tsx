@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useContext, useMemo } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar, File as FileIcon, ArrowUp, Sailboat, Trash2, MoreHorizontal, Edit3, Star, EyeOff, Share2, Flag, Search, SlidersHorizontal, Filter, ChevronDown, Clock, ThumbsUp, Anchor, Ship, Compass } from 'lucide-react';
+import { Heart, MessageSquare, Send, Image as ImageIcon, X, BarChart2, HelpCircle, Megaphone, Calendar, File as FileIcon, ArrowUp, Sailboat, Trash2, MoreHorizontal, Edit3, Star, EyeOff, Share2, Flag, Search, SlidersHorizontal, Filter, ChevronDown, Clock, ThumbsUp, Anchor, Ship, Compass, Settings } from 'lucide-react';
 import PollCreator from '@/components/feed/PollCreator';
 import PollCard from '@/components/feed/PollCard';
 import FeedFilters, { FeedContentType } from '@/components/feed/FeedFilters';
@@ -34,10 +34,40 @@ import { checkContentViolations, getKindnessMessage, highlightFlaggedContent, Vi
 // Import Lightbox
 import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
+import SmartPromptSuggestion from '@/components/feed/SmartPromptSuggestion';
+import PoliteRewriter from '@/components/feed/PoliteRewriter';
+import PointerModeToggle from '@/components/PointerModeToggle';
+import LocationFilters from '@/components/feed/LocationFilters';
 
 interface FileMetadata {
   url: string;
   name: string;
+}
+
+// Add a function to fetch user location preferences
+async function fetchUserLocationPreferences(userId: string, communityId: string, supabase: any) {
+  const { data, error } = await supabase
+    .from('user_location_preferences')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('community_id', communityId)
+    .single();
+  if (error) return null;
+  return data;
+}
+
+interface LocationPreference {
+  id?: string;
+  user_id: string;
+  community_id: string;
+  feed_radius_km: number;
+  preferred_neighborhoods: string[];
+  interests: string[];
+  hide_distant_posts: boolean;
+  show_only_verified_locations: boolean;
+  last_latitude?: number | null;
+  last_longitude?: number | null;
+  last_location_name?: string | null;
 }
 
 export default function FeedPage() {
@@ -86,6 +116,7 @@ export default function FeedPage() {
   // Add state for comments
   const [commentText, setCommentText] = useState<Record<string, string>>({});
   const [showComments, setShowComments] = useState<Record<string, boolean>>({});
+  const [commentsCollapsed, setCommentsCollapsed] = useState<Record<string, boolean>>({});
   const [comments, setComments] = useState<Record<string, any[]>>({});
   const [isCommenting, setIsCommenting] = useState<Record<string, boolean>>({});
 
@@ -136,6 +167,15 @@ export default function FeedPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [activePostImages, setActivePostImages] = useState<string[]>([]);
+
+  // Add debug states
+  const [notificationDebug, setNotificationDebug] = useState<string | null>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
+
+  const [userLocationPrefs, setUserLocationPrefs] = useState<LocationPreference | null>(null);
+  const [authUser, setAuthUser] = useState<any>(null);
+  const [locationFilterOn, setLocationFilterOn] = useState(false);
+  const [showToTop, setShowToTop] = useState(false);
 
   if (!params) {
     return <div>Loading...</div>;
@@ -233,26 +273,46 @@ export default function FeedPage() {
     resolveCommunity();
   }, [communityIdOrSlug, supabase]);
 
-  const fetchPosts = useCallback(async () => {
-    if (!communityUuid || postId) return; // Don't fetch all posts if we're showing a specific post
+  // 1. Fetch userLocationPrefs in a separate effect
+  useEffect(() => {
+    const fetchPrefs = async () => {
+      if (authUser && communityUuid) {
+        const prefs = await fetchUserLocationPreferences(authUser.id, communityUuid, supabase);
+        setUserLocationPrefs(prefs);
+      }
+    };
+    fetchPrefs();
+  }, [authUser, communityUuid, supabase]);
 
-    console.log('Fetching posts for community UUID:', communityUuid);
+  // 2. Remove userLocationPrefs from fetchPosts dependencies
+  const fetchPosts = useCallback(async () => {
+    if (!communityUuid || postId) return;
     setPostsLoading(true);
     
-    // First get the posts
-    const { data, error } = await supabase
+    let query = supabase
       .from('posts')
-      .select(`
-        *,
-        profiles:user_id (
-          username,
-          avatar_url
-        )
-      `)
+      .select(`*, profiles:user_id (username, avatar_url)`)
       .eq('community_id', communityUuid)
       .in('type', ['general', 'poll', 'event', 'announce', 'ask'])
-      .eq('is_visible', true)
-      .order('created_at', { ascending: false });
+      .eq('is_visible', true);
+
+    // If locationFilterOn is false, do NOT apply the geo_location filter, just show all posts in the community.
+    if (locationFilterOn && userLocationPrefs && userLocationPrefs.last_latitude && userLocationPrefs.last_longitude && userLocationPrefs.feed_radius_km) {
+      const lat = userLocationPrefs.last_latitude;
+      const lng = userLocationPrefs.last_longitude;
+      const radiusMeters = userLocationPrefs.feed_radius_km * 1000;
+      query = query.filter(
+        'geo_location',
+        'st_d_within',
+        `SRID=4326;POINT(${lng} ${lat}),${radiusMeters}`
+      );
+      // Optionally, order by distance (closest first)
+      // query = query.order('geo_location', { ascending: true });
+    }
+
+    query = query.order('created_at', { ascending: false });
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching posts:', error);
@@ -322,14 +382,18 @@ export default function FeedPage() {
     });
     
     setContentTypeCounts(typeCounts);
-    setPosts(prev => [...prev, ...formattedPosts]);
-    
-    // Apply initial filter
+    setPosts(formattedPosts); // Replace, do not append
     filterPosts(formattedPosts, activeFilter);
-    
     setPostsLoading(false);
-    setHasMorePosts(false); // We're loading all posts at once now
-  }, [communityUuid, supabase, activeFilter, searchQuery, activeHashtag, postId, page]);
+    setHasMorePosts(false);
+  }, [communityUuid, supabase, activeFilter, searchQuery, activeHashtag, postId, page, locationFilterOn, userLocationPrefs]);
+
+  // 3. Only call fetchPosts when both communityUuid and userLocationPrefs are ready
+  useEffect(() => {
+    if (communityUuid && userLocationPrefs) {
+      fetchPosts();
+    }
+  }, [communityUuid, userLocationPrefs, fetchPosts]);
 
   // Function to filter posts by type
   const filterPosts = (allPosts: any[], filter: FeedContentType) => {
@@ -384,14 +448,6 @@ export default function FeedPage() {
     setActiveFilter(filter);
     filterPosts(posts, filter);
   };
-
-  useEffect(() => {
-    if (communityUuid) {
-      fetchPosts().then(() => {
-        // Filters will be applied after posts are fetched
-      });
-    }
-  }, [communityUuid, fetchPosts]);
 
   useEffect(() => {
     const getCurrentUser = async () => {
@@ -611,10 +667,38 @@ export default function FeedPage() {
     setPendingPostData(null);
   };
 
+  // Function to create a notification through our API endpoint
+  const createNotificationViaApi = async (userId: string, type: string, message: string, entityType?: string, entityId?: string) => {
+    try {
+      const response = await fetch('/api/notifications/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          type,
+          message,
+          entityType,
+          entityId
+        }),
+      });
+      
+      const data = await response.json();
+      console.log('API notification creation result:', data);
+      return data;
+    } catch (error) {
+      console.error('Error creating notification via API:', error);
+      return { success: false, error };
+    }
+  };
+  
   const handleToggleLike = async (postId: string) => {
     if (!currentUserId) return;
     
     const isLiked = likedPosts[postId];
+    
+    console.log(`Toggling like for post ${postId}: current state = ${isLiked ? 'liked' : 'not liked'}`);
     
     // Optimistically update UI
     setLikedPosts(prev => ({
@@ -642,15 +726,20 @@ export default function FeedPage() {
     try {
       if (isLiked) {
         // Unlike the post
+        console.log(`Removing like for post ${postId}`);
         const { error } = await supabase
           .from('post_likes')
           .delete()
           .eq('post_id', postId)
           .eq('user_id', currentUserId);
           
-        if (error) throw error;
+        if (error) {
+          console.error('Error removing like:', error);
+          throw error;
+        }
       } else {
         // Like the post
+        console.log(`Adding like for post ${postId}`);
         const { error } = await supabase
           .from('post_likes')
           .insert({
@@ -658,11 +747,16 @@ export default function FeedPage() {
             user_id: currentUserId
           });
           
-        if (error) throw error;
+        if (error) {
+          console.error('Error adding like:', error);
+          throw error;
+        }
         
         // Find the post to get the owner's ID for notification
         const post = posts.find(p => p.id === postId);
         if (post && post.user_id !== currentUserId) {
+          console.log(`Post owner ID: ${post.user_id}, preparing to create notification`);
+          
           // Get current user's username for the notification
           const { data: userData } = await supabase
             .from('profiles')
@@ -671,14 +765,80 @@ export default function FeedPage() {
             .single();
             
           if (userData) {
+            console.log(`Creating notification for post owner ${post.user_id} from ${userData.username}`);
+            
             // Create notification for the post owner
-            await createPostLikeNotification(
-              post.user_id,
-              currentUserId,
-              postId,
-              communityUuid || '',
-              userData.username
-            );
+            try {
+              // First check if notifications table exists
+              const { data: tableCheck } = await supabase
+                .from('information_schema.tables')
+                .select('table_name')
+                .eq('table_schema', 'public')
+                .eq('table_name', 'notifications');
+                
+              const tableExists = tableCheck && tableCheck.length > 0;
+              console.log(`Notifications table exists: ${tableExists}`);
+              
+              if (tableExists) {
+                // Try direct insert first
+                console.log('Attempting direct notification insert');
+                const { data: directInsert, error: directError } = await supabase
+                  .from('notifications')
+                  .insert({
+                    user_id: post.user_id,
+                    actor_user_id: currentUserId,
+                    community_id: communityUuid || null,
+                    type: 'post_like',
+                    target_entity_type: 'posts',
+                    target_entity_id: postId,
+                    content_snippet: `${userData.username} liked your post.`,
+                    is_read: false
+                  })
+                  .select();
+                  
+                if (directError) {
+                  console.error('Error creating notification directly:', directError);
+                } else {
+                  console.log('Notification created successfully:', directInsert);
+                }
+              } else {
+                console.log('Notifications table does not exist');
+              }
+              
+              // Also try using our utility function
+              const notifResult = await createPostLikeNotification(
+                post.user_id,
+                currentUserId,
+                postId,
+                communityUuid || '',
+                userData.username
+              );
+              
+              console.log('Notification creation result:', notifResult);
+              
+              // If the utility function method failed, try the API route
+              if (!notifResult) {
+                console.log('Trying API method as last resort');
+                await createNotificationViaApi(
+                  post.user_id,
+                  'post_like',
+                  `${userData.username} liked your post.`,
+                  'posts',
+                  postId
+                );
+              }
+            } catch (notifError) {
+              console.error('Error in notification creation:', notifError);
+              
+              // Try the API route as a fallback
+              await createNotificationViaApi(
+                post.user_id,
+                'post_like',
+                `${userData.username} liked your post.`,
+                'posts',
+                postId
+              );
+            }
           }
         }
       }
@@ -724,6 +884,14 @@ export default function FeedPage() {
       console.log('Fetching comments for post:', postId);
       await fetchComments(postId);
     }
+  };
+  
+  // Function to toggle collapsing comments on a post
+  const toggleCollapseComments = (postId: string) => {
+    setCommentsCollapsed(prev => ({
+      ...prev,
+      [postId]: !prev[postId]
+    }));
   };
 
   // Function to fetch comments for a post
@@ -778,6 +946,9 @@ export default function FeedPage() {
       authorAvatarUrl: comment.profiles?.avatar_url,
       timestamp: comment.created_at,
       commentAuthorId: comment.user_id,
+      // Keep the original parent_comment_id
+      parent_comment_id: comment.parent_comment_id,
+      // For compatibility, maintain parent_id
       parent_id: comment.parent_comment_id || postId,
       depth: comment.depth || 1,
       updated_at: comment.updated_at,
@@ -1075,6 +1246,8 @@ export default function FeedPage() {
         authorAvatarUrl: userData.avatar_url,
         timestamp: replyData.created_at,
         commentAuthorId: replyData.user_id,
+        // Add parent_comment_id to ensure proper reply handling
+        parent_comment_id: replyData.parent_comment_id,
         parent_id: replyData.parent_comment_id,
         depth: replyData.depth,
         updated_at: replyData.updated_at,
@@ -1594,6 +1767,127 @@ export default function FeedPage() {
     }
   };
 
+  // Add this function after other utility functions but before the return statement
+  const buildCommentTree = useCallback((commentsList: any[]) => {
+    if (!commentsList || commentsList.length === 0) return [];
+
+    // Debug the raw data
+    console.log('Raw comments before building tree:', JSON.stringify(commentsList, null, 2));
+
+    // First find all top-level comments
+    const topLevelComments = commentsList.filter(comment => !comment.parent_comment_id);
+    console.log('Top level comments:', topLevelComments.length, topLevelComments.map(c => c.id));
+    
+    // Debug all potential replies
+    const potentialReplies = commentsList.filter(comment => comment.parent_comment_id);
+    console.log('Potential replies:', potentialReplies.length, potentialReplies.map(r => ({
+      id: r.id, 
+      parent_id: r.parent_id,
+      parent_comment_id: r.parent_comment_id
+    })));
+    
+    // Then build the tree recursively
+    const addReplies = (comment: any) => {
+      // Find replies to this comment
+      const replies = comments[comment.parent_id]?.filter((reply: any) => 
+        reply.parent_comment_id === comment.id
+      ) || [];
+      
+      if (replies.length > 0) {
+        comment.replies = replies.map((reply: any) => addReplies(reply));
+      } else {
+        comment.replies = [];
+      }
+      
+      return comment;
+    };
+    
+    const result = topLevelComments.map(comment => addReplies({...comment}));
+    console.log('Final tree result:', JSON.stringify(result.map(r => ({
+      id: r.id,
+      content: r.content.substring(0, 20) + '...',
+      replies: r.replies.map(reply => ({ 
+        id: reply.id, 
+        content: reply.content.substring(0, 20) + '...',
+        replies: reply.replies.length 
+      }))
+    })), null, 2));
+    
+    return result;
+  }, []);
+
+  // Add these handlers for the smart prompt suggestions
+  const handleSelectSuggestion = (suggestion: string) => {
+    setNewPostContent(suggestion);
+  };
+  
+  // Add handler for the polite rewriter
+  const handlePostRewrite = (rewrittenText: string) => {
+    setNewPostContent(rewrittenText);
+  };
+
+  // Add this debug function for notifications
+  const testNotifications = async () => {
+    setDebugLoading(true);
+    setNotificationDebug(null);
+    
+    try {
+      // Test calling ensureNotificationsTable directly
+      const url = '/api/notifications/setup';
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      console.log('Notification setup result:', data);
+      setNotificationDebug(JSON.stringify(data, null, 2));
+      
+      // Refresh the current user's notifications
+      if (currentUserId && posts.length > 0) {
+        const randomPost = posts[0];
+        const { data: userData } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', currentUserId)
+          .single();
+          
+        if (userData) {
+          console.log('Creating test post like notification');
+          const notif = await createPostLikeNotification(
+            currentUserId, 
+            currentUserId,
+            randomPost.id,
+            communityUuid || '',
+            userData.username
+          );
+          console.log('Test notification created:', notif);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error testing notifications:', error);
+      setNotificationDebug(JSON.stringify({ error: error.message }, null, 2));
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const fetchAuthUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setAuthUser(user);
+    };
+    fetchAuthUser();
+  }, [supabase]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const percent = docHeight > 0 ? scrollY / docHeight : 0;
+      setShowToTop(percent >= 0.3 && percent <= 0.98);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
     <TideReactionsProvider>
       <div className="flex bg-gray-50/50 min-h-screen" style={{ marginLeft: "-50px", width: "calc(100% + 50px)" }}>
@@ -1777,7 +2071,34 @@ export default function FeedPage() {
         
         {/* Main Content - Centered with even spacing */}
         <div className="flex-1 max-w-3xl mx-auto px-6 py-6">
-          <h1 className="text-2xl font-bold mb-6">Coastline Chatter</h1>
+          <h2 className="text-2xl font-bold mb-2">Coastline Chatter</h2>
+          <div className="mb-2 flex justify-end">
+            <button
+              className={`px-3 py-1 rounded font-semibold border ${locationFilterOn ? 'bg-teal-500 text-white border-teal-600' : 'bg-gray-200 text-gray-700 border-gray-300'} transition-colors`}
+              onClick={() => setLocationFilterOn((on) => !on)}
+              type="button"
+            >
+              Location Filter: {locationFilterOn ? 'ON' : 'OFF'}
+            </button>
+          </div>
+          {userLocationPrefs && userLocationPrefs.feed_radius_km && userLocationPrefs.last_latitude && userLocationPrefs.last_longitude ? (
+            <div className="mb-4 px-4 py-2 bg-teal-50 border border-teal-200 rounded flex items-center justify-between text-sm">
+              <span>
+                Showing posts within <b>{userLocationPrefs.feed_radius_km} km</b> of your location
+                (<span className="font-mono">{userLocationPrefs.last_latitude.toFixed(4)}, {userLocationPrefs.last_longitude.toFixed(4)}</span>)
+              </span>
+              <button className="ml-4 px-3 py-1 rounded bg-teal-200 text-teal-900 hover:bg-teal-300 transition-colors" type="button">
+                Update Location & Radius
+              </button>
+            </div>
+          ) : (
+            <div className="mb-4 px-4 py-2 bg-gray-50 border border-gray-200 rounded flex items-center justify-between text-sm">
+              <span>Showing all posts in this community.</span>
+              <button className="ml-4 px-3 py-1 rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors" type="button">
+                Update Location & Radius
+              </button>
+            </div>
+          )}
       
       {/* Search bar */}
       <SearchBar 
@@ -1857,6 +2178,21 @@ export default function FeedPage() {
               communityId={communityUuid || ''}
               setValue={setNewPostContent}
             />
+            
+            {/* Add Smart Prompt Suggestion component */}
+            <SmartPromptSuggestion 
+              inputText={newPostContent}
+              onSelectSuggestion={handleSelectSuggestion}
+            />
+            
+            {/* Add Polite Rewriter */}
+            <div className="mt-2">
+              <PoliteRewriter
+                originalText={newPostContent}
+                onRewritten={handlePostRewrite}
+                disabled={isPosting || !newPostContent.trim()}
+              />
+            </div>
             
             {/* Character counter */}
             <div className="mt-1 text-right text-sm text-gray-500">
@@ -2254,7 +2590,7 @@ export default function FeedPage() {
                   <div className="flex items-center mt-3 pt-3 border-t border-gray-100">
                     {/* Coastline Reactions */}
                     <div className="mr-auto">
-                      <CoastlineReactionDisplay postId={post.id} sectionType="feed" />
+                      <CoastlineReactionDisplay postId={post.id} sectionType="feed" reactionCount={post.reaction_count} />
                     </div>
                     
                     {/* Comment button */}
@@ -2375,7 +2711,7 @@ export default function FeedPage() {
                     {comments[post.id] && comments[post.id].length > 0 ? (
                       <>
                         <CommentsList 
-                          comments={comments[post.id].filter(comment => comment.parent_id === post.id)}
+                          comments={buildCommentTree(comments[post.id])}
                           onLikeComment={handleCommentLike}
                           onUnlikeComment={handleCommentUnlike}
                           currentUserId={currentUserId}
@@ -2675,6 +3011,17 @@ export default function FeedPage() {
       onSubmit={handleSubmitReport}
       postId={reportPostId || ''}
     />
+    {/* Sticky To Top Button */}
+    {showToTop && (
+          <button 
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        className="fixed bottom-[140px] left-1/2 translate-x-[100px] z-50 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 transition-colors"
+        aria-label="Scroll to top"
+      >
+        <span className="text-lg">↑</span>
+        <span className="font-semibold">To Top</span>
+          </button>
+    )}
   </TideReactionsProvider>
   );
 } 

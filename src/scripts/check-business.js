@@ -62,6 +62,30 @@ async function checkBusinesses() {
 
   console.log(`Found ${allBusinesses.length} total businesses in the database`);
   
+  // --- DEBUG: Log full info for Code Academy ---
+  const codeAcademy = allBusinesses.find(b => b.name && b.name.toLowerCase().includes('code academy'));
+  if (codeAcademy) {
+    console.log('--- FULL DATA FOR CODE ACADEMY BUSINESS ---');
+    console.log(codeAcademy);
+    if (codeAcademy.user_id) {
+      const { data: ownerProfile, error: ownerProfileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', codeAcademy.user_id)
+        .single();
+      if (ownerProfileError) {
+        console.error('Error fetching owner profile:', ownerProfileError);
+      } else {
+        console.log('--- OWNER PROFILE FOR CODE ACADEMY ---');
+        console.log(ownerProfile);
+      }
+    } else {
+      console.log('Code Academy business has no user_id set.');
+    }
+  } else {
+    console.log('No business found with name containing "code academy".');
+  }
+
   // Check for categories and subcategories
   const { data: categories, error: categoriesError } = await supabase
     .from('categories')

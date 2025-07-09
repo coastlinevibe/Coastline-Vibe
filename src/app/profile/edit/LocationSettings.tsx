@@ -37,7 +37,7 @@ const LocationSettings: React.FC<LocationSettingsProps> = ({ userId, communityId
   const [preferences, setPreferences] = useState<LocationPreference>({
     user_id: userId,
     community_id: communityId,
-    feed_radius_km: 5,
+    feed_radius_km: 0,
     preferred_neighborhoods: [],
     interests: [],
     hide_distant_posts: false,

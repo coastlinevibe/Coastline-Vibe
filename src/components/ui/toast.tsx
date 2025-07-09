@@ -14,6 +14,8 @@ const toastVariants = cva(
         default: "border bg-white text-gray-800",
         destructive:
           "destructive group border-red-500 bg-red-500 text-white",
+        success:
+          "success group border-green-500 bg-green-500 text-white",
       },
     },
     defaultVariants: {
@@ -39,7 +41,7 @@ function Toast({ className, variant, onClose, ...props }: ToastProps) {
       </div>
       {onClose && (
         <button
-          className="absolute right-2 top-2 rounded-md p-1 text-gray-800/50 opacity-0 transition-opacity hover:text-gray-800 focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600"
+          className="absolute right-2 top-2 rounded-md p-1 text-gray-800/50 opacity-0 transition-opacity hover:text-gray-800 focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600 group-[.success]:text-green-300 group-[.success]:hover:text-green-50 group-[.success]:focus:ring-green-400 group-[.success]:focus:ring-offset-green-600"
           onClick={onClose}
         >
           <X className="h-4 w-4" />
@@ -65,8 +67,17 @@ type ToastContextType = {
   toast: (props: {
     title: string;
     description?: string;
-    variant?: "default" | "destructive";
-  }) => void;
+    variant?: "default" | "destructive" | "success";
+    duration?: number;
+  }) => string;
+  dismiss: (id: string) => void;
+  toasts: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    variant?: "default" | "destructive" | "success";
+    duration?: number;
+  }>;
 }
 
 const ToastContext = React.createContext<ToastContextType | undefined>(undefined);
@@ -76,32 +87,45 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     id: string;
     title: string;
     description?: string;
-    variant?: "default" | "destructive";
+    variant?: "default" | "destructive" | "success";
+    duration: number;
   }[]>([]);
 
   const toast = React.useCallback(
-    ({ title, description, variant }: { title: string; description?: string; variant?: "default" | "destructive" }) => {
+    ({ 
+      title, 
+      description, 
+      variant, 
+      duration = 5000 
+    }: { 
+      title: string; 
+      description?: string; 
+      variant?: "default" | "destructive" | "success";
+      duration?: number;
+    }) => {
       const id = Math.random().toString(36).substring(2, 9);
-      setToasts((prev) => [...prev, { id, title, description, variant }]);
+      setToasts((prev) => [...prev, { id, title, description, variant, duration }]);
       
-      // Auto remove toast after 5 seconds
+      // Auto remove toast after specified duration
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 5000);
+      }, duration);
+      
+      return id;
     },
     []
   );
 
-  const removeToast = React.useCallback((id: string) => {
+  const dismiss = React.useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={{ toast, dismiss, toasts }}>
       {children}
       <div className="fixed bottom-0 right-0 z-50 flex flex-col gap-2 p-4 max-w-md">
         {toasts.map((t) => (
-          <Toast key={t.id} variant={t.variant} onClose={() => removeToast(t.id)}>
+          <Toast key={t.id} variant={t.variant} onClose={() => dismiss(t.id)}>
             <ToastTitle>{t.title}</ToastTitle>
             {t.description && <ToastDescription>{t.description}</ToastDescription>}
           </Toast>

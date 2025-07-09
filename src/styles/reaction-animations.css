@@ -1,0 +1,43 @@
+/* Motion animation styles for reactions */
+@keyframes floatUp {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  25% {
+    opacity: 0.8;
+    transform: translateY(-25%) scale(1.2) rotate(-5deg);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translateY(-50%) scale(1.5) rotate(5deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-100%) scale(1) rotate(0deg);
+  }
+}
+
+.animate-reaction-float {
+  animation: floatUp 1s ease-out forwards;
+}
+
+/* Button pressed effect for reaction buttons */
+@keyframes press {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+
+.animate-press {
+  animation: press 0.2s ease-out;
+}
+
+/* Add reaction hover effect */
+.reaction-hover-effect {
+  transition: transform 0.2s ease;
+}
+
+.reaction-hover-effect:hover {
+  transform: translateY(-3px) scale(1.05);
+} 

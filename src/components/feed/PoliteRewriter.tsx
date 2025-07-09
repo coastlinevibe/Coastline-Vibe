@@ -14,102 +14,89 @@ export default function PoliteRewriter({
   disabled = false 
 }: PoliteRewriterProps) {
   const [isRewriting, setIsRewriting] = useState(false);
+  const [rewrittenText, setRewrittenText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [debug, setDebug] = useState<string | null>(null);
-
-  // Get the base URL based on current window location
-  const getBaseUrl = () => {
-    if (typeof window !== 'undefined') {
-      return window.location.origin;
-    }
-    return 'http://localhost:3001';
-  };
 
   const handleRewrite = async () => {
     if (!originalText.trim() || disabled || isRewriting) return;
     
     setIsRewriting(true);
     setError(null);
-    setDebug(`Attempting to rewrite: "${originalText.substring(0, 30)}..."`);
     
     try {
-      // First check if the API is configured
-      const baseUrl = getBaseUrl();
-      setDebug(`Using API base URL: ${baseUrl}`);
+      const rewritten = await politeRewrite(originalText);
       
-      const testResponse = await fetch(`${baseUrl}/api/ai/test`);
-      const testData = await testResponse.json();
-      
-      if (!testData.apiKeyConfigured) {
-        throw new Error('OpenAI API key is not configured');
-      }
-      
-      // If the API key is configured, proceed with the rewrite
-      const rewrittenText = await politeRewrite(originalText);
-      
-      if (rewrittenText === originalText) {
-        // If the text wasn't changed, check if there was an error
-        setDebug('Rewrite returned unchanged text - possible API issue');
+      if (rewritten && rewritten !== originalText) {
+        setRewrittenText(rewritten);
       } else {
-        setDebug('Rewrite successful');
-        onRewritten(rewrittenText);
+        setError('Unable to rewrite the text. Please try again.');
       }
     } catch (err: any) {
       console.error('Error rewriting text:', err);
       setError(err.message || 'Failed to rewrite text. Please try again.');
-      setDebug(`Error: ${JSON.stringify(err)}`);
     } finally {
       setIsRewriting(false);
     }
   };
 
-  // Add a direct test function that bypasses the aiUtils
-  const testDirectApi = async () => {
-    try {
-      const baseUrl = getBaseUrl();
-      setDebug(`Testing direct API call to ${baseUrl}/api/ai/rewrite...`);
-      
-      const response = await fetch(`${baseUrl}/api/ai/rewrite`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: originalText }),
-      });
-      
-      const data = await response.json();
-      setDebug(`Direct API response: ${JSON.stringify(data)}`);
-    } catch (err: any) {
-      setDebug(`Direct API error: ${err.message}`);
+  const handleAcceptRewrite = () => {
+    if (rewrittenText) {
+      onRewritten(rewrittenText);
+      setRewrittenText(null);
     }
   };
 
+  const handleCancelRewrite = () => {
+    setRewrittenText(null);
+  };
+
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={handleRewrite}
-        disabled={disabled || isRewriting || !originalText.trim()}
-        className={`inline-flex items-center text-xs text-gray-600 hover:text-cyan-600 ${isRewriting || disabled || !originalText.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
-        title="Rewrite as more polite"
-      >
-        <Wand2 className="w-4 h-4 mr-1" />
-        {isRewriting ? 'Rewriting...' : 'Polite Rewrite'}
-      </button>
-      
-      {error && (
-        <div className="text-xs text-red-500 mt-1">
-          {error}
-        </div>
-      )}
-      
-      {debug && process.env.NODE_ENV === 'development' && (
-        <div className="text-xs text-gray-500 mt-1 absolute top-full left-0 bg-white p-1 border border-gray-200 rounded z-10 max-w-xs">
-          {debug}
-          <button 
-            className="block text-blue-500 text-xs mt-1" 
-            onClick={testDirectApi}
+    <div className="w-full">
+      {!rewrittenText ? (
+        <div className="flex items-center">
+          <button
+            type="button"
+            onClick={handleRewrite}
+            disabled={disabled || isRewriting || !originalText.trim()}
+            className={`flex items-center text-sm px-2 py-1 rounded bg-cyan-50 text-cyan-700 hover:bg-cyan-100 ${
+              isRewriting || disabled || !originalText.trim() 
+              ? 'opacity-50 cursor-not-allowed' 
+              : ''
+            }`}
+            title="Polish Text"
           >
-            Test Direct API
+            <Wand2 className="w-4 h-4 mr-1" />
+            {isRewriting ? 'Rewriting...' : 'Polish Text'}
           </button>
+          
+          {error && (
+            <div className="text-xs text-red-500 ml-2">
+              {error}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-blue-50 rounded-md p-3 border border-blue-200 mb-3">
+          <div className="text-sm font-medium text-blue-600 mb-1">Suggested polite version:</div>
+          <div className="text-gray-700 mb-3 p-2 bg-white rounded border border-blue-100">
+            {rewrittenText}
+          </div>
+          <div className="flex space-x-2">
+            <button
+              type="button"
+              onClick={handleAcceptRewrite}
+              className="text-sm px-3 py-1 bg-cyan-600 text-white rounded hover:bg-cyan-700"
+            >
+              Accept
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelRewrite}
+              className="text-sm px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </div>

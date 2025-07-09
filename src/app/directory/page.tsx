@@ -1,3 +1,11 @@
+/**
+ * DEPRECATED: This is an older version of the business directory.
+ * Please use the community-specific version at:
+ * src/app/community/[communityId]/business/directory/page.tsx
+ * 
+ * This file is kept for reference only and should not be used for new development.
+ */
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -55,7 +63,7 @@ export default function DirectoryPage() {
     setLoading(true);
     let query = supabase
       .from("businesses")
-      .select("*")
+      .select("*, user_id")
       .ilike("name", `%${filters.search}%`);
 
     if (filters.category) {
@@ -82,12 +90,28 @@ export default function DirectoryPage() {
     query
       .order("is_featured", { ascending: false })
       .order("rating", { ascending: false })
-      .then(res => {
+      .then(async res => {
         setLoading(false);
-        if (!res.error) {
-          setBusinesses(res.data || []);
+        if (!res.error && res.data) {
+          // Fetch owner profiles for all businesses
+          const userIds = res.data.map((b: any) => b.user_id).filter(Boolean);
+          if (userIds.length === 0) {
+            setBusinesses([]);
+            return;
+          }
+          const { data: profiles, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, is_approved")
+            .in("id", userIds);
+          if (profileError || !profiles) {
+            setBusinesses([]);
+            return;
+          }
+          const approvedIds = new Set(profiles.filter((p: any) => p.is_approved).map((p: any) => p.id));
+          const filtered = res.data.filter((b: any) => approvedIds.has(b.user_id));
+          setBusinesses(filtered);
         } else {
-          console.error(res.error);
+          setBusinesses([]);
         }
       });
   }, [filters]);

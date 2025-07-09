@@ -2,6 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams, notFound } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
+import UserTooltipWrapper from '@/components/user/UserTooltipWrapper';
+import { UserTooltipProfileData } from '@/components/user/UserTooltipDisplay';
+import { createClient } from '@/lib/supabase/client';
 
 // SVG ICONS
 const icons = {
@@ -44,6 +47,11 @@ export default function PropertyViewPage({ params }: { params: { id: string } })
   );
   const [activeTab, setActiveTab] = useState('Overview');
   const [sellerProfile, setSellerProfile] = useState<any>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIdx, setLightboxIdx] = useState(0);
+  const [contactOpen, setContactOpen] = React.useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminCommunityId, setAdminCommunityId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProperty = async () => {
@@ -91,6 +99,25 @@ export default function PropertyViewPage({ params }: { params: { id: string } })
     // eslint-disable-next-line
   }, [property]);
 
+  useEffect(() => {
+    const fetchAdminStatus = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, community_id')
+          .eq('id', user.id)
+          .single();
+        if (profile && (profile.role === 'community admin' || profile.role === 'superadmin')) {
+          setIsAdmin(true);
+          setAdminCommunityId(profile.community_id);
+        }
+      }
+    };
+    fetchAdminStatus();
+  }, []);
+
   if (loading) return <div className="min-h-screen flex items-center justify-center text-cyan-700">Loading...</div>;
   if (error || !property) return notFound();
 
@@ -122,20 +149,54 @@ export default function PropertyViewPage({ params }: { params: { id: string } })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 to-cyan-50 py-10">
-      <div className="max-w-5xl mx-auto bg-white/80 rounded-2xl shadow-lg p-8 border border-cyan-100">
+      <div className="max-w-5xl mx-auto bg-white/80 rounded-2xl shadow-lg p-8 border border-cyan-100 relative">
+        {/* Close Icon */}
+        <button
+          onClick={() => window.location.href = '/properties'}
+          className="absolute top-4 left-4 z-10 p-2 rounded-full bg-cyan-100 hover:bg-cyan-200 border border-cyan-200 text-cyan-700"
+          aria-label="Close and return to properties"
+        >
+          <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
         {/* Top: Gallery and Main Info */}
         <div className="flex flex-col md:flex-row gap-8">
           {/* Gallery */}
-          <div className="md:w-2/5 w-full flex flex-col items-center">
+          <div className="md:w-2/5 w-full flex flex-col items-center relative">
+            {isAdmin && property?.approval_status === 'pending' && adminCommunityId && (
+              <div className="mb-6">
+                <a
+                  href={`/community/${adminCommunityId}/admin`}
+                  className="inline-block px-4 py-2 rounded bg-cyan-600 text-white font-semibold hover:bg-cyan-700 transition"
+                >
+                  ← Back to Admin Dashboard
+                </a>
+              </div>
+            )}
             {mainItem && mainItem.type === 'image' && (
               <img
                 src={mainItem.url}
                 alt={property.title}
-                className="w-full h-72 object-cover rounded-xl border-2 border-sky-100 shadow mb-3"
+                className="w-full h-72 object-cover rounded-xl border-2 border-sky-100 shadow mb-3 cursor-pointer"
+                onClick={() => { setLightboxOpen(true); setLightboxIdx(mainImgIdx); }}
               />
             )}
             {mainItem && mainItem.type === 'video' && (
-              <video src={mainItem.url} controls className="w-full rounded-xl border-2 border-sky-100 shadow mb-3 h-72" />
+              <video src={mainItem.url} controls className="w-full rounded-xl border-2 border-sky-100 shadow mb-3 h-72 cursor-pointer" onClick={() => { setLightboxOpen(true); setLightboxIdx(mainImgIdx); }} />
+            )}
+            {/* Next Arrow Icon */}
+            {galleryItems.length > 1 && (
+              <button
+                onClick={() => setMainImgIdx((mainImgIdx + 1) % galleryItems.length)}
+                className="absolute top-1/2 right-2 -translate-y-1/2 z-10 p-2 rounded-full bg-cyan-100 hover:bg-cyan-200 border border-cyan-200 text-cyan-700 shadow"
+                aria-label="Next image"
+                style={{ transform: 'translateY(-50%)' }}
+              >
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             )}
             <div className="flex gap-2 mt-2 items-center">
               {thumbPage > 0 && (
@@ -180,7 +241,14 @@ export default function PropertyViewPage({ params }: { params: { id: string } })
             <div>
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-2">
                 <div>
-                  <h1 className="text-2xl font-bold text-cyan-900 mb-1">{property.title}</h1>
+                  <h1 className="text-2xl font-bold text-cyan-900 mb-1 flex items-center gap-3 relative">
+                    <span className={`px-2 py-1 rounded text-xs font-medium border absolute left-[-100px] top-1/2 -translate-y-1/2 ${property.listingType === 'Sale' ? 'bg-teal-100 text-teal-800 border-teal-200' : 'bg-sky-100 text-sky-800 border-sky-200'}`}
+                      style={{ left: '-100px' }}>
+                      {property.listingType === 'Sale' ? 'For Sale' : 'For Rent'}
+                    </span>
+                    {property.title}
+                  </h1>
+                  <div className="text-xs text-cyan-500 mb-2 ml-[100px]">Listed: {new Date(property.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</div>
                   <div className="text-cyan-700 text-sm mb-1">{property.city}, {property.location}</div>
                 </div>
                 <div className="font-bold text-3xl text-sky-700">
@@ -219,15 +287,38 @@ export default function PropertyViewPage({ params }: { params: { id: string } })
             <div className="md:sticky md:top-24">
               <div className="flex flex-col gap-3 bg-cyan-50 rounded-lg p-4 border border-cyan-100 shadow">
                 <div className="flex items-center gap-4">
-                  <img src={sellerProfile?.avatar_url || 'https://randomuser.me/api/portraits/men/32.jpg'} alt={sellerProfile?.name || 'Seller'} className="w-14 h-14 rounded-full border-2 border-cyan-200" />
+                  <UserTooltipWrapper
+                    profileData={sellerProfile ? {
+                      id: sellerProfile.id,
+                      username: sellerProfile.username || sellerProfile.name || 'User',
+                      avatar_url: sellerProfile.avatar_url,
+                      email: sellerProfile.email,
+                      bio: sellerProfile.bio,
+                      created_at: sellerProfile.created_at,
+                      role: sellerProfile.role,
+                      is_location_verified: sellerProfile.is_location_verified,
+                      last_seen_at: sellerProfile.last_seen_at,
+                    } : null}
+                  >
+                    <img src={sellerProfile?.avatar_url || 'https://randomuser.me/api/portraits/men/32.jpg'} alt={sellerProfile?.name || sellerProfile?.username || 'Seller'} className="w-14 h-14 rounded-full border-2 border-cyan-200" />
+                  </UserTooltipWrapper>
                   <div>
-                    <div className="font-semibold text-cyan-900">{sellerProfile?.name || 'Property Lister'}</div>
-                    {sellerProfile?.email && <div className="text-xs text-cyan-700">{sellerProfile.email}</div>}
-                    {sellerProfile?.phone && <div className="text-xs text-cyan-700">{sellerProfile.phone}</div>}
-                    {sellerProfile?.bio && <div className="text-xs text-cyan-700 italic">{sellerProfile.bio}</div>}
+                    <div className="font-semibold text-cyan-900 flex items-center gap-2">
+                      {sellerProfile?.name || sellerProfile?.username || 'Property Lister'}
+                      <span className="ml-2 px-2 py-0.5 rounded bg-cyan-200 text-cyan-800 text-xs font-semibold">
+                        {property.listed_by === 'agent' ? 'Agent' : 'Owner'}
+                      </span>
+                    </div>
+                    {sellerProfile?.created_at && (
+                      <div className="text-xs text-cyan-700 mt-1">
+                        Member since {new Date(sellerProfile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <button className="w-full px-4 py-2 rounded bg-teal-500 text-white font-semibold hover:bg-teal-600 transition">Contact Seller</button>
+                <button className="w-full px-4 py-2 rounded bg-teal-500 text-white font-semibold hover:bg-teal-600 transition" onClick={() => setContactOpen(true)}>
+                  {property.listed_by === 'agent' ? 'Contact Agent' : 'Contact Owner'}
+                </button>
               </div>
             </div>
           </div>
@@ -328,7 +419,200 @@ export default function PropertyViewPage({ params }: { params: { id: string } })
             </div>
           </div>
         )}
+        {/* Bottom Right Close Button (inside card) */}
+        <button
+          onClick={() => window.location.href = '/properties'}
+          className="absolute bottom-6 right-6 z-20 p-3 rounded-full bg-cyan-500 hover:bg-cyan-600 border-2 border-cyan-200 text-white shadow-lg transition"
+          aria-label="Close and return to properties"
+        >
+          <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      {/* Lightbox Modal */}
+      {lightboxOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80">
+          <div className="relative max-w-3xl w-full flex flex-col items-center">
+            <button
+              onClick={() => setLightboxOpen(false)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white bg-opacity-80 hover:bg-opacity-100 text-cyan-700 border border-cyan-200 z-10"
+              aria-label="Close lightbox"
+            >
+              <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            {galleryItems[lightboxIdx].type === 'image' ? (
+              <img src={galleryItems[lightboxIdx].url} alt="lightbox" className="max-h-[80vh] max-w-full rounded-xl shadow-lg" />
+            ) : (
+              <video src={galleryItems[lightboxIdx].url} controls className="max-h-[80vh] max-w-full rounded-xl shadow-lg bg-black" autoPlay />
+            )}
+            {/* Prev/Next Arrows */}
+            {galleryItems.length > 1 && (
+              <>
+                <button
+                  onClick={() => setLightboxIdx((lightboxIdx - 1 + galleryItems.length) % galleryItems.length)}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white bg-opacity-80 hover:bg-opacity-100 text-cyan-700 border border-cyan-200 z-10"
+                  aria-label="Previous"
+                >
+                  <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setLightboxIdx((lightboxIdx + 1) % galleryItems.length)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white bg-opacity-80 hover:bg-opacity-100 text-cyan-700 border border-cyan-200 z-10"
+                  aria-label="Next"
+                >
+                  <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      {contactOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="relative w-full max-w-md mx-auto bg-white rounded-xl shadow-lg p-6 border border-cyan-100">
+            <button
+              onClick={() => setContactOpen(false)}
+              className="absolute top-3 right-3 p-2 rounded-full bg-cyan-100 hover:bg-cyan-200 border border-cyan-200 text-cyan-700"
+              aria-label="Close contact form"
+            >
+              <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <ContactInquiryForm propertyId={property.id} />
+          </div>
+        </div>
+      )}
+      <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 text-yellow-900 text-xs rounded">
+        <div><b>Debug Info:</b></div>
+        <div>isAdmin: {String(isAdmin)}</div>
+        <div>adminCommunityId: {adminCommunityId}</div>
+        <div>property.approval_status: {property?.approval_status}</div>
+        <div>property.community_id: {property?.community_id}</div>
+        <div>User ID: {typeof window !== 'undefined' ? (window.localStorage.getItem('supabase.auth.token') || 'N/A') : 'N/A'}</div>
       </div>
     </div>
+  );
+}
+
+function ContactInquiryForm({ propertyId }: { propertyId: string }) {
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  const [name, setName] = React.useState('');
+  const [email, setEmail] = React.useState('');
+  const [phone, setPhone] = React.useState('');
+  const [message, setMessage] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [userId, setUserId] = React.useState('');
+  const [property, setProperty] = React.useState<any>(null);
+  const [sellerId, setSellerId] = React.useState('');
+  const [communityId, setCommunityId] = React.useState('');
+
+  React.useEffect(() => {
+    async function fetchUserAndProperty() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        setEmail(user.email || '');
+        // Optionally fetch name from profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', user.id)
+          .single();
+        if (profile && profile.username) setName(profile.username);
+      }
+      // Fetch property for IDs
+      const { data: prop } = await supabase
+        .from('properties')
+        .select('id, user_id, community_id')
+        .eq('id', propertyId)
+        .single();
+      if (prop) {
+        setProperty(prop);
+        setSellerId(prop.user_id);
+        setCommunityId(prop.community_id);
+      }
+    }
+    fetchUserAndProperty();
+    // eslint-disable-next-line
+  }, [propertyId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess(false);
+    if (!message.trim()) {
+      setError('Message is required.');
+      return;
+    }
+    if (!communityId || !property?.id || !sellerId || !userId) {
+      setError('Missing required property or user information.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/properties/inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          community_id: communityId,
+          property_id: property.id,
+          seller_id: sellerId,
+          sender_id: userId,
+          name,
+          email,
+          phone,
+          message
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to send inquiry.');
+        setLoading(false);
+        return;
+      }
+      setSuccess(true);
+      setMessage('');
+    } catch (err) {
+      setError('Failed to send inquiry.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <form onSubmit={handleSubmit} className="mt-6 bg-white rounded-lg border border-cyan-100 p-4 shadow flex flex-col gap-3">
+      <h3 className="text-lg font-bold text-cyan-900 mb-2">Contact Us</h3>
+      <div>
+        <label className="block text-xs font-medium text-cyan-800 mb-1">Name</label>
+        <input type="text" className="w-full border rounded px-2 py-1 text-sm" value={name} onChange={e => setName(e.target.value)} autoComplete="name" required />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-cyan-800 mb-1">Email</label>
+        <input type="email" className="w-full border rounded px-2 py-1 text-sm" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-cyan-800 mb-1">Phone <span className="text-gray-400">(optional)</span></label>
+        <input type="tel" className="w-full border rounded px-2 py-1 text-sm" value={phone} onChange={e => setPhone(e.target.value)} autoComplete="tel" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-cyan-800 mb-1">Message</label>
+        <textarea className="w-full border rounded px-2 py-1 text-sm min-h-[60px]" value={message} onChange={e => setMessage(e.target.value)} required />
+        {error && <div className="text-xs text-red-500 mt-1">{error}</div>}
+      </div>
+      <button type="submit" className="w-full px-4 py-2 rounded bg-teal-500 text-white font-semibold hover:bg-teal-600 transition" disabled={loading}>{loading ? 'Sending...' : 'Send Inquiry'}</button>
+      {success && <div className="text-xs text-green-600 mt-2">Your inquiry has been sent.</div>}
+    </form>
   );
 } 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Breadcrumb from "../shared/Breadcrumb";
 
 interface AccommodationTemplateProps {
   business: {
@@ -69,18 +70,17 @@ interface AccommodationTemplateProps {
 }
 
 export default function AccommodationTemplate({ business }: AccommodationTemplateProps) {
-  const [selectedTab, setSelectedTab] = useState("overview");
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const params = useParams();
-  const router = useRouter();
-  const communityId = params.communityId as string;
-  
-  // Booking panel state
-  const [checkInDate, setCheckInDate] = useState<string>('');
-  const [checkOutDate, setCheckOutDate] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'amenities' | 'gallery' | 'reviews'>('overview');
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [checkInDate, setCheckInDate] = useState<Date | null>(null);
+  const [checkOutDate, setCheckOutDate] = useState<Date | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
   const [roomCount, setRoomCount] = useState<number>(1);
   const [guests, setGuests] = useState<number>(1);
-  const [dateError, setDateError] = useState<string | null>(null);
+  const params = useParams();
+  const router = useRouter();
+  const communityId = params?.communityId as string;
   
   // Helper functions
   const getYoutubeVideoId = (url: string): string => {
@@ -156,8 +156,44 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
   const promotions = business.promotions || [];
   const rooms = business.rooms || [];
   
+  // Handle lightbox navigation
+  const openLightbox = (index: number) => {
+    setCurrentImageIndex(index);
+    setLightboxOpen(true);
+  };
+
+  const closeLightbox = () => {
+    setLightboxOpen(false);
+  };
+
+  const goToPrevious = () => {
+    setCurrentImageIndex((prevIndex) => 
+      prevIndex === 0 
+        ? ((business?.gallery_urls?.length || 1) - 1) 
+        : prevIndex - 1
+    );
+  };
+
+  const goToNext = () => {
+    setCurrentImageIndex((prevIndex) => 
+      prevIndex === ((business?.gallery_urls?.length || 1) - 1) 
+        ? 0 
+        : prevIndex + 1
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-teal-50 to-blue-50">
+      {/* Breadcrumbs Navigation */}
+      <div className="max-w-content mx-auto px-4 pt-4">
+        <Breadcrumb 
+          items={[
+            { label: 'Directory', href: `/community/${communityId}/business/directory` },
+            { label: business.name || 'Accommodation Details' }
+          ]}
+        />
+      </div>
+
       {/* Back to My Businesses Link */}
       <div className="max-w-content mx-auto px-4 py-4">
         <Link 
@@ -179,7 +215,38 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
         </div>
         <div className="absolute bottom-0 left-0 right-0 p-6 md:p-12 text-white">
-          <h1 className="text-3xl md:text-5xl font-heading font-bold mb-2">{business.name}</h1>
+          <div className="flex flex-wrap items-center justify-between mb-2">
+            <h1 className="text-3xl md:text-5xl font-heading font-bold">{business.name}</h1>
+            
+            {/* Verification Badge */}
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
+              business.is_verified 
+                ? "bg-emerald-100/90 text-emerald-700" 
+                : "bg-gray-100/80 text-gray-600"
+            }`}>
+              <svg 
+                className="w-5 h-5" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24" 
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d={business.is_verified
+                    ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    : "M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  }
+                />
+              </svg>
+              <span className="font-medium">
+                {business.is_verified ? "Verified Business" : "Verification Pending"}
+              </span>
+            </div>
+          </div>
+          
           <p className="text-lg md:text-xl mb-4 max-w-2xl">{business.address}</p>
           <div className="flex flex-wrap gap-3">
             <span className="px-3 py-1 bg-primaryTeal/90 rounded-full text-sm font-medium">
@@ -229,13 +296,17 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
             </div>
           </div>
           
-          {/* Verified Badge */}
-          {business.is_verified && (
-            <div className="flex items-center gap-1 bg-green-50 px-3 py-1 rounded-full">
-              <span className="text-green-600">✓</span>
-              <span className="text-sm font-medium text-green-600">Verified</span>
-            </div>
-          )}
+          {/* Category Pills */}
+          <div className="flex flex-wrap gap-2">
+            <span className="bg-cyan-100 text-cyan-800 px-2 py-1 rounded-full text-xs font-medium">
+              Accommodation
+            </span>
+            {keyFacts.property_type && (
+              <span className="bg-cyan-50 text-cyan-700 px-2 py-1 rounded-full text-xs font-medium">
+                {keyFacts.property_type}
+              </span>
+            )}
+          </div>
         </div>
       </div>
       
@@ -244,54 +315,54 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Main Content */}
           <div className="lg:col-span-2">
-            {/* Navigation Tabs */}
-            <div className="flex overflow-x-auto mb-6 border-b border-grayLight">
-              <button 
-                onClick={() => setSelectedTab("overview")}
-                className={`px-4 py-2 font-medium whitespace-nowrap ${selectedTab === "overview" 
-                  ? "text-primaryTeal border-b-2 border-primaryTeal" 
-                  : "text-darkCharcoal hover:text-primaryTeal"}`}
-              >
-                Overview
-              </button>
-              <button 
-                onClick={() => setSelectedTab("amenities")}
-                className={`px-4 py-2 font-medium whitespace-nowrap ${selectedTab === "amenities" 
-                  ? "text-primaryTeal border-b-2 border-primaryTeal" 
-                  : "text-darkCharcoal hover:text-primaryTeal"}`}
-              >
-                Amenities & Facilities
-              </button>
-              <button 
-                onClick={() => setSelectedTab("rooms")}
-                className={`px-4 py-2 font-medium whitespace-nowrap ${selectedTab === "rooms" 
-                  ? "text-primaryTeal border-b-2 border-primaryTeal" 
-                  : "text-darkCharcoal hover:text-primaryTeal"}`}
-              >
-                Rooms
-              </button>
-              <button 
-                onClick={() => setSelectedTab("location")}
-                className={`px-4 py-2 font-medium whitespace-nowrap ${selectedTab === "location" 
-                  ? "text-primaryTeal border-b-2 border-primaryTeal" 
-                  : "text-darkCharcoal hover:text-primaryTeal"}`}
-              >
-                Location
-              </button>
-              <button 
-                onClick={() => setSelectedTab("gallery")}
-                className={`px-4 py-2 font-medium whitespace-nowrap ${selectedTab === "gallery" 
-                  ? "text-primaryTeal border-b-2 border-primaryTeal" 
-                  : "text-darkCharcoal hover:text-primaryTeal"}`}
-              >
-                Gallery
-              </button>
+            {/* Tab navigation */}
+            <div className="bg-white border-b border-grayLight">
+              <div className="max-w-content mx-auto px-4">
+                <div className="flex space-x-1 overflow-x-auto">
+                  <button
+                    onClick={() => setActiveTab('overview')}
+                    className={`py-4 px-6 font-medium text-sm transition-colors ${
+                      activeTab === 'overview' ? 'text-primaryTeal border-b-2 border-primaryTeal' : 'text-darkCharcoal/70 hover:text-darkCharcoal'
+                    }`}
+                  >
+                    Overview
+                  </button>
+                  
+                  {business.amenities && business.amenities.length > 0 && (
+                    <button
+                      onClick={() => setActiveTab('amenities')}
+                      className={`py-4 px-6 font-medium text-sm transition-colors ${
+                        activeTab === 'amenities' ? 'text-primaryTeal border-b-2 border-primaryTeal' : 'text-darkCharcoal/70 hover:text-darkCharcoal'
+                      }`}
+                    >
+                      Amenities
+                    </button>
+                  )}
+                  
+                  <button
+                    onClick={() => setActiveTab('gallery')}
+                    className={`py-4 px-6 font-medium text-sm transition-colors ${
+                      activeTab === 'gallery' ? 'text-primaryTeal border-b-2 border-primaryTeal' : 'text-darkCharcoal/70 hover:text-darkCharcoal'
+                    }`}
+                  >
+                    Gallery
+                  </button>
+                  
+                  <button
+                    onClick={() => setActiveTab('reviews')}
+                    className={`py-4 px-6 font-medium text-sm transition-colors ${
+                      activeTab === 'reviews' ? 'text-primaryTeal border-b-2 border-primaryTeal' : 'text-darkCharcoal/70 hover:text-darkCharcoal'
+                    }`}
+                  >
+                    Reviews
+                  </button>
+                </div>
+              </div>
             </div>
             
-            {/* Tab Content */}
+            {/* Tab content */}
             <div className="mb-8">
-              {/* Overview Tab */}
-              {selectedTab === "overview" && (
+              {activeTab === 'overview' && (
                 <div>
                   <p className="text-darkCharcoal mb-6 whitespace-pre-line text-lg">{business.description}</p>
                   
@@ -372,8 +443,7 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
                 </div>
               )}
               
-              {/* Amenities Tab */}
-              {selectedTab === "amenities" && (
+              {activeTab === 'amenities' && (
                 <div>
                   <h2 className="text-2xl font-heading font-semibold text-primaryTeal mb-4">Amenities & Facilities</h2>
                   
@@ -442,198 +512,147 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
                 </div>
               )}
               
-              {/* Rooms Tab */}
-              {selectedTab === "rooms" && (
+              {activeTab === 'gallery' && (
                 <div>
-                  <h2 className="text-2xl font-heading font-semibold text-primaryTeal mb-4">Available Rooms</h2>
+                  <h2 className="text-2xl font-heading font-semibold text-primaryTeal mb-6">Photo Gallery</h2>
                   
-                  {rooms.length > 0 ? (
-                    <div className="space-y-6">
-                      {rooms.map((room, index) => (
-                        <div key={index} className="bg-white rounded-lg shadow-subtle overflow-hidden">
-                          <div className="md:flex">
-                            <div className="md:w-1/3">
-                              <img 
-                                src={room.image_url || "/placeholder-room.jpg"} 
-                                alt={room.name}
-                                className="w-full h-48 md:h-full object-cover"
-                              />
-                            </div>
-                            <div className="p-6 md:w-2/3">
-                              <h3 className="text-xl font-heading font-semibold text-primaryTeal mb-2">{room.name}</h3>
-                              <p className="text-sm text-darkCharcoal mb-4">{room.description}</p>
-                              <div className="flex flex-wrap gap-3 mb-4">
-                                {room.features?.map((feature: string, i: number) => (
-                                  <span key={i} className="px-2 py-1 bg-seafoam/10 text-seafoam rounded text-xs">
-                                    {feature}
-                                  </span>
+                  {/* Gallery Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {business.gallery_urls && business.gallery_urls.length > 0 ? (
+                      business.gallery_urls.map((image, index) => (
+                        <div 
+                          key={index} 
+                          className="relative aspect-square overflow-hidden rounded-lg cursor-pointer hover:opacity-90 transition-opacity border border-grayLight"
+                          onClick={() => openLightbox(index)}
+                        >
+                          <img
+                            src={image}
+                            alt={`${business.name} - Photo ${index + 1}`}
+                            className="object-cover w-full h-full"
+                            onError={(e) => {
+                              e.currentTarget.src = "/placeholder-accommodation.jpg";
+                            }}
+                          />
+                        </div>
+                      ))
+                    ) : (
+                      <div className="col-span-full flex items-center justify-center p-12 bg-grayLight/20 rounded-lg">
+                        <p className="text-grayLight">No gallery photos available</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {activeTab === 'reviews' && (
+                <div>
+                  <h2 className="text-2xl font-heading font-semibold text-primaryTeal mb-6">Reviews & Ratings</h2>
+                  
+                  {/* Overall Rating Display */}
+                  <div className="bg-white rounded-lg shadow-subtle p-6 mb-6">
+                    <div className="flex items-center gap-4">
+                      <div className="text-4xl font-bold text-primaryTeal">
+                        {business.rating ? business.rating.toFixed(1) : "N/A"}
+                      </div>
+                      <div>
+                        <div className="flex items-center mb-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <svg 
+                              key={star}
+                              className={`w-5 h-5 ${
+                                business.rating && star <= Math.round(business.rating)
+                                  ? "text-yellow-400" 
+                                  : "text-gray-300"
+                              }`}
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                          ))}
+                        </div>
+                        <div className="text-sm text-grayLight">
+                          Based on {business.review_count || 0} {business.review_count === 1 ? 'review' : 'reviews'}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6 border-t pt-4">
+                      <p className="text-darkCharcoal">
+                        {business.review_count && business.review_count > 0 
+                          ? "See what guests are saying about their experience at " + business.name
+                          : "Be the first to review " + business.name
+                        }
+                      </p>
+                      <button 
+                        onClick={() => router.push(`/community/${communityId}/business/${business.id}#reviews`)}
+                        className="mt-3 px-4 py-2 bg-primaryTeal text-white rounded-md hover:bg-seafoam transition-colors"
+                      >
+                        {business.review_count && business.review_count > 0 ? "Read all reviews" : "Write a review"}
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Review Highlights - Would be populated from actual reviews */}
+                  {business.review_count && business.review_count > 0 ? (
+                    <div className="bg-white rounded-lg shadow-subtle p-6">
+                      <h3 className="text-xl font-heading font-semibold text-primaryTeal mb-4">Review Highlights</h3>
+                      <div className="space-y-4">
+                        {/* This would typically be populated from actual reviews */}
+                        <div className="p-4 border border-grayLight rounded-lg">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <div className="bg-primaryTeal/20 text-primaryTeal rounded-full w-8 h-8 flex items-center justify-center font-medium">
+                                  G
+                                </div>
+                                <span className="font-medium">Guest</span>
+                              </div>
+                              <div className="flex items-center mt-1">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <svg 
+                                    key={star}
+                                    className="w-4 h-4 text-yellow-400"
+                                    fill="currentColor"
+                                    viewBox="0 0 20 20"
+                                  >
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
                                 ))}
                               </div>
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <span className="text-2xl font-bold text-primaryTeal">${room.price}</span>
-                                  <span className="text-sm text-grayLight ml-1">/ night</span>
-                                </div>
-                                <button className="px-4 py-2 bg-primaryTeal text-white rounded-md hover:bg-seafoam transition">
-                                  Book Now
-                                </button>
-                              </div>
+                            </div>
+                            <div className="text-xs text-grayLight">
+                              Recent stay
                             </div>
                           </div>
+                          <p className="text-darkCharcoal mt-2">
+                            "Visit the full business page to see all reviews and ratings for this property."
+                          </p>
                         </div>
-                      ))}
+                        
+                        <div className="text-center">
+                          <button 
+                            onClick={() => router.push(`/community/${communityId}/business/${business.id}#reviews`)}
+                            className="text-primaryTeal hover:underline"
+                          >
+                            View all {business.review_count} reviews
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="bg-white rounded-lg shadow-subtle p-6 text-center">
-                      <p className="text-grayLight">No rooms information available</p>
+                      <div className="text-4xl mb-4">📝</div>
+                      <h3 className="text-xl font-medium mb-2">No Reviews Yet</h3>
+                      <p className="text-grayLight mb-4">Be the first to share your experience at this property</p>
+                      <button 
+                        onClick={() => router.push(`/community/${communityId}/business/${business.id}#reviews`)}
+                        className="px-4 py-2 bg-primaryTeal text-white rounded-md hover:bg-seafoam transition-colors"
+                      >
+                        Write a Review
+                      </button>
                     </div>
                   )}
-                </div>
-              )}
-              
-              {/* Location Tab */}
-              {selectedTab === "location" && (
-                <div>
-                  <h2 className="text-2xl font-heading font-semibold text-primaryTeal mb-4">Location</h2>
-                  
-                  <div className="bg-white rounded-lg shadow-subtle p-6 mb-6">
-                    <div className="mb-4">
-                      <h3 className="text-xl font-heading font-semibold text-primaryTeal mb-2">Address</h3>
-                      <a 
-                        href={`https://maps.google.com/?q=${encodeURIComponent(business.address || '')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-darkCharcoal hover:text-primaryTeal flex items-center gap-2"
-                      >
-                        <span className="text-primaryTeal">📍</span>
-                        {business.address || "Address not provided"}
-                        <span className="text-xs text-primaryTeal">(Open in Maps)</span>
-                      </a>
-                    </div>
-                    
-                    {/* Map */}
-                    <div className="w-full h-80 bg-seafoam/10 rounded-lg overflow-hidden">
-                      {business.location_lat && business.location_lng ? (
-                        <iframe
-                          title="Business Location"
-                          width="100%"
-                          height="100%"
-                          frameBorder="0"
-                          src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${business.location_lat},${business.location_lng}&zoom=15`}
-                          allowFullScreen
-                        ></iframe>
-                      ) : (
-                        <div className="h-full flex items-center justify-center">
-                          <p className="text-grayLight">Map location not available</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Nearby Search */}
-                    {business.location_lat && business.location_lng && (
-                      <div className="mt-4">
-                        <h4 className="font-medium text-darkCharcoal mb-2">Search nearby:</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {["Restaurants", "Cafes", "Attractions", "Shopping", "Transport"].map(item => (
-                            <a
-                              key={item}
-                              href={`https://www.google.com/maps/search/${item}/@${business.location_lat},${business.location_lng},15z`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3 py-1 bg-seafoam/20 text-primaryTeal rounded-full text-sm hover:bg-seafoam/30 transition-colors"
-                            >
-                              {item}
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="bg-white rounded-lg shadow-subtle p-6">
-                    <h3 className="text-xl font-heading font-semibold text-primaryTeal mb-4">Nearby Attractions</h3>
-                    <p className="text-grayLight">Information about nearby attractions not available</p>
-                  </div>
-                </div>
-              )}
-              
-              {/* Gallery Tab */}
-              {selectedTab === "gallery" && (
-                <div>
-                  <h2 className="text-2xl font-heading font-semibold text-primaryTeal mb-4">Gallery</h2>
-                  
-                  {/* Video Embed (if available) */}
-                  {business.video_url && business.video_provider && (
-                    <div className="mb-6">
-                      <h3 className="text-xl font-heading font-semibold text-primaryTeal mb-3">Video Tour</h3>
-                      <div className="w-full aspect-video bg-black rounded-lg overflow-hidden">
-                        {business.video_provider === 'youtube' && (
-                          <iframe
-                            width="100%"
-                            height="100%"
-                            src={`https://www.youtube.com/embed/${getYoutubeVideoId(business.video_url)}`}
-                            title="YouTube video player"
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                          ></iframe>
-                        )}
-                        {business.video_provider === 'vimeo' && (
-                          <iframe
-                            width="100%"
-                            height="100%"
-                            src={`https://player.vimeo.com/video/${getVimeoVideoId(business.video_url)}`}
-                            title="Vimeo video player"
-                            frameBorder="0"
-                            allow="autoplay; fullscreen; picture-in-picture"
-                            allowFullScreen
-                          ></iframe>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Main Selected Image */}
-                  <div className="w-full h-80 mb-4 bg-grayLight rounded-lg overflow-hidden">
-                    {gallery && gallery.length > 0 ? (
-                      <img 
-                        src={gallery[selectedImageIndex]} 
-                        alt={`Gallery image ${selectedImageIndex + 1}`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          console.error("Error loading image:", e);
-                          e.currentTarget.src = "/placeholder-accommodation.jpg";
-                        }}
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center h-full">
-                        <p className="text-grayLight">No gallery images available</p>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Thumbnails */}
-                  <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
-                    {gallery && gallery.map((image, index) => (
-                      <div 
-                        key={index}
-                        onClick={() => setSelectedImageIndex(index)}
-                        className={`cursor-pointer h-20 rounded-md overflow-hidden ${
-                          selectedImageIndex === index ? 'ring-2 ring-primaryTeal' : ''
-                        }`}
-                      >
-                        <img 
-                          src={image} 
-                          alt={`Thumbnail ${index + 1}`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            console.error("Error loading thumbnail:", e);
-                            e.currentTarget.src = "/placeholder-accommodation.jpg";
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
             </div>
@@ -644,6 +663,12 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
             {/* Booking Panel */}
             <div className="bg-white rounded-lg shadow-elevated p-6 mb-6 sticky top-4">
               <h3 className="text-xl font-heading font-semibold text-primaryTeal mb-4">Book Your Stay</h3>
+              
+              {dateError && (
+                <div className="mb-4 bg-red-50 text-red-600 p-3 rounded-md text-sm">
+                  {dateError}
+                </div>
+              )}
               
               <form className="space-y-4" onSubmit={(e) => {
                 e.preventDefault();
@@ -670,9 +695,9 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
                   <input 
                     type="date" 
                     className="w-full px-3 py-2 border border-grayLight rounded-md focus:outline-none focus:ring-2 focus:ring-primaryTeal"
-                    value={checkInDate}
+                    value={checkInDate?.toISOString().split('T')[0]}
                     onChange={(e) => {
-                      setCheckInDate(e.target.value);
+                      setCheckInDate(new Date(e.target.value));
                       // Clear error when user makes changes
                       if (dateError) setDateError(null);
                     }}
@@ -685,47 +710,42 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
                   <input 
                     type="date" 
                     className="w-full px-3 py-2 border border-grayLight rounded-md focus:outline-none focus:ring-2 focus:ring-primaryTeal"
-                    value={checkOutDate}
+                    value={checkOutDate?.toISOString().split('T')[0]}
                     onChange={(e) => {
-                      setCheckOutDate(e.target.value);
+                      setCheckOutDate(new Date(e.target.value));
                       // Clear error when user makes changes
                       if (dateError) setDateError(null);
                     }}
-                    min={checkInDate || new Date().toISOString().split('T')[0]} // Prevent dates before check-in
+                    min={checkInDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0]} // Prevent dates before check-in
                     required
                   />
                 </div>
                 
-                {dateError && (
-                  <div className="text-red-500 text-sm">{dateError}</div>
-                )}
-                
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-darkCharcoal mb-1">Rooms</label>
+                    <label htmlFor="rooms" className="block text-sm font-medium text-darkCharcoal mb-1">Rooms</label>
                     <select 
+                      id="rooms" 
                       className="w-full px-3 py-2 border border-grayLight rounded-md focus:outline-none focus:ring-2 focus:ring-primaryTeal"
                       value={roomCount}
                       onChange={(e) => setRoomCount(parseInt(e.target.value))}
                     >
-                      <option value={1}>1 Room</option>
-                      <option value={2}>2 Rooms</option>
-                      <option value={3}>3 Rooms</option>
-                      <option value={4}>4+ Rooms</option>
+                      {[1, 2, 3, 4, 5].map(num => (
+                        <option key={num} value={num}>{num} Room{num > 1 ? 's' : ''}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-darkCharcoal mb-1">Guests</label>
+                    <label htmlFor="guests" className="block text-sm font-medium text-darkCharcoal mb-1">Guests</label>
                     <select 
+                      id="guests" 
                       className="w-full px-3 py-2 border border-grayLight rounded-md focus:outline-none focus:ring-2 focus:ring-primaryTeal"
                       value={guests}
                       onChange={(e) => setGuests(parseInt(e.target.value))}
                     >
-                      <option value={1}>1 Guest</option>
-                      <option value={2}>2 Guests</option>
-                      <option value={3}>3 Guests</option>
-                      <option value={4}>4 Guests</option>
-                      <option value={5}>5+ Guests</option>
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                        <option key={num} value={num}>{num} Guest{num > 1 ? 's' : ''}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -749,7 +769,7 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
             {/* Contact Information */}
             <div className="bg-white rounded-lg shadow-subtle p-6">
               <h3 className="text-xl font-heading font-semibold text-primaryTeal mb-4">Contact Information</h3>
-              <div className="space-y-3">
+              <div className="space-y-3 mb-5">
                 {business.contact_phone && (
                   <div className="flex items-center gap-3">
                     <span className="text-seafoam">📞</span>
@@ -770,15 +790,51 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
                   <div className="flex items-center gap-3">
                     <span className="text-seafoam">🌐</span>
                     <a href={business.website} target="_blank" rel="noopener noreferrer" className="text-darkCharcoal hover:text-primaryTeal">
-                      Visit Website
+                      {business.website}
                     </a>
                   </div>
                 )}
               </div>
-              <div className="mt-6">
-                <button className="w-full py-2 border border-primaryTeal text-primaryTeal rounded-md font-medium hover:bg-primaryTeal hover:text-white transition">
-                  Contact Host
-                </button>
+              
+              {/* Contact CTA Buttons */}
+              <div className="flex flex-col gap-3">
+                {business.website && (
+                  <a 
+                    href={business.website} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center justify-center gap-2 bg-cyan-600 text-white py-2 px-4 rounded-md hover:bg-cyan-700 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                    </svg>
+                    Visit Website
+                  </a>
+                )}
+                
+                {business.contact_phone && (
+                  <a 
+                    href={`tel:${business.contact_phone}`} 
+                    className="flex items-center justify-center gap-2 bg-emerald-600 text-white py-2 px-4 rounded-md hover:bg-emerald-700 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    Call Now
+                  </a>
+                )}
+                
+                {business.contact_email && (
+                  <a 
+                    href={`mailto:${business.contact_email}`} 
+                    className="flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    Send Email
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -978,6 +1034,81 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
           </div>
         </div>
       </div>
+      
+      {/* Lightbox Component */}
+      {lightboxOpen && business.gallery_urls && business.gallery_urls.length > 0 && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center">
+          {/* Close button */}
+          <button 
+            onClick={closeLightbox}
+            className="absolute top-4 right-4 text-white p-2 rounded-full hover:bg-white/20 transition z-50"
+            aria-label="Close lightbox"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          
+          {/* Previous button */}
+          <button 
+            onClick={goToPrevious}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-white p-2 rounded-full hover:bg-white/20 transition z-50"
+            aria-label="Previous image"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          
+          {/* Next button */}
+          <button 
+            onClick={goToNext}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-white p-2 rounded-full hover:bg-white/20 transition z-50"
+            aria-label="Next image"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          
+          {/* Current image */}
+          <div className="max-h-[90vh] max-w-[90vw] relative">
+            <img
+              src={business.gallery_urls[currentImageIndex]}
+              alt={`${business.name} - Photo ${currentImageIndex + 1}`}
+              className="max-h-[90vh] max-w-[90vw] object-contain"
+              onError={(e) => {
+                e.currentTarget.src = "/placeholder-accommodation.jpg";
+              }}
+            />
+            
+            {/* Image counter */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-full text-sm">
+              {currentImageIndex + 1} / {business.gallery_urls.length}
+            </div>
+          </div>
+          
+          {/* Thumbnail navigation at bottom */}
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2 overflow-x-auto max-w-[80vw] pb-2">
+            {business.gallery_urls.map((image, index) => (
+              <div 
+                key={index} 
+                className={`w-16 h-16 flex-shrink-0 cursor-pointer rounded overflow-hidden border-2 ${index === currentImageIndex ? 'border-white' : 'border-transparent'}`}
+                onClick={() => setCurrentImageIndex(index)}
+              >
+                <img
+                  src={image}
+                  alt={`Thumbnail ${index + 1}`}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.src = "/placeholder-accommodation.jpg";
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

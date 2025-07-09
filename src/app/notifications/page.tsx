@@ -16,8 +16,6 @@ export default function NotificationsPage() {
         return <Heart className="h-5 w-5 text-red-500" />;
       case 'comment':
         return <MessageSquare className="h-5 w-5 text-blue-500" />;
-      case 'mention':
-        return <User className="h-5 w-5 text-purple-500" />;
       case 'event':
         return <Calendar className="h-5 w-5 text-green-500" />;
       case 'announcement':
@@ -52,46 +50,43 @@ export default function NotificationsPage() {
     }
   };
 
+  const filteredNotifications = notifications.filter(notification => notification.type !== 'mention');
+
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
-      <div className="bg-white rounded-lg shadow">
+    <div className="container mx-auto p-4 max-w-4xl">
+      <div className="bg-white shadow-md rounded-lg">
         <div className="flex justify-between items-center p-4 border-b">
-          <h1 className="text-2xl font-bold">Notifications</h1>
-          {notifications.length > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-md flex items-center"
-            >
-              <Check className="h-4 w-4 mr-1" />
-              Mark all as read
-            </button>
-          )}
+          <h1 className="text-xl font-semibold">Notifications</h1>
+          <button
+            onClick={markAllAsRead}
+            className="flex items-center space-x-1 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+            title="Mark all as read"
+          >
+            <Check className="h-4 w-4" />
+            <span>Mark all as read</span>
+          </button>
         </div>
         
-        <div>
+        <div className="p-4">
           {loading ? (
-            <div className="flex justify-center items-center p-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            <div className="flex justify-center items-center p-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
-          ) : notifications.length === 0 ? (
-            <div className="p-12 text-center">
-              <Bell className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <h2 className="text-xl font-medium text-gray-600">No notifications yet</h2>
-              <p className="text-gray-500 mt-2">
-                When you get notifications, they'll show up here.
-              </p>
+          ) : filteredNotifications.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">
+              You have no notifications
             </div>
           ) : (
             <ul className="divide-y divide-gray-100">
-              {notifications.map((notification) => (
+              {filteredNotifications.map((notification) => (
                 <li 
                   key={notification.id}
-                  className={`hover:bg-gray-50 transition-colors ${!notification.is_read ? 'bg-blue-50' : ''}`}
+                  className={`py-4 ${!notification.is_read ? 'bg-blue-50 rounded-md px-3' : ''}`}
                 >
                   <Link 
                     href={getNotificationLink(notification)}
                     onClick={() => handleNotificationClick(notification)}
-                    className="block p-4"
+                    className="block"
                   >
                     <div className="flex items-start">
                       <div className="flex-shrink-0 mr-4">

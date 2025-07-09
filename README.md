@@ -1,5 +1,7 @@
 # CoastlineVibe
 
+> **Note:** All AI assistant sections in this project use logic-based (non-AI) simulation unless otherwise specified. If real AI is required, it will be explicitly requested and documented.
+
 A coastal community application built with Next.js, Tailwind CSS, and Supabase.
 
 ## Getting Started

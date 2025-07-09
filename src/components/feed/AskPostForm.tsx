@@ -1,6 +1,7 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import EmojiPicker from '@/components/shared/EmojiPicker';
+import PoliteRewriter from './PoliteRewriter';
 
 export interface AskPostFormValues {
   title: string;
@@ -23,6 +24,11 @@ export default function AskPostForm({ onSubmit }: { onSubmit: (values: AskPostFo
   const insertEmoji = (field: 'title' | 'content', emoji: string) => {
     const currentValue = field === 'title' ? title : content;
     setValue(field, currentValue + emoji);
+  };
+
+  const handleRewrite = (rewrittenText: string) => {
+    // Replace the content with the rewritten version
+    setValue('content', rewrittenText);
   };
 
   return (
@@ -52,6 +58,16 @@ export default function AskPostForm({ onSubmit }: { onSubmit: (values: AskPostFo
           <EmojiPicker onEmojiSelect={(emoji) => insertEmoji('content', emoji)} />
         </div>
       </div>
+      
+      {/* Add Polite Rewriter */}
+      <div className="mb-3">
+        <PoliteRewriter
+          originalText={content} 
+          onRewritten={handleRewrite}
+          disabled={isSubmitting || !content.trim()}
+        />
+      </div>
+
       <button type="submit" className="bg-cyan-600 text-white px-4 py-2 rounded" disabled={isSubmitting}>Post</button>
     </form>
   );

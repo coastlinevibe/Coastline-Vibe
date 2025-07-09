@@ -94,8 +94,7 @@ export default function UserProfilePage() {
       const { data, error } = await supabase
         .from('friend_requests')
         .select('status')
-        .or(`sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`)
-        .or(`recipient_id.eq.${userId},sender_id.eq.${userId}`)
+        .or(`and(user_id.eq.${currentUserId},friend_id.eq.${userId}),and(user_id.eq.${userId},friend_id.eq.${currentUserId})`)
         .limit(1);
       if (data && data.length > 0) {
         setFriendRequestStatus(data[0].status);
@@ -129,8 +128,8 @@ export default function UserProfilePage() {
     }
     setFriendRequestStatus('pending');
     const { error } = await supabase.from('friend_requests').insert({
-      sender_id: currentUserId,
-      recipient_id: userId,
+      user_id: currentUserId,
+      friend_id: userId,
       status: 'pending',
       reason: friendReason.trim(),
     });

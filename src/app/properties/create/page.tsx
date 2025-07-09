@@ -22,12 +22,14 @@ interface PropertyFormData {
   isFurnished: boolean;
   hasParking: boolean;
   isPetFriendly: boolean;
+  depositRequired: boolean;
   selectedTags: string[];
   imageFiles: string[];
   videoUrl: string;
   amenities: string;
   lifestyleTags: string;
   map_location: string;
+  listed_by: 'owner' | 'agent';
 }
 
 const CreatePropertyPage = () => {
@@ -50,12 +52,14 @@ const CreatePropertyPage = () => {
     isFurnished: false,
     hasParking: false,
     isPetFriendly: false,
+    depositRequired: false,
     selectedTags: [],
     imageFiles: [],
     videoUrl: '',
     amenities: '',
     lifestyleTags: '',
     map_location: '',
+    listed_by: 'owner',
   });
   
   // AI Assistant for description
@@ -65,8 +69,8 @@ const CreatePropertyPage = () => {
   
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imageUploadProgress, setImageUploadProgress] = useState<number[]>([]);
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [videoPreview, setVideoPreview] = useState<string | null>(null);
+  const [videoFile, setVideoFile] = useState<File[] | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string[] | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -76,76 +80,79 @@ const CreatePropertyPage = () => {
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [areaUnit, setAreaUnit] = useState<'sqft' | 'sqm'>('sqft');
+  const [areaError, setAreaError] = useState<string | null>(null);
+  const [mediaTab, setMediaTab] = useState<'image' | 'video'>('image');
+  // Add drag state
+  const [draggedImageIdx, setDraggedImageIdx] = useState<number | null>(null);
+  // Add state for suggestions
+  const [amenitySuggestions, setAmenitySuggestions] = useState<string[]>([]);
+  const [lifestyleSuggestions, setLifestyleSuggestions] = useState<string[]>([]);
+  // Add state for AI modal and detected features
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [detectedFeatures, setDetectedFeatures] = useState<string[]>([]);
+
+  // Add after keywords state:
+  const allKeywordSuggestions = [
+    'Lake view', 'Oceanfront', 'Spacious', 'Quiet', 'Modern', 'Fully furnished', 'Scenic', 'Pet friendly', 'Luxury', 'Family-friendly', 'Central', 'Bright', 'Renovated', 'Garden', 'Balcony', 'Pool', 'Gym', 'Secure', 'Cozy', 'Open-plan', 'Mountain view', 'City view', 'Historic', 'Eco-friendly', 'Smart home', 'Parking', 'Fireplace', 'High ceilings', 'Walk-in closet', 'Rooftop', 'Studio', 'Loft', 'Townhouse', 'Bungalow', 'Cottage', 'Duplex', 'Penthouse', 'Condo', 'Land', 'Commercial', 'Vacation', 'Short-term', 'Long-term', 'Shared', 'Sublet', 'Co-living', 'Retreat', 'Active', 'Entertainer', 'Nature', 'Urban', 'Beach', 'Golf', 'Nightlife', 'Artistic', 'Wellness', 'Adventure', 'Community', 'Young professionals', 'Retirees', 'Students', 'Couples', 'Singles'
+  ];
+
+  function getSuggestedKeywords(title: string, userKeywords: string): string[] {
+    const base = (title + ' ' + userKeywords).toLowerCase();
+    // Find up to 6 relevant keywords from the list
+    const relevant = allKeywordSuggestions.filter(k => base.includes(k.toLowerCase()));
+    // Fill up to 6 with randoms if not enough relevant
+    const unique = Array.from(new Set([...relevant, ...allKeywordSuggestions])).slice(0, 6);
+    return unique;
+  }
 
   // Function to generate property description
   const generateDescription = () => {
-    if (!formData.title) {
-      // If no title, continue but log a message
-      console.log("No title provided, using generic description");
+    // Auto-fill keywords if not enough
+    const currentKeywords = keywords.split(',').map(k => k.trim()).filter(Boolean);
+    if (currentKeywords.length < 3) {
+      const suggested = getSuggestedKeywords(formData.title, keywords);
+      setKeywords(suggested.join(', '));
     }
-    
-    setIsGeneratingDescription(true);
-    console.log("Generating description for property type:", formData.propertyType);
-    console.log("Keywords:", keywords);
-    
-    // Sample descriptions based on property type and keywords
-    const propertyTypeTemplates: {[key: string]: string[]} = {
-      'Apartment': [
-        "This stylish apartment offers a perfect blend of comfort and convenience. {keywords}. Ideal for those seeking a modern living space in a vibrant neighborhood.",
-        "Experience urban living at its finest in this thoughtfully designed apartment. {keywords}. A perfect place to call home in the heart of the city.",
-        "Welcome to this exceptional apartment that combines style with functionality. {keywords}. An ideal choice for urban dwellers looking for quality living."
+    // Context detection
+    const base = (formData.title + ' ' + keywords).toLowerCase();
+    let context: 'ocean' | 'lake' | 'mountain' | 'urban' | 'city' | 'default' = 'default';
+    if (base.includes('ocean') || base.includes('beach') || base.includes('sea') || base.includes('coast')) context = 'ocean';
+    else if (base.includes('lake')) context = 'lake';
+    else if (base.includes('mountain')) context = 'mountain';
+    else if (base.includes('urban') || base.includes('city') || base.includes('central')) context = 'urban';
+
+    // Smarter templates
+    const templates: Record<string, string[]> = {
+      ocean: [
+        "Wake up to breathtaking ocean views in this stunning property. {keywords}. Perfect for those who love the sound of waves and the feel of sea breeze.",
+        "Experience coastal living at its finest. {keywords}. Enjoy direct beach access and endless ocean horizons from your new home.",
       ],
-      'House': [
-        "This charming house provides a warm and inviting atmosphere for family living. {keywords}. Perfect for those seeking a comfortable home with character.",
-        "Discover the perfect family home in this well-maintained house. {keywords}. Offering the ideal balance of comfort and style for modern living.",
-        "This beautiful house offers spacious living in a desirable location. {keywords}. A rare opportunity to own a distinctive property in this sought-after area."
+      lake: [
+        "Enjoy peaceful lakeside living in this beautiful property. {keywords}. Perfect for relaxing weekends and scenic sunsets.",
+        "A rare opportunity to own a home by the lake. {keywords}. Ideal for water lovers and nature enthusiasts.",
       ],
-      'Studio': [
-        "This contemporary studio apartment offers efficient living in a prime location. {keywords}. Perfect for professionals or students seeking a modern, low-maintenance home.",
-        "Compact yet thoughtfully designed, this studio apartment maximizes every inch of space. {keywords}. Ideal for those seeking a streamlined lifestyle without compromising on quality.",
-        "This stylish studio provides the perfect urban retreat. {keywords}. A smart investment for those seeking convenience and comfort in a central location."
+      mountain: [
+        "Escape to the mountains in this cozy retreat. {keywords}. Surrounded by nature and stunning views.",
+        "Breathe in fresh mountain air every day. {keywords}. The perfect getaway for adventure and tranquility.",
       ],
-      'Townhouse': [
-        "This elegant townhouse combines the convenience of apartment living with the space of a house. {keywords}. Perfect for those seeking a low-maintenance lifestyle without compromising on space.",
-        "Experience modern living in this well-designed townhouse. {keywords}. Offering the perfect balance of privacy and community in a desirable location.",
-        "This spacious townhouse provides an ideal living environment for families or professionals. {keywords}. A perfect blend of style, comfort, and convenience."
+      urban: [
+        "Experience vibrant city life in this modern property. {keywords}. Located in the heart of the action, close to everything you need.",
+        "Live in style and convenience in this urban oasis. {keywords}. Perfect for professionals and city lovers.",
       ],
-      'Other': [
-        "This unique property offers distinctive features rarely found on the market. {keywords}. A special opportunity for those seeking something truly different.",
-        "Discover the exceptional qualities of this outstanding property. {keywords}. Perfect for those with discerning taste looking for something special.",
-        "This remarkable property stands out with its unique character and appeal. {keywords}. An exciting opportunity to secure a one-of-a-kind living space."
-      ]
+      default: [
+        "Discover your perfect home. {keywords}. A wonderful blend of comfort, style, and convenience.",
+        "This property offers everything you need for modern living. {keywords}. Make it yours today!",
+      ],
     };
-    
-    // Choose a random template for the property type
-    const propertyType = formData.propertyType;
-    const templates = propertyTypeTemplates[propertyType] || propertyTypeTemplates['Other'];
-    const template = templates[Math.floor(Math.random() * templates.length)];
-    
-    // Process keywords
-    let keywordText = "";
-    if (keywords.trim()) {
-      const keywordArray = keywords.split(',').map(k => k.trim()).filter(k => k);
-      if (keywordArray.length > 0) {
-        keywordText = `Featuring ${keywordArray.join(', ')}`;
-      }
-    }
-    
-    // Generate description by replacing placeholders
-    let description = template.replace('{keywords}', keywordText || "Featuring all the amenities you need for comfortable living");
-    
-    // Add title-based content
-    if (formData.title) {
-      description = `${formData.title}: ${description}`;
-    }
-    
-    console.log("Generated description:", description);
-    
-    // Simulate a delay for a more realistic "AI" generation experience
-    setTimeout(() => {
+    const templateList = templates[context] || templates['default'];
+    const template = templateList[Math.floor(Math.random() * templateList.length)];
+    // Use up to 6 keywords
+    const keywordText = (keywords || getSuggestedKeywords(formData.title, keywords).join(', ')).split(',').map(k => k.trim()).filter(Boolean).slice(0, 6).join(', ');
+    const description = `${formData.title}. ` + template.replace('{keywords}', keywordText ? `Featuring ${keywordText}` : '');
       setGeneratedDescription(description);
       setIsGeneratingDescription(false);
-    }, 1000);
   };
   
   // Use generated description
@@ -166,6 +173,19 @@ const CreatePropertyPage = () => {
     if (files.length + formData.imageFiles.length > 10) {
       setUploadError("You can upload a maximum of 10 images per property");
       return;
+    }
+    
+    // Check file sizes and types
+    const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].size > 5 * 1024 * 1024) {
+        setUploadError("Each image must be 5MB or less");
+        return;
+      }
+      if (!acceptedImageTypes.includes(files[i].type)) {
+        setUploadError("Unsupported file type");
+        return;
+      }
     }
     
     // Check authentication first
@@ -219,10 +239,27 @@ const CreatePropertyPage = () => {
   };
 
   const handleVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setVideoFile(file);
-    setVideoPreview(URL.createObjectURL(file));
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    if (files.length > 2) {
+      setUploadError('You can upload a maximum of 2 videos per property');
+      return;
+    }
+    // Check file types
+    const acceptedVideoTypes = [
+      'video/mp4',
+      'video/quicktime', // MOV
+      'video/x-msvideo', // AVI
+      'video/webm'
+    ];
+    for (let i = 0; i < files.length; i++) {
+      if (!acceptedVideoTypes.includes(files[i].type)) {
+        setUploadError('Unsupported file type');
+        return;
+      }
+    }
+    setVideoFile(Array.from(files));
+    setVideoPreview(Array.from(files).map(file => URL.createObjectURL(file)));
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -237,6 +274,16 @@ const CreatePropertyPage = () => {
     e.preventDefault();
     setSubmitError(null);
     setSubmitSuccess(null);
+    setPriceError(null);
+    setAreaError(null);
+    if (!formData.price || Number(formData.price) === 0) {
+      setPriceError("Value can't be 0");
+      return;
+    }
+    if (!formData.squareFeet || Number(formData.squareFeet) <= 0) {
+      setAreaError('Value must be greater than 0');
+      return;
+    }
     setIsUploading(true);
     try {
       // Get current user
@@ -261,10 +308,10 @@ const CreatePropertyPage = () => {
       setProfile(profileData);
       let videoUrl = '';
       if (videoFile) {
-        const filePath = `Miami/${Date.now()}-${videoFile.name}`;
+        const filePath = `Miami/${Date.now()}-${videoFile[0].name}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('propertyvideos')
-          .upload(filePath, videoFile, { cacheControl: '3600', upsert: false });
+          .upload(filePath, videoFile[0], { cacheControl: '3600', upsert: false });
         if (uploadError) {
           setSubmitError(uploadError.message);
           setIsUploading(false);
@@ -306,7 +353,8 @@ const CreatePropertyPage = () => {
         map_location: formData.map_location,
         user_id: userId,
         approval_status: 'pending',
-        community_id: 'e3316cb7-4c7e-437d-9901-0c310ec90a92'
+        community_id: 'e3316cb7-4c7e-437d-9901-0c310ec90a92',
+        listed_by: formData.listed_by,
       };
       console.log('Saving property with videoUrl:', videoUrl);
       const { data, error } = await supabase.from('properties').insert([insertData]);
@@ -331,9 +379,17 @@ const CreatePropertyPage = () => {
     setFormData(prev => ({ ...prev, imageFiles: prev.imageFiles.filter((_, i) => i !== idx) }));
   };
   // Remove video handler
-  const handleRemoveVideo = () => {
-    setVideoFile(null);
-    setVideoPreview(null);
+  const handleRemoveVideo = (idx: number) => {
+    setVideoFile(prev => {
+      if (!prev) return null;
+      const arr = prev.filter((_, i) => i !== idx);
+      return arr.length ? arr : null;
+    });
+    setVideoPreview(prev => {
+      if (!prev) return null;
+      const arr = prev.filter((_, i) => i !== idx);
+      return arr.length ? arr : null;
+    });
     setFormData(prev => ({ ...prev, videoUrl: '' }));
   };
 
@@ -354,17 +410,99 @@ const CreatePropertyPage = () => {
     });
   };
 
+  // Drag handlers
+  const handleDragStart = (idx: number) => setDraggedImageIdx(idx);
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => e.preventDefault();
+  const handleDrop = (idx: number) => {
+    if (draggedImageIdx === null || draggedImageIdx === idx) return;
+    const newPreviews = [...imagePreviews];
+    const [draggedPreview] = newPreviews.splice(draggedImageIdx, 1);
+    newPreviews.splice(idx, 0, draggedPreview);
+    setImagePreviews(newPreviews);
+    setFormData(prev => {
+      const newFiles = [...prev.imageFiles];
+      const [draggedFile] = newFiles.splice(draggedImageIdx, 1);
+      newFiles.splice(idx, 0, draggedFile);
+      return { ...prev, imageFiles: newFiles };
+    });
+    setDraggedImageIdx(null);
+  };
+
+  // Helper to generate suggestions (simple keyword extraction for demo)
+  const generateAmenitySuggestions = () => {
+    const base = (formData.title + ' ' + formData.description).toLowerCase();
+    const all = [
+      'Pool', 'Gym', 'Balcony', 'WiFi', 'Garden', 'Fireplace', 'Cinema', 'Game Room', 'Outdoor Kitchen', 'Braai Area', 'Garage', 'Security', 'Smart Home', 'Sauna', 'Rooftop', 'Playground', 'Tennis Court', 'Spa', 'Bar', 'Wine Cellar', 'Library', 'Home Office', 'Workshop', 'Solar Power', 'EV Charger'
+    ];
+    // Pick 6 relevant or random
+    const filtered = all.filter(a => base.includes(a.toLowerCase()));
+    const unique = Array.from(new Set([...filtered, ...all])).slice(0, 6);
+    setAmenitySuggestions(unique);
+  };
+  const generateLifestyleSuggestions = () => {
+    const base = (formData.title + ' ' + formData.description).toLowerCase();
+    const all = [
+      'Family', 'Urban', 'Pet Owners', 'Luxury', 'Entertainer', 'Active', 'Quiet', 'Nature', 'Social', 'Remote Work', 'Retreat', 'Beach', 'Golf', 'Eco-Friendly', 'Nightlife', 'Historic', 'Artistic', 'Wellness', 'Adventure', 'Community', 'Young Professionals', 'Retirees', 'Students', 'Couples', 'Singles'
+    ];
+    const filtered = all.filter(t => base.includes(t.toLowerCase()));
+    const unique = Array.from(new Set([...filtered, ...all])).slice(0, 6);
+    setLifestyleSuggestions(unique);
+  };
+
+  // Generate on mount and when title/description change
+  useEffect(() => {
+    generateAmenitySuggestions();
+    generateLifestyleSuggestions();
+    // eslint-disable-next-line
+  }, [formData.title, formData.description]);
+
+  // Helper to add suggestion to input
+  const addAmenity = (a: string) => {
+    const current = formData.amenities.split(',').map(s => s.trim()).filter(Boolean);
+    if (!current.includes(a)) {
+      setFormData(prev => ({ ...prev, amenities: current.concat(a).join(', ') }));
+    }
+  };
+  const addLifestyle = (t: string) => {
+    const current = formData.lifestyleTags.split(',').map(s => s.trim()).filter(Boolean);
+    if (!current.includes(t)) {
+      setFormData(prev => ({ ...prev, lifestyleTags: current.concat(t).join(', ') }));
+    }
+  };
+
+  // Simulate AI assistant
+  const handleAISimulate = () => {
+    setShowAIModal(true);
+    setTimeout(() => {
+      // Simulated AI results
+      setFormData(prev => ({
+        ...prev,
+        title: '2-Bed Ocean-View Apartment, Pet-Friendly',
+        description: 'Beautiful 2-bedroom, ocean-view unit with modern kitchen, spacious living area, and pet-friendly amenities. Enjoy stunning sunsets from your balcony and relax by the pool. Perfect for families or couples seeking a coastal lifestyle.',
+        price: '10500000',
+        amenities: 'Ocean View, Pet-Friendly, Pool, Balcony, Modern Kitchen',
+      }));
+      setDetectedFeatures(['2 Bedrooms', 'Ocean View', 'Pool', 'Pet-Friendly', 'Balcony', 'Modern Kitchen']);
+      setShowAIModal(false);
+    }, 2000);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
-        <h1 className="text-2xl font-bold mb-4">Create Property</h1>
+        <div className="flex items-center gap-4 mb-6">
+          <h1 className="text-3xl font-bold">Create New Listing</h1>
+          <a href="/properties" className="text-teal-600 hover:underline text-base flex items-center gap-1">
+            <span className="text-xl">&#8592;</span> Back to Properties
+          </a>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Basic Info */}
           <div>
             <h2 className="text-lg font-bold text-cyan-900 mb-2">Basic Info</h2>
             <div className="space-y-4">
               <div>
-                <label className="block font-medium mb-1">Title</label>
+                <label className="block font-medium mb-1">Title <span className="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   name="title" 
@@ -376,106 +514,43 @@ const CreatePropertyPage = () => {
                 />
               </div>
               
-              {/* AI Description Assistant */}
-              <div className="border border-cyan-100 rounded-lg p-4 bg-cyan-50">
-                <div className="flex items-center gap-2 mb-2">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-cyan-700">
-                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="currentColor"/>
-                    <path d="M13 7H11V13H17V11H13V7Z" fill="currentColor"/>
-                  </svg>
-                  <h3 className="text-sm font-bold text-cyan-900">AI Description Assistant</h3>
-                </div>
-                
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-cyan-800 mb-1">Enter 3 keywords about your property:</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={keywords}
-                      onChange={(e) => setKeywords(e.target.value)}
-                      className="flex-1 border rounded px-2 py-1 text-sm"
-                      placeholder="e.g. quiet, spacious, fully furnished"
-                    />
-                    <button
-                      type="button"
-                      onClick={generateDescription}
-                      disabled={isGeneratingDescription}
-                      className="px-4 py-1 bg-teal-500 text-white rounded text-sm hover:bg-teal-600 transition shadow-sm"
-                    >
-                      {isGeneratingDescription ? (
-                        <div className="flex items-center gap-1">
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Generating...
-                        </div>
-                      ) : (
-                        'Generate'
-                      )}
-                    </button>
-                  </div>
-                </div>
-                
-                {generatedDescription && (
-                  <div className="mt-2">
-                    <div className="text-xs font-medium text-cyan-800 mb-1">Generated description:</div>
-                    <div className="bg-white p-3 rounded border border-cyan-200 text-sm mb-2 shadow-sm">
-                      {generatedDescription}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={useGeneratedDescription}
-                      className="px-4 py-1.5 bg-teal-100 text-teal-700 rounded text-xs font-medium hover:bg-teal-200 transition flex items-center gap-1"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 6L9 17l-5-5"/>
-                      </svg>
-                      Use this description
-                    </button>
-                  </div>
-                )}
-              </div>
-              
               <div>
-                <label className="block font-medium mb-1">Description</label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleChange}
-                  className="w-full border rounded px-2 py-1 whitespace-pre-line"
-                  required
-                  placeholder="Add 3 keywords (e.g. quiet, spacious, fully furnished) above to generate a description, or write your own description here..."
-                  rows={5}
-                />
-              </div>
-              
-              <div>
-                <label className="block font-medium mb-1">Price</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                  <input
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleChange}
-                    className="w-full border rounded pl-7 pr-2 py-1"
-                    required
-                    placeholder={formData.listingType === 'Rent' ? 'USD per month' : 'USD (one-time)'}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block font-medium mb-1">City</label>
+                <label className="block font-medium mb-1">City <span className="text-red-500">*</span></label>
                 <input type="text" name="city" value={formData.city} onChange={handleChange} className="w-full border rounded px-2 py-1" required placeholder="e.g. Hanoi" />
               </div>
               <div>
-                <label className="block font-medium mb-1">Location</label>
+                <label className="block font-medium mb-1">Location <span className="text-red-500">*</span></label>
                 <input type="text" name="location" value={formData.location} onChange={handleChange} className="w-full border rounded px-2 py-1" required placeholder="Neighborhood or Address" />
-              </div>
+                </div>
               <div>
-                <label className="block font-medium mb-1">Square Feet</label>
-                <input type="number" name="squareFeet" value={formData.squareFeet} onChange={handleChange} className="w-full border rounded px-2 py-1" required placeholder="e.g. 1200" />
+                <label className="block font-medium mb-1 flex items-center gap-2">
+                  {areaUnit === 'sqft' ? 'Square Feet' : 'Square Meters'} <span className="text-red-500">*</span>
+                  <div className="flex border rounded overflow-hidden ml-2">
+                    <button
+                      type="button"
+                      className={`px-2 py-0.5 text-xs font-semibold ${areaUnit === 'sqft' ? 'bg-teal-500 text-white' : 'bg-white text-teal-500'}`}
+                      onClick={() => setAreaUnit('sqft')}
+                    >
+                      ft²
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-2 py-0.5 text-xs font-semibold ${areaUnit === 'sqm' ? 'bg-teal-500 text-white' : 'bg-white text-teal-500'}`}
+                      onClick={() => setAreaUnit('sqm')}
+                    >
+                      m²
+                    </button>
+                  </div>
+                </label>
+                <input
+                  type="number"
+                  name="squareFeet"
+                  value={formData.squareFeet}
+                  onChange={handleChange}
+                  className="w-full border rounded px-2 py-1"
+                  placeholder={areaUnit === 'sqft' ? 'e.g. 1200' : 'e.g. 110'}
+                  />
+                {areaError && <div className="text-xs text-red-500 mt-1">{areaError}</div>}
               </div>
             </div>
           </div>
@@ -484,29 +559,46 @@ const CreatePropertyPage = () => {
             <h2 className="text-lg font-bold text-cyan-900 mb-2">Property Details</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block font-medium mb-1">Property Type</label>
-                <select name="propertyType" value={formData.propertyType} onChange={handleChange} className="w-full border rounded px-2 py-1">
-                  <option>Apartment</option>
-                  <option>House</option>
+                <label className="block font-medium mb-1">Property Type <span className="text-red-500">*</span></label>
+                <select name="propertyType" value={formData.propertyType} onChange={handleChange} className="w-full border rounded px-2 py-1" required>
+                  <option>Apartment / Flat</option>
+                  <option>House / Villa</option>
                   <option>Studio</option>
                   <option>Townhouse</option>
+                  <option>Condo / Condominium</option>
+                  <option>Duplex</option>
+                  <option>Penthouse</option>
+                  <option>Loft</option>
+                  <option>Bungalow</option>
+                  <option>Cottage</option>
+                  <option>Commercial Space</option>
+                  <option>Land / Plot</option>
                   <option>Other</option>
                 </select>
               </div>
               <div>
-                <label className="block font-medium mb-1">Listing Type</label>
-                <select name="listingType" value={formData.listingType} onChange={handleChange} className="w-full border rounded px-2 py-1">
+                <label className="block font-medium mb-1">Listing Type <span className="text-red-500">*</span></label>
+                <select name="listingType" value={formData.listingType} onChange={handleChange} className="w-full border rounded px-2 py-1" required>
                   <option>Rent</option>
                   <option>Sale</option>
+                  <option>Short Term Rental</option>
+                  <option>Shared Accommodation</option>
+                  <option>Sublet</option>
+                  <option>Co-living</option>
+                  <option>Vacation Rental</option>
+                  <option>Commercial Lease</option>
+                  <option>Lease to Own</option>
+                  <option>Auction</option>
+                  <option>Exchange</option>
                 </select>
               </div>
               <div>
-                <label className="block font-medium mb-1">Bedrooms</label>
-                <input type="number" name="bedrooms" value={formData.bedrooms} onChange={handleChange} className="w-full border rounded px-2 py-1" />
+                <label className="block font-medium mb-1">Bedrooms <span className="text-red-500">*</span></label>
+                <input type="number" name="bedrooms" value={formData.bedrooms} onChange={handleChange} className="w-full border rounded px-2 py-1" required />
               </div>
               <div>
-                <label className="block font-medium mb-1">Bathrooms</label>
-                <input type="number" name="bathrooms" value={formData.bathrooms} onChange={handleChange} className="w-full border rounded px-2 py-1" />
+                <label className="block font-medium mb-1">Bathrooms <span className="text-red-500">*</span></label>
+                <input type="number" name="bathrooms" value={formData.bathrooms} onChange={handleChange} className="w-full border rounded px-2 py-1" required />
               </div>
               <div className="flex items-center gap-2 mt-2">
                 <input type="checkbox" name="isFurnished" checked={formData.isFurnished} onChange={handleChange} />
@@ -519,6 +611,10 @@ const CreatePropertyPage = () => {
               <div className="flex items-center gap-2 mt-2">
                 <input type="checkbox" name="isPetFriendly" checked={formData.isPetFriendly} onChange={handleChange} />
                 <label>Pet Friendly</label>
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <input type="checkbox" name="depositRequired" checked={formData.depositRequired} onChange={handleChange} />
+                <label>Deposit Required</label>
               </div>
             </div>
           </div>
@@ -541,6 +637,9 @@ const CreatePropertyPage = () => {
               }}
             >
               <label className="block font-medium mb-2">Property Images (max 10)</label>
+              <label htmlFor="property-image-upload" className={`cursor-pointer inline-block px-4 py-2 bg-cyan-100 text-cyan-700 rounded hover:bg-cyan-200 transition mb-2 ${formData.imageFiles.length >= 10 ? 'opacity-50 cursor-not-allowed' : ''}`}>Upload Image</label>
+              <div className="text-xs text-gray-500 mb-2">Drag and drop or select up to 10 images. <span className="font-semibold text-cyan-700">{formData.imageFiles.length}/10</span> selected</div>
+              <div className="text-xs text-gray-700 mb-2">Accepted image types: <span className="font-semibold">JPG, PNG, GIF, WEBP</span></div>
               <input
                 type="file"
                 accept="image/*"
@@ -550,11 +649,17 @@ const CreatePropertyPage = () => {
                 id="property-image-upload"
                 disabled={isUploading || formData.imageFiles.length >= 10}
               />
-              <label htmlFor="property-image-upload" className={`cursor-pointer inline-block px-4 py-2 bg-cyan-100 text-cyan-700 rounded hover:bg-cyan-200 transition mb-2 ${formData.imageFiles.length >= 10 ? 'opacity-50 cursor-not-allowed' : ''}`}>Select Images</label>
-              <div className="text-xs text-gray-500 mb-2">Drag and drop or select up to 10 images. <span className="font-semibold text-cyan-700">{formData.imageFiles.length}/10</span> selected</div>
               <div className="grid grid-cols-4 gap-2 mt-2">
                 {imagePreviews.map((src, idx) => (
-                  <div key={idx} className="relative group">
+                  <div
+                    key={idx}
+                    className="relative group"
+                    draggable
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragOver={handleDragOver}
+                    onDrop={() => handleDrop(idx)}
+                    style={{ cursor: 'grab' }}
+                  >
                     <img src={src} alt="Preview" className="w-full h-20 object-cover rounded border" />
                     <button type="button" onClick={() => handleRemoveImage(idx)} className="absolute top-1 right-1 bg-white/80 rounded-full p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                       <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -589,30 +694,32 @@ const CreatePropertyPage = () => {
                   }
                 }}
               >
-                <label className="block font-medium mb-2">Property Video (optional, max 1)</label>
+                <label className="block font-medium mb-2">Property Video (optional, max 2)</label>
+                <label htmlFor="property-video-upload" className={`cursor-pointer inline-block px-4 py-2 bg-cyan-100 text-cyan-700 rounded hover:bg-cyan-200 transition mb-2 ${videoFile ? videoFile.length >= 2 ? 'opacity-50 cursor-not-allowed' : '' : ''}`}>Upload Video</label>
+                <div className="text-xs text-gray-500 mb-2">Drag and drop or select up to 2 video files. <span className="font-semibold text-cyan-700">{videoFile ? videoFile.length : 0}/2 selected</span></div>
+                <div className="text-xs text-gray-700 mb-2">Accepted video types: <span className="font-semibold">MP4, MOV, AVI, WEBM</span></div>
                 <input
                   type="file"
                   accept="video/*"
+                  multiple
                   onChange={handleVideoChange}
                   className="hidden"
                   id="property-video-upload"
-                  disabled={isUploading || !!videoFile}
+                  disabled={isUploading || (videoFile ? videoFile.length >= 2 : false)}
                 />
-                <label htmlFor="property-video-upload" className={`cursor-pointer inline-block px-4 py-2 bg-cyan-100 text-cyan-700 rounded hover:bg-cyan-200 transition mb-2 ${videoFile ? 'opacity-50 cursor-not-allowed' : ''}`}>Select Video</label>
-                <div className="text-xs text-gray-500 mb-2">Drag and drop or select a video file. <span className="font-semibold text-cyan-700">{videoFile ? '1/1 selected' : '0/1 selected'}</span></div>
-                {videoFile && (
-                  <div className="flex flex-col items-center mt-2">
+                {videoFile && videoPreview && videoFile.map((file, idx) => (
+                  <div key={idx} className="flex flex-col items-center mt-2">
                     <div className="flex items-center gap-2 text-sm text-cyan-900 font-medium">
                       <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0 1 21 8.618v6.764a1 1 0 0 1-1.447.894L15 14M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Z"/></svg>
-                      <span>{videoFile.name}</span>
-                      <span className="text-xs text-gray-500">({(videoFile.size / 1024 / 1024).toFixed(1)} MB)</span>
-                      <button type="button" onClick={handleRemoveVideo} className="ml-2 bg-white/80 rounded-full p-1 text-red-500 border border-red-200 hover:bg-red-50">
+                      <span>{file.name}</span>
+                      <span className="text-xs text-gray-500">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
+                      <button type="button" onClick={() => handleRemoveVideo(idx)} className="ml-2 bg-white/80 rounded-full p-1 text-red-500 border border-red-200 hover:bg-red-50">
                         <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                       </button>
                     </div>
-                    <video src={videoPreview!} controls className="w-full h-40 object-cover rounded border mt-2" />
+                    <video src={videoPreview[idx]} controls className="w-full h-40 object-cover rounded border mt-2" />
                   </div>
-                )}
+                ))}
               </div>
             </div>
           </div>
@@ -630,6 +737,25 @@ const CreatePropertyPage = () => {
                   className="w-full border rounded px-2 py-1"
                   placeholder="e.g. WiFi, Pool, Gym, Balcony"
                 />
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {amenitySuggestions.map(a => (
+                    <button
+                      key={a}
+                      type="button"
+                      className="px-2 py-1 rounded bg-cyan-100 text-cyan-700 text-xs font-medium hover:bg-cyan-200 transition"
+                      onClick={() => addAmenity(a)}
+                    >
+                      {a}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="ml-2 px-2 py-1 rounded bg-cyan-200 text-cyan-900 text-xs font-medium hover:bg-cyan-300 transition"
+                    onClick={generateAmenitySuggestions}
+                  >
+                    Regenerate
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block font-medium mb-1">Lifestyle Tags <span className="text-xs text-gray-500">(comma separated)</span></label>
@@ -641,9 +767,28 @@ const CreatePropertyPage = () => {
                   className="w-full border rounded px-2 py-1"
                   placeholder="e.g. Family, Urban, Pet Owners"
                 />
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {lifestyleSuggestions.map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      className="px-2 py-1 rounded bg-sky-100 text-sky-700 text-xs font-medium hover:bg-sky-200 transition"
+                      onClick={() => addLifestyle(t)}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="ml-2 px-2 py-1 rounded bg-sky-200 text-sky-900 text-xs font-medium hover:bg-sky-300 transition"
+                    onClick={generateLifestyleSuggestions}
+                  >
+                    Regenerate
+                  </button>
+                </div>
               </div>
               <div>
-                <label className="block font-medium mb-1">Map Location <span className="text-xs text-gray-500">(address or coordinates)</span></label>
+                <label className="block font-medium mb-1">Map Location <span className="text-red-500">*</span><span className="text-xs text-gray-500"> (address or coordinates)</span></label>
                 <input
                   type="text"
                   name="map_location"
@@ -658,7 +803,49 @@ const CreatePropertyPage = () => {
           {/* Submission Feedback */}
           {submitError && <div className="text-xs text-red-500 mt-1">{submitError}</div>}
           {submitSuccess && <div className="text-xs text-green-600 mt-1">{submitSuccess}</div>}
-          <button type="submit" className="w-full py-2 bg-teal-500 text-white rounded hover:bg-teal-600 transition" disabled={isUploading}>Create Property</button>
+          <div className="mt-4">
+            <label className="block font-medium mb-1">Description <span className="text-red-500">*</span></label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              className="w-full border rounded px-2 py-1 whitespace-pre-line"
+              required
+              placeholder="Add 3 keywords (e.g. quiet, spacious, fully furnished) above to generate a description, or write your own description here..."
+              rows={5}
+            />
+          </div>
+          <div className="mt-4">
+            <label className="block font-medium mb-1">AI Description Assistant</label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="px-3 py-1 rounded bg-cyan-600 text-white font-semibold hover:bg-cyan-700 transition"
+                onClick={handleAISimulate}
+              >
+                AI description assistant
+              </button>
+              <button
+                type="button"
+                onClick={generateDescription}
+                disabled={isGeneratingDescription}
+                className="px-4 py-1 bg-teal-500 text-white rounded text-sm hover:bg-teal-600 transition shadow-sm"
+              >
+                {isGeneratingDescription ? (
+                  <div className="flex items-center gap-1">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Generating...
+                  </div>
+                ) : (
+                  'Generate'
+                )}
+              </button>
+            </div>
+          </div>
+          <button type="submit" className="w-full bg-teal-500 text-white font-semibold py-2 px-4 rounded hover:bg-teal-600 transition" disabled={isUploading}>Create New Listing</button>
         </form>
       </div>
       {showPhoneModal && (
@@ -678,6 +865,19 @@ const CreatePropertyPage = () => {
             <div className="text-cyan-800 text-sm mb-4 text-center">Please add your email to your profile before listing a property. This helps buyers contact you safely.</div>
             <Link href="/profile/edit" className="w-full px-4 py-2 rounded bg-teal-500 text-white font-semibold hover:bg-teal-600 transition text-center">Edit Profile</Link>
             <button className="mt-4 text-xs text-cyan-700 underline" onClick={() => setShowEmailModal(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {showAIModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-xl shadow-lg p-8 max-w-sm w-full flex flex-col items-center border border-cyan-200">
+            <div className="flex items-center gap-2 mb-4">
+              <svg className="animate-spin h-6 w-6 text-cyan-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span className="text-cyan-900 font-semibold text-lg">Analyzing your photos and details…</span>
+            </div>
           </div>
         </div>
       )}

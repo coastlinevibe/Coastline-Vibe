@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Calendar, Clock, MapPin, Loader2, Tag, X } from 'lucide-react';
+import PoliteRewriter from './PoliteRewriter';
 
 interface EventCreatorProps {
   communityId: string;
@@ -34,6 +35,18 @@ const EventCreator: React.FC<EventCreatorProps> = ({ communityId, onEventCreated
 
   const handleRemoveTag = (tagToRemove: string) => {
     setTags(tags.filter(tag => tag !== tagToRemove));
+  };
+
+  const handleRewriteTitle = (rewrittenText: string) => {
+    setTitle(rewrittenText);
+  };
+
+  const handleRewriteDescription = (rewrittenText: string) => {
+    setDescription(rewrittenText);
+  };
+
+  const handleRewriteLocation = (rewrittenText: string) => {
+    setLocation(rewrittenText);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -149,6 +162,15 @@ const EventCreator: React.FC<EventCreatorProps> = ({ communityId, onEventCreated
             className="w-full p-2 border border-gray-300 rounded-md"
             disabled={isCreating}
           />
+          
+          {/* Add PoliteRewriter for title */}
+          <div className="mt-1">
+            <PoliteRewriter
+              originalText={title}
+              onRewritten={handleRewriteTitle}
+              disabled={isCreating || !title.trim()}
+            />
+          </div>
         </div>
 
         <div className="mb-4">
@@ -164,6 +186,15 @@ const EventCreator: React.FC<EventCreatorProps> = ({ communityId, onEventCreated
             className="w-full p-2 border border-gray-300 rounded-md"
             disabled={isCreating}
           />
+          
+          {/* Add PoliteRewriter for description */}
+          <div className="mt-1">
+            <PoliteRewriter
+              originalText={description}
+              onRewritten={handleRewriteDescription}
+              disabled={isCreating || !description.trim()}
+            />
+          </div>
         </div>
 
         <div className="mb-4">
@@ -212,6 +243,15 @@ const EventCreator: React.FC<EventCreatorProps> = ({ communityId, onEventCreated
               className="w-full p-2 border border-gray-300 rounded-md"
               disabled={isCreating}
             />
+            
+            {/* Add PoliteRewriter for location */}
+            <div className="mt-1">
+              <PoliteRewriter
+                originalText={location}
+                onRewritten={handleRewriteLocation}
+                disabled={isCreating || !location.trim()}
+              />
+            </div>
           </div>
         )}
 

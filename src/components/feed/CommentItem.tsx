@@ -15,7 +15,9 @@ import {
   ShieldCheck,
   Sailboat,
   MessageSquare,
-  Reply
+  Reply,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { renderFormattedText } from '@/utils/textProcessing';
@@ -56,6 +58,11 @@ export interface CommentItemProps {
   authorRole?: string | null;
   authorIsLocationVerified?: boolean | null;
   authorLastSeenAt?: string | null;
+  
+  hasReplies?: boolean;
+  repliesCount?: number;
+  repliesVisible?: boolean;
+  onToggleReplies?: () => void;
 }
 
 export default function CommentItem({
@@ -85,6 +92,10 @@ export default function CommentItem({
   authorRole,
   authorIsLocationVerified,
   authorLastSeenAt,
+  hasReplies,
+  repliesCount,
+  repliesVisible,
+  onToggleReplies,
 }: CommentItemProps) {
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const optionsMenuRef = useRef<HTMLDivElement>(null);
@@ -102,9 +113,6 @@ export default function CommentItem({
 
   const [optimisticLikeCount, setOptimisticLikeCount] = useState(likeCount);
   const [optimisticIsLiked, setOptimisticIsLiked] = useState(isLikedByCurrentUser);
-
-  // Add state for showing/hiding replies
-  const [showReplies, setShowReplies] = useState(false);
 
   const profileDataForTooltip: UserTooltipProfileData | null = commentAuthorId ? {
     id: commentAuthorId,
@@ -287,6 +295,14 @@ export default function CommentItem({
     }
   };
 
+  const handleToggleRepliesClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onToggleReplies) {
+      onToggleReplies();
+    }
+  };
+
   // Positioning and Indentation Constants
   const ABSOLUTE_TRUNK_X_PX = 4;          // Absolute X pos of the main vertical trunk line
   const MAIN_COMMENT_CONTENT_SHIFT_PX = 8; // Margin for main comment content (ml-2)
@@ -424,6 +440,24 @@ export default function CommentItem({
                   {showReplyForm ? 'Cancel' : 'Reply'}
                 </button>
               )}
+              {hasReplies && onToggleReplies && (
+                <button 
+                  onClick={handleToggleRepliesClick}
+                  className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center transition-colors"
+                >
+                  {repliesVisible ? (
+                    <>
+                      <ChevronUp size={14} className="mr-1" />
+                      Hide {repliesCount} {repliesCount === 1 ? 'reply' : 'replies'}
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown size={14} className="mr-1" />
+                      Show {repliesCount} {repliesCount === 1 ? 'reply' : 'replies'}
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
           {showReplyForm && !isEditing && onReplySubmit && (
@@ -441,32 +475,6 @@ export default function CommentItem({
           )}
         </div>
       </div>
-
-      {/* Render Replies */}
-      {replies && replies.length > 0 && (
-        <div className={`mt-3 ${depth === 1 ? 'pl-4 border-l-2 border-gray-100' : ''}`}>
-          <button
-            onClick={() => setShowReplies(!showReplies)} 
-            className="text-xs text-blue-600 hover:underline mb-2"
-          >
-            {showReplies ? 'Hide' : `View ${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
-          </button>
-          {showReplies && replies.map(reply => (
-            <CommentItem
-              key={reply.id}
-              {...reply}
-              currentUserId={currentUserId}
-              onUpdateComment={onUpdateComment}
-              onDeleteComment={onDeleteComment}
-              onReplySubmit={onReplySubmit}
-              onLikeComment={onLikeComment}
-              onUnlikeComment={onUnlikeComment}
-              replies={reply.replies}
-              communityId={communityId}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 } 

@@ -5,7 +5,8 @@ import Image from 'next/image';
 import { 
   Heart, MessageCircle, Share2, MoreHorizontal, UserCircle2, Send, Loader2, Trash2, Edit3, XSquare, CheckSquare, 
   Megaphone, CalendarDays, HelpCircle, BarChart3, Pin, PinOff, Flag, Smile, ShieldCheck,
-  Sailboat, ChevronLeft, ChevronRight, Reply
+  Sailboat, ChevronLeft, ChevronRight, Reply, MapPin, Calendar, CheckCircle2, XCircle, Image as ImageIcon, Paperclip, 
+  Lock, AlertTriangle, Download, FileSpreadsheet, FilePdf, File, Video, Shield, User, Pencil, Plus, ChevronDown, ChevronUp
 } from 'lucide-react'; 
 import CommentItem, { type CommentItemProps } from './CommentItem';
 import FeedPostReactionBar from './FeedPostReactionBar';
@@ -26,7 +27,8 @@ import { createBrowserClient } from '@supabase/ssr'; // Ensure this is the corre
 import { supabase } from '@/lib/supabaseClient'; // Corrected import path for Supabase client
 import UserTooltipWrapper from '@/components/user/UserTooltipWrapper';
 import { type UserTooltipProfileData } from '@/components/user/UserTooltipDisplay'; // Corrected import path for the type
-import { createPollVoteNotification } from '@/utils/notificationUtils';
+import { createPollVoteNotification, createRsvpNotification } from '@/utils/notificationUtils';
+import { Sticker as StickerType } from '@/lib/stickers/sticker-client';
 
 // Interface for props passed to FeedPostItem
 export interface FeedPostItemProps {
@@ -195,6 +197,7 @@ const PostTypeSpecificElements: React.FC<{
   onVote: (pollOptionId: string) => Promise<void>;
   userVote: string | null;
   currentUserId?: string | null;
+  communityId: string;
 }> = ({
   post_type,
   title,
@@ -210,6 +213,7 @@ const PostTypeSpecificElements: React.FC<{
   onVote,
   userVote,
   currentUserId,
+  communityId,
 }) => {
   let indicatorStyle: React.CSSProperties = {};
   let icon: React.ReactNode | null = null;
@@ -304,6 +308,7 @@ const PostTypeSpecificElements: React.FC<{
             key={`poll-${postIdForPollCard}`}
             postId={postIdForPollCard}
             pollId={poll_id || ''}
+            communityId={communityId}
             question={pollDetails.question}
             options={pollDetails.options}
             userVote={userVote}
@@ -693,14 +698,15 @@ export default function FeedPostItem({
 
   useEffect(() => { 
     const fetchRsvps = async () => {
-      if (post_type !== 'event' || !id || !supabase) return;
+      if (post_type !== 'event' || !id || !supabase || !communityId) return;
       setIsLoadingRsvps(true);
       setRsvpError(null);
       try {
         const { data, error } = await supabase
           .from('event_rsvps')
           .select('user_id, status, profile:profiles(username, avatar_url)')
-          .eq('event_post_id', id);
+          .eq('event_post_id', id)
+          .eq('community_id', communityId);
         if (error) throw error;
         const transformedData = data.map(rsvp => ({
           ...rsvp,
@@ -717,7 +723,7 @@ export default function FeedPostItem({
       }
     };
     fetchRsvps();
-  }, [id, post_type, supabase, currentUserId]);
+  }, [id, post_type, supabase, currentUserId, communityId]);
 
   const handleOptimisticLike = async () => {
     if (!currentUserId || !onToggleLike) return;
@@ -741,9 +747,9 @@ export default function FeedPostItem({
     }
   };
 
-  const handleCommentSubmitInternal = async (data: { commentText: string; files?: File[] }) => {
-    const { commentText, files } = data;
-    if (!commentText.trim() && (!files || files.length === 0)) return false;
+  const handleCommentSubmitInternal = async (data: { commentText: string; files?: File[]; sticker?: StickerType }) => {
+    const { commentText, files, sticker } = data;
+    if (!commentText.trim() && (!files || files.length === 0) && !sticker) return false;
     if (!currentUserId || !onCommentSubmit) return false;
 
     setIsSubmittingComment(true);
@@ -755,7 +761,7 @@ export default function FeedPostItem({
         setShowCommentInput(true); // Keep input open or re-open if it was closed
         // Comments will be reloaded by the parent page or via loadComments() if triggered
         // Potentially trigger a direct reload here too if needed:
-            loadComments(); 
+        loadComments(); 
         return true;
       } else {
         setReactionError("Failed to submit comment. Please try again.");
@@ -774,10 +780,15 @@ export default function FeedPostItem({
 
   const handleCommentFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    // Assuming newCommentText holds the current comment input value
-    // Files are not explicitly handled by this CommentForm instance in FeedPostItem
-    // but handleCommentSubmitInternal can accept them if CommentForm is updated.
-    await handleCommentSubmitInternal({ commentText: newCommentText }); 
+    
+    // Extract sticker data if present
+    const customEvent = event as any;
+    const sticker = customEvent.sticker;
+    
+    await handleCommentSubmitInternal({ 
+      commentText: newCommentText,
+      sticker: sticker
+    });
   };
 
   const handleTogglePinInternal = async () => {
@@ -929,7 +940,7 @@ export default function FeedPostItem({
 };
 
 const handleRsvpButtonClick = async (status: 'yes' | 'no' | 'maybe') => {
-  if (!currentUserId || !onRsvpAction || !id) return;
+  if (!currentUserId || !onRsvpAction || !id || !communityId) return;
   setIsSubmittingRsvp(true);
   const previousStatus = currentUserRsvpStatus;
   setCurrentUserRsvpStatus(status); // Optimistic update
@@ -945,13 +956,25 @@ const handleRsvpButtonClick = async (status: 'yes' | 'no' | 'maybe') => {
       const { data, error } = await supabase
       .from('event_rsvps')
         .select('user_id, status, profile:profiles(username, avatar_url)')
-      .eq('event_post_id', id);
+        .eq('event_post_id', id)
+        .eq('community_id', communityId);
       if (error) throw error;
       const transformedDataAfterRsvp = data.map(rsvp => ({
         ...rsvp,
         profile: rsvp.profile && Array.isArray(rsvp.profile) && rsvp.profile.length > 0 ? rsvp.profile[0] : null
       }));
       setRsvps(transformedDataAfterRsvp as RsvpData[]);
+      // Trigger RSVP notification if not self
+      if (postAuthorUserId !== currentUserId) {
+        await createRsvpNotification(
+          postAuthorUserId,
+          currentUserId,
+          id,
+          communityId,
+          authorName,
+          status
+        );
+      }
     }
   } catch (err: any) {
     console.error('Error submitting RSVP:', err);
@@ -1150,6 +1173,7 @@ return (
       event_location_text={event_location_text} event_description={event_description}
       poll_id={poll_id} postIdForPollCard={id} pollDetails={pollDetails} isLoadingPoll={isLoadingPoll}
       pollError={pollFetchError} onVote={handleVoteOnPoll} userVote={userPollVote} currentUserId={currentUserId}
+      communityId={communityId}
     />
 
     {!editMode && textContent && post_type !== 'poll' && post_type !== 'event' && (
@@ -1264,116 +1288,17 @@ return (
       <div className="flex items-center space-x-2">
         <button onClick={handleOptimisticLike} className={`flex items-center transition-colors px-2 py-1 rounded disabled:opacity-60 ${optimisticIsLiked ? 'text-red-500 hover:text-red-600' : 'text-gray-500 hover:text-red-500'}`} disabled={!currentUserId || isLiking}>
           {isLiking ? <Loader2 className="animate-spin w-4 h-4 mr-1" /> : <Heart className={`w-4 h-4 mr-1 ${optimisticIsLiked ? 'fill-current' : ''}`} />}
-          <span className="text-sm font-medium tabular-nums">{optimisticLikeCount}</span>
         </button>
-        <button onClick={() => onOpenCommentsModal ? onOpenCommentsModal() : setShowComments(!showComments)} className="flex items-center hover:text-blue-500 px-2 py-1">
-          <MessageCircle size={16} className="mr-1.5" /> 
-          <span className="text-sm font-medium">Comment {optimisticCommentCount > 0 && `(${optimisticCommentCount})`}</span>
+        <button onClick={handleCommentSubmitInternal} className="flex items-center transition-colors px-2 py-1 rounded disabled:opacity-60 text-gray-500 hover:text-gray-700">
+          <MessageCircle size={16} className="mr-1" />
         </button>
-        
-        {/* Add FeedPostReactionBar */}
-        <FeedPostReactionBar 
-          postId={id} 
-          onReactionAdded={handleReactionAdded} 
-        />
-        
-        <button onClick={handleShare} className="flex items-center hover:text-green-500">
-          <Share2 size={20} className="mr-1.5" /> <span className="text-sm">Share</span>
+        <button onClick={handleReport} className="flex items-center transition-colors px-2 py-1 rounded disabled:opacity-60 text-gray-500 hover:text-gray-700">
+          <AlertTriangle size={16} className="mr-1" />
         </button>
-        {showCopied && <span className="text-xs text-green-600 absolute right-0 -bottom-5 bg-slate-100 px-2 py-0.5 rounded shadow">Link copied!</span>}
+        <button onClick={handleShare} className="flex items-center transition-colors px-2 py-1 rounded disabled:opacity-60 text-gray-500 hover:text-gray-700">
+          <Share2 size={16} className="mr-1" />
+        </button>
       </div>
-      
-      {currentUserId && currentUserId !== postAuthorUserId && (
-        <button onClick={(e) => { e.preventDefault(); setShowReportModal(true); }} className="flex items-center hover:text-red-500" title="Report post">
-          <Flag size={18} className="mr-1" />
-        </button>
-      )}
     </div>
-    {reactionError && <p className="text-xs text-red-500 mt-2 text-center">{reactionError}</p>}
-
-    {showComments && (
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        {isLoadingComments && !comments.length ? (
-          <div className="flex justify-center items-center py-4"><Loader2 className="animate-spin text-blue-500" size={24} /> <span className="ml-2 text-gray-600">Loading comments...</span></div>
-        ) : commentError ? (
-          <p className="text-xs text-red-500 mb-2">{commentError}</p>
-        ) : comments.length > 0 ? (
-          <CommentsList 
-            comments={mapToCommentDataStructure(comments)}
-                currentUserId={currentUserId}
-            onReplySubmit={handleReplySubmitWrapper}
-            onLikeComment={onLikeComment}
-            onUnlikeComment={onUnlikeComment}
-            onActualUpdateComment={onActualUpdateComment}
-            onActualDeleteComment={onActualDeleteComment}
-            communityId={communityId}
-          />
-        ) : (
-          <p className="text-sm text-center text-gray-500 py-3">No comments yet.</p>
-        )}
-        {currentUserId && !editMode && showCommentInput && (
-          <div className="mt-4">
-            <CommentForm
-              onSubmit={handleCommentFormSubmit}
-              value={newCommentText}
-              onChange={setNewCommentText}
-              isSubmitting={isSubmittingComment}
-              placeholder="Write a comment..."
-              communityId={communityId}
-            />
-          </div>
-        )}
-      </div>
-    )}
-
-    {showReportModal && (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowReportModal(false)}>
-        <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Report Post</h3>
-            <button onClick={() => setShowReportModal(false)} className="text-gray-400 hover:text-gray-600">
-              <XSquare size={20}/>
-            </button>
-          </div>
-          <textarea
-            className="w-full p-2 border rounded mb-4 bg-white text-black border-gray-300 placeholder-gray-400"
-            rows={3}
-            placeholder="Please provide a reason for reporting this post..."
-            value={reportReason}
-            onChange={(e) => setReportReason(e.target.value)}
-            autoFocus
-          />
-          {reactionError && <p className="text-xs text-red-500 mb-3">{reactionError}</p>}
-          <div className="flex justify-end space-x-3">
-            <button onClick={() => { setShowReportModal(false); setReportReason(''); setReactionError(null); }} className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-md text-gray-800">Cancel</button>
-            <button onClick={handleReport} className="px-4 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-md flex items-center" disabled={!reportReason.trim()}>
-              Submit Report
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {isDeleting && (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setIsDeleting(false)}>
-        <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
-          <div className="flex justify-between items-center mb-1">
-              <h3 className="text-lg font-semibold text-gray-900">Confirm Deletion</h3>
-              <button onClick={() => setIsDeleting(false)} className="text-gray-400 hover:text-gray-600">
-                  <XSquare size={20}/>
-              </button>
-          </div>
-          <p className="text-sm text-gray-600 mb-6">Are you sure you want to delete this post? This action cannot be undone.</p>
-          <div className="flex justify-end space-x-3">
-            <button onClick={() => setIsDeleting(false)} className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-md text-gray-800">Cancel</button>
-            <button onClick={async () => { setIsDeleting(false); setShowMoreOptions(false); if (onDeletePost) await onDeletePost(id); }} className="px-4 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-md flex items-center">
-              Delete
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
   </div>
 );
-} 

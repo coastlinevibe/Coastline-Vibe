@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 
 /**
  * Gets the base URL for API calls based on the current window location
- * Handles development environment with either port 3000 or 3001
+ * Handles development environment with either port 3000 or 3002
  */
 function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
@@ -11,21 +11,21 @@ function getApiBaseUrl(): string {
     
     // For development environment, ensure consistency between ports
     if (process.env.NODE_ENV === 'development') {
-      // If we're on port 3000 but APIs expect 3001, modify the URL
+      // If we're on port 3000 but APIs expect 3002, modify the URL
       if (origin.includes('localhost:3000')) {
-        console.log('Development mode detected on port 3000, adjusting API calls to port 3001');
-        return origin.replace('localhost:3000', 'localhost:3001');
+        console.log('Development mode detected on port 3000, adjusting API calls to port 3002');
+        return origin.replace('localhost:3000', 'localhost:3002');
       }
       
-      // If we're already on port 3001, use it directly
-      if (origin.includes('localhost:3001')) {
+      // If we're already on port 3002, use it directly
+      if (origin.includes('localhost:3002')) {
         return origin;
       }
       
-      // For any other localhost port, default to 3001
+      // For any other localhost port, default to 3002
       if (origin.includes('localhost')) {
-        console.log('Development mode detected, using port 3001 for API calls');
-        return `http://localhost:3001`;
+        console.log('Development mode detected, using port 3002 for API calls');
+        return `http://localhost:3002`;
       }
     }
     
@@ -35,11 +35,11 @@ function getApiBaseUrl(): string {
   
   // Fallback for server-side rendering in development
   if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:3001';
+    return 'http://localhost:3002';
   }
   
   // Fallback for server-side rendering in production
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 }
 
 /**
@@ -53,7 +53,7 @@ export async function politeRewrite(text: string): Promise<string> {
     const baseUrl = getApiBaseUrl();
     console.log(`Using API base URL: ${baseUrl}`);
     
-    const response = await fetch(`${baseUrl}/api/ai/rewrite`, {
+    const response = await fetch(`${baseUrl}/api/ai/polite-rewriter`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),

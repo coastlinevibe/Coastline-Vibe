@@ -79,10 +79,10 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
     <header className="sticky top-0 z-40 w-full bg-offWhite/90 backdrop-blur border-b border-seafoam/30 shadow-subtle">
       <div className="w-full max-w-content mx-auto flex items-center h-16 px-4 md:px-8 justify-between gap-8">
         {/* Logo */}
-        <div className="flex items-center gap-2 font-heading font-bold text-2xl text-primaryTeal tracking-tight min-w-max">
+        <Link href="/" className="flex items-center gap-2 font-heading font-bold text-2xl text-primaryTeal tracking-tight min-w-max cursor-pointer">
           <span className="text-3xl">🌴</span>
           <span>CoastlineVibe</span>
-        </div>
+        </Link>
         {/* Desktop nav (centered if space) */}
         {!isHome && user && (
           <nav className="hidden md:flex items-center gap-8 flex-grow justify-center">
@@ -107,14 +107,20 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
         {!isHome && user && (
           <div className="hidden md:flex items-center gap-4 ml-4 min-w-max">
             {profile && (
-              <Link href="/community/miami" className="flex items-center gap-2 cursor-pointer">
+              <Link href="/business/dashboard" className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                // Set localStorage to indicate settings tab should be active
+                localStorage.setItem('activeDashboardTab', 'settings');
+              }}>
                 <img src={profile.avatar_url || '/placeholder-avatar.png'} alt={profile.username} className="w-8 h-8 rounded-full object-cover border border-seafoam" />
                 <span className="font-medium text-darkCharcoal hidden md:inline">{profile.username}</span>
               </Link>
             )}
+            {/* Remove Dashboard button for business profiles */}
+            {profile && profile.role !== 'business' && (
             <Link href={`/community/${communityId}`} passHref legacyBehavior>
               <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communityId}` ? 'ring-2 ring-seafoam' : ''}`}>Dashboard</a>
             </Link>
+            )}
             <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
           </div>
         )}
@@ -133,43 +139,42 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
           </div>
         )}
         {/* Mobile menu dropdown */}
-        {!isHome && user && menuOpen && (
-          <div className="absolute top-16 left-0 w-full bg-offWhite border-b border-seafoam/30 shadow-elevated flex flex-col md:hidden z-50">
-            <nav className="flex flex-col gap-1 p-4">
-              {navLinks.map((link) => (
+        {menuOpen && !isHome && user && (
+          <div className="absolute top-16 right-0 w-64 bg-white shadow-lg rounded-lg overflow-hidden z-50">
+            <div className="py-4">
+              {/* Mobile nav items */}
+              {navLinks.map((item) => (
                 <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`px-4 py-2 rounded-md font-medium text-darkCharcoal transition-all duration-200
-                    hover:bg-seafoam/20 hover:text-primaryTeal
-                    ${(pathname ?? '') === link.href ? 'bg-seafoam/30 text-primaryTeal font-semibold' : ''}
-                  `}
+                  key={item.href}
+                  href={item.href}
+                  className={`block px-4 py-2 text-darkCharcoal hover:bg-seafoam/20 ${
+                    pathname?.includes(item.href) ? 'bg-seafoam/10 font-semibold' : ''
+                  }`}
                   onClick={() => setMenuOpen(false)}
                 >
-                  {link.label}
+                  {item.label}
                 </Link>
               ))}
-              <Link
-                href="/notifications"
-                className="px-4 py-2 rounded-md font-medium text-darkCharcoal transition-all duration-200
-                  hover:bg-seafoam/20 hover:text-primaryTeal"
-                onClick={() => setMenuOpen(false)}
-              >
-                Notifications
-              </Link>
-            </nav>
+            </div>
             <div className="flex flex-col gap-2 px-4 pb-4 border-t border-seafoam/30">
               {profile && (
-                <Link href="/community/miami" className="flex items-center gap-2 cursor-pointer py-2" onClick={() => setMenuOpen(false)}>
+                <Link href="/business/dashboard" className="flex items-center gap-2 cursor-pointer py-2" onClick={() => {
+                  setMenuOpen(false);
+                  // Set localStorage to indicate settings tab should be active
+                  localStorage.setItem('activeDashboardTab', 'settings');
+                }}>
                   <img src={profile.avatar_url || '/placeholder-avatar.png'} alt={profile.username} className="w-8 h-8 rounded-full object-cover border border-seafoam" />
                   <span className="font-medium text-darkCharcoal">{profile.username}</span>
                 </Link>
               )}
+              {/* Remove Dashboard button for business profiles */}
+              {profile && profile.role !== 'business' && (
               <Link href={`/community/${communityId}`} passHref legacyBehavior>
                 <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communityId}` ? 'ring-2 ring-seafoam' : ''}`}
                   onClick={() => setMenuOpen(false)}
                 >Dashboard</a>
               </Link>
+              )}
               <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
             </div>
           </div>

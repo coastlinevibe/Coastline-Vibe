@@ -5,7 +5,7 @@ import { TideReaction, TideReactionType } from '@/types/tide-reactions';
 import { v4 as uuidv4 } from 'uuid';
 
 // Supabase storage bucket URL for reactions
-const REACTIONS_BUCKET_URL = 'https://kbjudvamidagzzfvxgov.supabase.co/storage/v1/object/public/reactions';
+const REACTIONS_BUCKET_URL = 'https://kbjudvamidagzzfvxgov.supabase.co/storage/v1/object/public/reactions/post%20reactions';
 
 // Context type
 interface TideReactionsContextType {
@@ -207,7 +207,7 @@ export const TideReactionsProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [isOnline]);
   
   // Add a reaction
-  const addReaction = (postId: string, reactionCode: string, reactionType: string, reactionUrl: string, metadata?: Record<string, any>) => {
+  const addReaction = async (postId: string, reactionCode: string, reactionType: string, reactionUrl: string, metadata?: Record<string, any>) => {
     if (!isOnline) {
       console.warn('Cannot add reaction while offline');
       return;
@@ -249,17 +249,32 @@ export const TideReactionsProvider: React.FC<{ children: React.ReactNode }> = ({
       metadata: metadata || {},
     };
     
-    console.log('Adding new reaction:', newReaction);
+    // Save to database via API (always call the API)
+    try {
+      await fetch('/api/feed/reactions', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postId,
+          reactionType,
+          reactionId: reactionCode,
+          expiresAt: expiresAt.toISOString()
+        }),
+      });
+    } catch (error) {
+      console.error('Error saving reaction to database:', error);
+    }
     
+    // Local state update (keep optimistic UI)
     setReactions(prev => {
-      const postReactions = prev[postId] || [];
-      const newState = {
-        ...prev,
-        [postId]: [...postReactions, newReaction],
-      };
-      console.log('New reactions state:', newState);
-      return newState;
+      const updated = { ...prev };
+      if (!updated[postId]) updated[postId] = [];
+      updated[postId] = [...updated[postId], newReaction];
+      return updated;
     });
+    console.log('Adding new reaction:', newReaction);
   };
   
   // Helper to ensure reaction URLs come from the reactions bucket

@@ -33,6 +33,7 @@ interface Poll {
 interface PollCardProps {
   pollId: string;
   postId: string;
+  communityId: string;
   question?: string;
   options?: PollOption[];
   userVote?: string | null;
@@ -40,7 +41,7 @@ interface PollCardProps {
   totalVotesOverall?: number;
 }
 
-const PollCard: React.FC<PollCardProps> = ({ pollId, postId, question, options, userVote, onVote, totalVotesOverall }) => {
+const PollCard: React.FC<PollCardProps> = ({ pollId, postId, communityId, question, options, userVote, onVote, totalVotesOverall }) => {
   const supabase = createClient();
   const [poll, setPoll] = useState<Poll | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,6 +97,7 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId, question, options, 
           .from('polls')
           .select('*')
           .eq('id', pollId)
+          .eq('community_id', communityId)
           .single();
 
         if (pollError) {
@@ -106,7 +108,8 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId, question, options, 
         const { data: optionsData, error: optionsError } = await supabase
           .from('poll_options')
           .select('*')
-          .eq('poll_id', pollId);
+          .eq('poll_id', pollId)
+          .eq('community_id', communityId);
 
         if (optionsError) {
           throw new Error(`Error fetching poll options: ${optionsError.message}`);
@@ -128,6 +131,7 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId, question, options, 
             .from('poll_votes')
             .select('poll_option_id')
             .eq('poll_id', pollId)
+            .eq('community_id', communityId)
             .eq('user_id', currentUserId)
             .maybeSingle();
 
@@ -165,7 +169,7 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId, question, options, 
     if (pollId && currentUserId !== undefined) {
       fetchPoll();
     }
-  }, [pollId, currentUserId, supabase, question, options, userVote, totalVotesOverall]);
+  }, [pollId, currentUserId, supabase, question, options, userVote, totalVotesOverall, communityId]);
 
   const handleVote = async (optionId: string) => {
     // If parent provided onVote handler, use that
@@ -208,7 +212,8 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId, question, options, 
         .insert({
           poll_id: pollId,
           poll_option_id: optionId,
-          user_id: currentUserId
+          user_id: currentUserId,
+          community_id: communityId
         });
 
       if (voteError) {
@@ -428,7 +433,7 @@ const PollCard: React.FC<PollCardProps> = ({ pollId, postId, question, options, 
           )}
         </div>
         
-        <PollAnalytics pollId={pollId} isCreator={isCreator} />
+        <PollAnalytics pollId={pollId} isCreator={isCreator} communityId={communityId} />
         
         {/* Only show export option to poll creator */}
         {isCreator && (

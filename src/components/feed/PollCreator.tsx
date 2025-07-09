@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Plus, Trash2, Loader2, Calendar, Tag, X } from 'lucide-react';
+import PoliteRewriter from './PoliteRewriter';
 
 interface PollCreatorProps {
   communityId: string;
@@ -44,6 +45,18 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
   const handleOptionChange = (index: number, value: string) => {
     const newOptions = [...options];
     newOptions[index] = value;
+    setOptions(newOptions);
+  };
+
+  // Handler for question rewrite
+  const handleQuestionRewrite = (rewrittenText: string) => {
+    setQuestion(rewrittenText);
+  };
+
+  // Handler for option rewrite
+  const handleOptionRewrite = (index: number, rewrittenText: string) => {
+    const newOptions = [...options];
+    newOptions[index] = rewrittenText;
     setOptions(newOptions);
   };
 
@@ -207,14 +220,24 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
             className="w-full p-2 border border-gray-300 rounded-md"
             disabled={isCreating}
           />
+          
+          {/* Question Polite Rewriter */}
+          <div className="mt-1">
+            <PoliteRewriter
+              originalText={question}
+              onRewritten={handleQuestionRewrite}
+              disabled={isCreating || !question.trim()}
+            />
+          </div>
         </div>
 
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">
+          <label className="block text-sm font-medium mb-2">
             Options
           </label>
+
           {options.map((option, index) => (
-            <div key={index} className="flex items-center mb-2">
+            <div key={index} className="flex mb-2 items-center">
               <input
                 type="text"
                 value={option}
@@ -223,25 +246,37 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
                 className="flex-1 p-2 border border-gray-300 rounded-md mr-2"
                 disabled={isCreating}
               />
-              <button
-                type="button"
-                onClick={() => handleRemoveOption(index)}
-                className="p-1 text-red-500 hover:text-red-700"
-                disabled={options.length <= 2 || isCreating}
-              >
-                <Trash2 size={18} />
-              </button>
+              
+              {/* Option Polite Rewriter */}
+              <div className="mr-2">
+                <PoliteRewriter
+                  originalText={option}
+                  onRewritten={(text) => handleOptionRewrite(index, text)}
+                  disabled={isCreating || !option.trim()}
+                />
+              </div>
+              
+              {options.length > 2 && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveOption(index)}
+                  className="text-red-500 p-1 hover:bg-red-50 rounded-full"
+                  disabled={isCreating}
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           ))}
-          
+
           <button
             type="button"
             onClick={handleAddOption}
-            className="flex items-center text-blue-500 hover:text-blue-700 mt-2"
+            className="mt-2 flex items-center text-blue-600 text-sm"
             disabled={isCreating}
           >
-            <Plus size={18} className="mr-1" />
-            <span>Add Option</span>
+            <Plus size={16} className="mr-1" />
+            Add Option
           </button>
         </div>
 
@@ -256,19 +291,23 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
               disabled={isCreating}
             />
             <label htmlFor="hasExpiration" className="text-sm font-medium">
-              Set poll expiration date
+              Poll has an expiration date
             </label>
           </div>
-          
+
           {hasExpiration && (
-            <div className="flex items-center">
-              <Calendar size={18} className="mr-2 text-gray-500" />
+            <div>
+              <label htmlFor="expirationDate" className="block text-sm font-medium mb-1 flex items-center">
+                <Calendar size={16} className="mr-1" />
+                Expires on
+              </label>
               <input
-                type="datetime-local"
+                id="expirationDate"
+                type="date"
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
                 min={minDate}
-                className="p-2 border border-gray-300 rounded-md"
+                className="w-full p-2 border border-gray-300 rounded-md"
                 disabled={isCreating}
               />
             </div>
@@ -345,7 +384,7 @@ const PollCreator: React.FC<PollCreatorProps> = ({ communityId, onPollCreated })
             </div>
           )}
         </div>
-
+        
         {error && (
           <div className="text-red-500 text-sm mb-4">
             {error}

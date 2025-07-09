@@ -29,6 +29,8 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [showDeclinedModal, setShowDeclinedModal] = useState(false);
+  const [showBannedModal, setShowBannedModal] = useState(false);
+  const [banReason, setBanReason] = useState("");
   const router = useRouter();
   const [showPin, setShowPin] = useState(false);
   const supabase = createClient();
@@ -95,7 +97,7 @@ export default function LoginPage() {
       // Fetch email, is_admin, and community_id from profiles
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .select('email, is_admin, community_id, role, approval_status')
+        .select('email, is_admin, community_id, role, approval_status, is_banned, ban_reason')
         .eq('username', data.username)
         .maybeSingle();
 
@@ -127,6 +129,14 @@ export default function LoginPage() {
       const userCommunityId = profileData.community_id;
       const userRole = profileData.role;
       const approvalStatus = profileData.approval_status;
+
+      // Check if user is banned before sign in
+      if (profileData.is_banned) {
+        setBanReason(profileData.ban_reason || "No reason provided");
+        setShowBannedModal(true);
+        setIsLoading(false);
+        return;
+      }
 
       // Try to sign in first
       const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -160,6 +170,8 @@ export default function LoginPage() {
       // If approved, redirect immediately (no popup)
       if (userRole === "community admin" && userCommunityId) {
         router.push(`/community/${userCommunityId}/admin`);
+      } else if (userRole === 'business' && userCommunityId) {
+        router.push(`/community/${userCommunityId}/business/directory/businessmenu`);
       } else if (userCommunityId) {
         router.push(`/community/${userCommunityId}`);
       } else {
@@ -283,6 +295,21 @@ export default function LoginPage() {
             <button
               className="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold shadow-md transition"
               onClick={() => setShowDeclinedModal(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+      {showBannedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm flex flex-col items-center border border-slate-100">
+            <h2 className="text-xl font-bold text-red-700 mb-4 text-center">Account Banned</h2>
+            <p className="text-slate-700 text-center mb-3">Your account has been banned from this platform.</p>
+            <p className="text-slate-700 text-center mb-6 font-semibold">Reason: {banReason}</p>
+            <button
+              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold shadow-md transition"
+              onClick={() => setShowBannedModal(false)}
             >
               Close
             </button>

@@ -54,6 +54,122 @@ interface CommunityMember {
   communityUuid: string;
 }
 
+// Add a generic modal for approval details
+type ApprovalModalType = 'User' | 'Business' | 'Property' | 'Market Item' | 'Location Verification';
+
+// Replace ApprovalModalItem type definition with explicit union:
+type UserItem = {
+  id: string;
+  username: string;
+  email: string;
+  avatar_url: string | null;
+  status?: string | null;
+  approval_status?: string;
+  role?: string;
+  created_at?: string;
+};
+type BusinessItem = {
+  id: string;
+  username?: string;
+  email?: string;
+  avatar_url?: string | null;
+  bio?: string | null;
+  created_at: string;
+  name?: string;
+  description?: string;
+};
+type ListingItem = {
+  id: string;
+  title: string;
+  type: string;
+};
+type LocationVerificationItem = {
+  id: string;
+  user_id: string;
+  address_line1: string;
+  city: string;
+  postal_code: string;
+  country: string;
+  status: string;
+  created_at: string;
+  profile?: {
+    username?: string;
+    email?: string;
+    avatar_url?: string | null;
+    community_id?: string;
+  };
+};
+type ApprovalModalItem = UserItem | BusinessItem | ListingItem | LocationVerificationItem | null;
+
+interface ApprovalDetailsModalProps {
+  open: boolean;
+  onClose: () => void;
+  item: ApprovalModalItem;
+  type: ApprovalModalType;
+  onApprove: (item: ApprovalModalItem) => void;
+  onReject: (item: ApprovalModalItem) => void;
+}
+
+function ApprovalDetailsModal({ open, onClose, item, type, onApprove, onReject }: ApprovalDetailsModalProps) {
+  if (!open || !item) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg relative">
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
+          aria-label="Close modal"
+        >
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">{type} Details</h2>
+        <div className="space-y-3 text-sm">
+          {/* Render details based on type with type guards */}
+          {type === 'User' && 'username' in item && 'email' in item && (
+            <>
+              <div><span className="font-semibold">Username:</span> {item.username}</div>
+              <div><span className="font-semibold">Email:</span> {item.email}</div>
+              <div><span className="font-semibold">Created:</span> {'created_at' in item && item.created_at ? new Date(item.created_at).toLocaleString() : ''}</div>
+            </>
+          )}
+          {type === 'Business' && ('username' in item || 'name' in item) && (
+            <>
+              <div><span className="font-semibold">Business Name:</span> {'username' in item && item.username ? item.username : ('name' in item ? item.name : '')}</div>
+              <div><span className="font-semibold">Email:</span> {'email' in item ? item.email : ''}</div>
+              <div><span className="font-semibold">Created:</span> {'created_at' in item && item.created_at ? new Date(item.created_at).toLocaleString() : ''}</div>
+              {'description' in item && item.description && <div><span className="font-semibold">Description:</span> {item.description}</div>}
+            </>
+          )}
+          {type === 'Property' && 'title' in item && (
+            <>
+              <div><span className="font-semibold">Title:</span> {item.title}</div>
+              <div><span className="font-semibold">ID:</span> {item.id}</div>
+            </>
+          )}
+          {type === 'Market Item' && 'title' in item && (
+            <>
+              <div><span className="font-semibold">Title:</span> {item.title}</div>
+              <div><span className="font-semibold">ID:</span> {item.id}</div>
+            </>
+          )}
+          {type === 'Location Verification' && 'profile' in item && (
+            <>
+              <div><span className="font-semibold">User:</span> {item.profile?.username || 'N/A'} ({item.profile?.email || 'N/A'})</div>
+              <div><span className="font-semibold">Address:</span> {item.address_line1}, {item.city}, {item.postal_code}, {item.country}</div>
+              <div><span className="font-semibold">Submitted:</span> {'created_at' in item && item.created_at ? new Date(item.created_at).toLocaleString() : ''}</div>
+            </>
+          )}
+        </div>
+        <div className="mt-6 flex gap-2 justify-end">
+          <button onClick={() => { onApprove(item); onClose(); }} className="bg-green-500 text-white px-5 py-2 rounded-md hover:bg-green-600">Approve</button>
+          <button onClick={() => { onReject(item); onClose(); }} className="bg-red-500 text-white px-5 py-2 rounded-md hover:bg-red-600">Reject</button>
+          <button onClick={onClose} className="bg-cyan-200 text-cyan-900 px-5 py-2 rounded-md hover:bg-cyan-300">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CommunityAdminDashboard() {
   const params = useParams();
   const communityId = params?.communityId as string;
@@ -82,7 +198,7 @@ export default function CommunityAdminDashboard() {
   }>>([]);
   const [communityUuid, setCommunityUuid] = useState<string | null>(null);
   const [postSearch, setPostSearch] = useState('');
-  const [approvalsTab, setApprovalsTab] = useState<ApprovalsTab>('members');
+  const [approvalsTab, setApprovalsTab] = useState<ApprovalsTab>('newBusinessPageLaunch');
   const [pendingListings, setPendingListings] = useState<Array<{ id: string; title: string; type: string }>>([]);
   const [approvedBusinesses, setApprovedBusinesses] = useState<any[]>([]);
   const [approvedProperties, setApprovedProperties] = useState<any[]>([]);
@@ -137,6 +253,11 @@ export default function CommunityAdminDashboard() {
 
   // State for the displayable community name
   const [communityDisplayName, setCommunityDisplayName] = useState<string | null>(null);
+
+  // Add state for modal
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [modalItem, setModalItem] = useState<ApprovalModalItem>(null);
+  const [modalType, setModalType] = useState<ApprovalModalType>('User');
 
   const today = new Date().toISOString().slice(0, 10);
   const joinedTodayCount = useMemo(() => users.filter(u => u.approval_status === 'approved' && u.created_at && u.created_at.slice(0, 10) === today).length, [users, today]);
@@ -439,20 +560,47 @@ export default function CommunityAdminDashboard() {
 
   // Approve business
   const handleApproveBusiness = async (businessId: string) => {
-    await supabase
-      .from('profiles')
+    console.log(`[Admin] Attempting to approve business with ID: ${businessId}`);
+    const { error } = await supabase
+      .from('businesses')
       .update({ approval_status: 'approved' })
       .eq('id', businessId);
-    setPendingBusinesses(businesses => businesses.filter(b => b.id !== businessId));
+    
+    if (!error) {
+      console.log(`[Admin] Successfully approved business with ID: ${businessId}`);
+      // Remove from pending list
+      setPendingDirectoryBusinesses(businesses => businesses.filter(b => b.id !== businessId));
+      
+      // Refresh the approved businesses list
+      const { data } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('approval_status', 'approved')
+        .eq('community_id', communityUuid);
+      
+      if (data) {
+        console.log(`[Admin] Updated approved businesses list, now contains ${data.length} businesses`);
+        setApprovedDirectoryBusinesses(data);
+      }
+    } else {
+      console.error('[Admin] Error approving business:', error);
+    }
   };
 
   // Decline business
   const handleDeclineBusiness = async (businessId: string) => {
-    await supabase
-      .from('profiles')
-      .update({ approval_status: 'declined' })
+    console.log(`[Admin] Attempting to decline business with ID: ${businessId}`);
+    const { error } = await supabase
+      .from('businesses')
+      .update({ approval_status: 'rejected' })
       .eq('id', businessId);
-    setPendingBusinesses(businesses => businesses.filter(b => b.id !== businessId));
+    
+    if (error) {
+      console.error('[Admin] Error declining business:', error);
+    } else {
+      console.log(`[Admin] Successfully declined business with ID: ${businessId}`);
+      setPendingDirectoryBusinesses(businesses => businesses.filter(b => b.id !== businessId));
+    }
   };
 
   // Remove business/listing
@@ -597,29 +745,53 @@ export default function CommunityAdminDashboard() {
     setReports(reports => reports.filter(r => r.id !== reportId));
   };
 
-  // Fetch pending local directory businesses from 'profiles' table with is_approved = false
+  // Fetch pending directory businesses when tab is active
+  useEffect(() => {
+    if (approvalsTab === 'newBusinessPageLaunch' && status === "authorized" && communityUuid) {
+      console.log("[Admin] Tab changed to newBusinessPageLaunch, refreshing pending businesses");
+      const fetchPendingBusinesses = async () => {
+        const { data, error } = await supabase
+          .from("businesses")
+          .select("id, name, description, user_id, created_at")
+          .eq("approval_status", "pending")
+          .eq("community_id", communityUuid);
+          
+        if (error) {
+          console.error("[Admin] Error fetching pending directory businesses:", error);
+        } else if (data) {
+          console.log(`[Admin] Found ${data.length} pending directory businesses:`, data);
+          setPendingDirectoryBusinesses(data);
+        }
+      };
+      fetchPendingBusinesses();
+    }
+  }, [approvalsTab, status, communityUuid, supabase]);
+
+  // Initial fetch of pending businesses when component mounts
   useEffect(() => {
     const fetchPendingDirectoryBusinesses = async () => {
       if (status === "authorized" && communityUuid) {
-        console.log(`[Admin] Fetching pending directory businesses for communityUuid: ${communityUuid}`);
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id, username, email, avatar_url, bio, is_approved, created_at")
-          .eq("is_approved", false)
-          .eq("role", "business")
-          .eq("community_id", communityUuid);
+        console.log(`[Admin] Initial fetch of pending directory businesses for communityUuid: ${communityUuid}`);
+        console.log(`[Admin] Using approval_status: 'pending'`);
         
+        const { data, error } = await supabase
+          .from("businesses")
+          .select("id, name, description, user_id, created_at")
+          .eq("approval_status", "pending")
+          .eq("community_id", communityUuid);
+          
         if (error) {
-          console.error("[Admin] Error fetching pending directory businesses:", error);
+          console.error("[Admin] Error fetching pending directory businesses (listings):", error);
           setPendingDirectoryBusinesses([]);
         } else if (data) {
-          console.log('[Admin] Fetched pending directory businesses:', data);
+          console.log(`[Admin] Found ${data.length} pending directory businesses:`, data);
           setPendingDirectoryBusinesses(data);
         } else {
+          console.log("[Admin] No pending directory businesses found");
           setPendingDirectoryBusinesses([]);
         }
       } else {
-        console.log("[Admin] Skipping fetchPendingDirectoryBusinesses: not authorized or no communityUuid.");
+        console.log(`[Admin] Skipping fetchPendingDirectoryBusinesses: status=${status}, communityUuid=${communityUuid}`);
         setPendingDirectoryBusinesses([]);
       }
     };
@@ -808,6 +980,16 @@ export default function CommunityAdminDashboard() {
             <div className="text-lg font-semibold text-cyan-800">Incident Reports</div>
             <div className="text-2xl font-bold text-cyan-900">{reports.length}</div>
           </div>
+          <Link href={`/community/${communityId}/admin/stickers`} className="bg-cyan-50 rounded-lg p-4 text-center hover:bg-cyan-100 transition-colors">
+            <div className="text-lg font-semibold text-cyan-800">Sticker Management</div>
+            <div className="flex justify-center mt-1">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-cyan-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="2" />
+                <circle cx="12" cy="12" r="3" strokeWidth="2" />
+                <path d="M8 12h.01M12 8v.01M12 16v.01M16 12h.01" strokeWidth="2" />
+              </svg>
+            </div>
+          </Link>
         </div>
         <div className="grid grid-cols-1 gap-6 mb-6">
           <div className="bg-cyan-50 rounded-lg p-6">
@@ -1000,6 +1182,7 @@ export default function CommunityAdminDashboard() {
                         <div className="flex gap-2">
                           <button onClick={() => handleApprove(user.id)} className="bg-green-500 text-white px-3 py-1 rounded-md hover:bg-green-600">Approve</button>
                           <button onClick={() => handleDecline(user.id)} className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600">Reject</button>
+                          <button onClick={() => { if (user) { setModalItem(user as ApprovalModalItem); setModalType('User'); setModalOpen(true); } }} className="bg-cyan-200 text-cyan-900 px-3 py-1 rounded-md hover:bg-cyan-300">View</button>
                         </div>
                       </li>
                     ))}
@@ -1041,10 +1224,7 @@ export default function CommunityAdminDashboard() {
                             className="bg-green-500 text-white px-3 py-1 rounded-md hover:bg-green-600 text-sm">Approve</button>
                           <button onClick={() => handleRejectLocationVerification(req.id)} className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600 text-sm">Reject</button>
                           <button 
-                            onClick={() => {
-                              setViewingRequestDetails(req);
-                              setIsViewRequestModalVisible(true);
-                            }}
+                            onClick={() => { if (req) { setModalItem(req as ApprovalModalItem); setModalType('Location Verification'); setModalOpen(true); } }}
                             className="bg-cyan-200 text-cyan-900 px-3 py-1 rounded-md hover:bg-cyan-300 text-sm">View</button>
                         </div>
                       </li>
@@ -1054,23 +1234,28 @@ export default function CommunityAdminDashboard() {
               </div>
             )}
             {approvalsTab === 'businesses' && (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-cyan-200">
-                  <thead className="bg-cyan-100">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-cyan-900 uppercase tracking-wider">Business</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-cyan-900 uppercase tracking-wider">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-cyan-200">
-                    {approvedBusinesses.map((biz) => (
-                      <tr key={biz.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-cyan-900">{biz.name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-cyan-800">{biz.description}</td>
-                      </tr>
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-cyan-900">Pending New Business Registration</h3>
+                {users.filter(user => user.approval_status === 'pending' && user.role === 'business').length === 0 ? (
+                  <p className="text-gray-600">No business registrations pending approval.</p>
+                ) : (
+                  <ul className="divide-y divide-gray-200">
+                    {users.filter(user => user.approval_status === 'pending' && user.role === 'business').map((user) => (
+                      <li key={user.id} className="py-4 flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-cyan-900">{user.username}</div>
+                          <div className="text-xs text-gray-600">{user.email}</div>
+                          <div className="text-xs text-gray-500 mt-1">Created: {user.created_at ? new Date(user.created_at).toLocaleDateString() : ''}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleApprove(user.id)} className="bg-green-500 text-white px-3 py-1 rounded-md hover:bg-green-600">Approve</button>
+                          <button onClick={() => handleDecline(user.id)} className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600">Reject</button>
+                          <button onClick={() => { if (user) { setModalItem(user as ApprovalModalItem); setModalType('User'); setModalOpen(true); } }} className="bg-cyan-200 text-cyan-900 px-3 py-1 rounded-md hover:bg-cyan-300">View</button>
+                        </div>
+                      </li>
                     ))}
-                  </tbody>
-                </table>
+                  </ul>
+                )}
               </div>
             )}
             {approvalsTab === 'newBusinessPageLaunch' && (
@@ -1083,20 +1268,14 @@ export default function CommunityAdminDashboard() {
                     {pendingDirectoryBusinesses.map((biz) => (
                       <li key={biz.id} className="py-4 flex items-center justify-between">
                           <div>
-                          <div className="text-sm font-medium text-cyan-900">{biz.username}</div>
+                          <div className="text-sm font-medium text-cyan-900">{biz.name}</div>
                           <div className="text-xs text-gray-600">Business account</div>
                           <div className="text-xs text-gray-500 mt-1">Created: {new Date(biz.created_at).toLocaleDateString()}</div>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={async () => {
-                            await supabase.from('profiles').update({ is_approved: true }).eq('id', biz.id);
-                            setPendingDirectoryBusinesses(list => list.filter(b => b.id !== biz.id));
-                          }} className="bg-green-500 text-white px-3 py-1 rounded-md hover:bg-green-600">Approve</button>
-                          <button onClick={async () => {
-                            await supabase.from('profiles').delete().eq('id', biz.id);
-                            setPendingDirectoryBusinesses(list => list.filter(b => b.id !== biz.id));
-                          }} className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600">Reject</button>
-                          <a href={`/business/dashboard?profile=${biz.id}`} className="bg-cyan-200 text-cyan-900 px-3 py-1 rounded-md hover:bg-cyan-300 text-sm">View</a>
+                          <button onClick={() => handleApproveBusiness(biz.id)} className="bg-green-500 text-white px-3 py-1 rounded-md hover:bg-green-600">Approve</button>
+                          <button onClick={() => handleDeclineBusiness(biz.id)} className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600">Reject</button>
+                          <button onClick={() => { if (biz) { setModalItem(biz as ApprovalModalItem); setModalType('Business'); setModalOpen(true); } }} className="bg-cyan-200 text-cyan-900 px-3 py-1 rounded-md hover:bg-cyan-300 text-sm">View</button>
                         </div>
                       </li>
                     ))}
@@ -1104,7 +1283,30 @@ export default function CommunityAdminDashboard() {
                 )}
               </div>
             )}
-            
+            {approvalsTab === 'propertyListings' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-cyan-900">Pending Property Listings Approval</h3>
+                {pendingListings.filter(l => l.type === 'Property').length === 0 ? (
+                  <p className="text-gray-600">No property listings pending approval.</p>
+                ) : (
+                  <ul className="divide-y divide-gray-200">
+                    {pendingListings.filter(l => l.type === 'Property').map((listing) => (
+                      <li key={listing.id} className="py-4 flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-cyan-900">{listing.title}</div>
+                          <div className="text-xs text-gray-500 mt-1">ID: {listing.id}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => { if (listing) { setModalItem(listing as ApprovalModalItem); setModalType(listing.type === 'Property' ? 'Property' : 'Market Item'); setModalOpen(true); } }} className="bg-cyan-200 text-cyan-900 px-3 py-1 rounded-md hover:bg-cyan-300 text-sm">View</button>
+                          <button onClick={() => { if (listing) handleApproveListing(listing as { id: string; type: string }); }} className="bg-green-500 text-white px-3 py-1 rounded-md hover:bg-green-600">Approve</button>
+                          <button onClick={() => { if (listing) handleDeclineListing(listing as { id: string; type: string }); }} className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600">Reject</button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {/* Reports Tab Content */}
             {approvalsTab === 'reports' && (
               <div className="space-y-4">
@@ -1149,11 +1351,7 @@ export default function CommunityAdminDashboard() {
                               {report.reason}
                             </span>
                           </div>
-                          {report.details && (
-                            <div className="text-sm text-gray-700">
-                              <span className="font-medium">Details:</span> {report.details}
-                            </div>
-                          )}
+                          {/* No additional details display since it's not in the interface */}
                         </div>
                         
                         <div className="bg-gray-50 p-3 rounded-md">
@@ -1198,6 +1396,27 @@ export default function CommunityAdminDashboard() {
                 </div>
         </>
       </div>
+      {/* Render the modal */}
+      <ApprovalDetailsModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        item={modalItem as ApprovalModalItem}
+        type={modalType}
+        onApprove={(item) => {
+          if (!item) return;
+          if (modalType === 'User') handleApprove(item.id);
+          else if (modalType === 'Business') handleApproveBusiness(item.id);
+          else if (modalType === 'Property' || modalType === 'Market Item') handleApproveListing(item as { id: string; type: string });
+          else if (modalType === 'Location Verification' && 'user_id' in item) handleApproveLocationVerification(item.id, item.user_id);
+        }}
+        onReject={(item) => {
+          if (!item) return;
+          if (modalType === 'User') handleDecline(item.id);
+          else if (modalType === 'Business') handleDeclineBusiness(item.id);
+          else if (modalType === 'Property' || modalType === 'Market Item') handleDeclineListing(item as { id: string; type: string });
+          else if (modalType === 'Location Verification') handleRejectLocationVerification(item.id);
+        }}
+      />
     </div>
   );
 } 

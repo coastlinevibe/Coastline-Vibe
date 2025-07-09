@@ -162,7 +162,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
   // useEffect to check friend request status
   useEffect(() => {
     if (!currentUserId || !viewedUserId) {
-      setFriendRequestStatus('none'); // Default if no users are identified
+      setFriendRequestStatus('none');
       return;
     }
     if (currentUserId === viewedUserId) {
@@ -171,75 +171,57 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
     }
 
     const checkFriendRequest = async () => {
-      console.log(`[ProfilePage] Checking friend request status between ${currentUserId} and ${viewedUserId}`);
       try {
         // Check if a friend request already exists (either direction)
         // Or if they are already friends
         const { data: requestData, error: requestError } = await supabase
           .from('friend_requests')
-          .select('status, sender_id, recipient_id')
-          .or(`and(sender_id.eq.${currentUserId},recipient_id.eq.${viewedUserId}),and(sender_id.eq.${viewedUserId},recipient_id.eq.${currentUserId})`)
-          .order('created_at', { ascending: false }) // Get the latest request if multiple (shouldn't happen with good logic)
+          .select('status, user_id, friend_id')
+          .or(`and(user_id.eq.${currentUserId},friend_id.eq.${viewedUserId}),and(user_id.eq.${viewedUserId},friend_id.eq.${currentUserId})`)
+          .order('created_at', { ascending: false })
           .limit(1);
 
         if (requestError) {
-          console.error('[ProfilePage] Error checking friend_requests:', requestError);
-          setFriendRequestStatus('none'); // Fallback on error
+          setFriendRequestStatus('none');
           return;
         }
-        
         if (requestData && requestData.length > 0) {
           const request = requestData[0];
-           console.log('[ProfilePage] Found existing friend_request:', request);
           if (request.status === 'accepted') {
             setFriendRequestStatus('accepted');
           } else if (request.status === 'pending') {
-            // If pending, check who sent it to display correct status
-            if (request.sender_id === currentUserId) {
-              setFriendRequestStatus('pending'); // Current user sent it, so "Request Sent"
+            if (request.user_id === currentUserId) {
+              setFriendRequestStatus('pending');
             } else {
-              // If viewedUser sent it, it's still 'none' from current user's perspective for sending a new one
-              // Or you might want a state like 'pending_theirs' if you handle incoming requests here too
-              setFriendRequestStatus('none'); // For simplicity, if they sent it, we can still send one.
-                                            // Or handle this differently if the UI should show "Accept/Reject"
+              setFriendRequestStatus('none');
             }
           } else if (request.status === 'rejected') {
-            // Could be 'rejected_by_them' or 'rejected_by_you'
-            // For now, simplify to 'none' to allow sending a new request.
-             setFriendRequestStatus('none'); 
-          } else {
-            setFriendRequestStatus('none'); // Default for other statuses or if logic needs refinement
-          }
-        } else {
-          // No entry in friend_requests, check friends table directly for an accepted friendship
-           const { data: friendsData, error: friendsError } = await supabase
-            .from('friends')
-            .select('status')
-            .eq('user_id', currentUserId)
-            .eq('friend_id', viewedUserId)
-            .eq('status', 'accepted')
-            .limit(1);
-
-          if (friendsError) {
-            console.error('[ProfilePage] Error checking friends table:', friendsError);
             setFriendRequestStatus('none');
-            return;
-          }
-
-          if (friendsData && friendsData.length > 0) {
-             console.log('[ProfilePage] Found existing accepted friendship in friends table.');
-            setFriendRequestStatus('accepted');
           } else {
-            console.log('[ProfilePage] No existing request or friendship found.');
             setFriendRequestStatus('none');
           }
         }
+        // No entry in friend_requests, check friends table directly for an accepted friendship
+        const { data: friendsData, error: friendsError } = await supabase
+          .from('friends')
+          .select('status')
+          .eq('user_id', currentUserId)
+          .eq('friend_id', viewedUserId)
+          .eq('status', 'accepted')
+          .limit(1);
+        if (friendsError) {
+          setFriendRequestStatus('none');
+          return;
+        }
+        if (friendsData && friendsData.length > 0) {
+          setFriendRequestStatus('accepted');
+        } else {
+          setFriendRequestStatus('none');
+        }
       } catch (err) {
-        console.error('[ProfilePage] Unexpected error in checkFriendRequest:', err);
         setFriendRequestStatus('none');
       }
     };
-
     checkFriendRequest();
   }, [currentUserId, viewedUserId, supabase]);
 
@@ -273,44 +255,29 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
       setFriendError('Please enter a reason for your friend request.');
       return;
     }
-
-    // Optimistically set to pending, but actual DB call determines final status
-    // setFriendRequestStatus('pending'); 
-    // The useEffect for checkFriendRequest will re-evaluate after insert
-
     try {
       const { error: insertError } = await supabase.from('friend_requests').insert({
-        sender_id: currentUserId,
-        recipient_id: viewedUserId,
+        user_id: currentUserId,
+        friend_id: viewedUserId,
         status: 'pending',
         reason: friendReason.trim(),
       });
-
       if (insertError) {
-        console.error('[ProfilePage] Error sending friend request:', insertError);
-        // Check for unique constraint violation (already pending or accepted)
-        if (insertError.code === '23505') { // PostgreSQL unique_violation
-             setFriendError('A friend request already exists or you are already friends.');
+        if (insertError.code === '23505') {
+          setFriendError('A friend request already exists or you are already friends.');
         } else {
-            setFriendError('Failed to send friend request. Please try again.');
+          setFriendError('Failed to send friend request. Please try again.');
         }
-        // Re-check status in case the error was due to an existing request not caught by initial check
-        // Or simply revert optimistic update if you had one.
-        // For now, let the useEffect handle re-checking.
       } else {
         setFriendSuccess('Friend request sent!');
-        setFriendRequestStatus('pending'); // Explicitly set after successful send
+        setFriendRequestStatus('pending');
         setTimeout(() => {
           closeFriendModal();
-        }, 1500); // Close modal after a short delay on success
+        }, 1500);
       }
     } catch (e) {
-      console.error('[ProfilePage] Exception in handleAddFriend:', e);
       setFriendError('An unexpected error occurred.');
     }
-    // Re-fetch status after attempt, to ensure UI is up-to-date
-    // This might be redundant if the useEffect handles it quickly enough, but can be explicit
-    // await checkFriendRequest(); // Re-evaluate based on your needs.
   };
 
   // Handle Ban/Unban User
@@ -324,21 +291,45 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
     setIsBanning(true);
 
     try {
-      // Call the RPC function to ban the user and delete their data
-      const { error: rpcError } = await supabase.rpc('full_ban_user_and_delete_data', {
-        p_user_id: profile.id,
-        p_reason: banReason,
-      });
-
-      if (rpcError) {
-        throw rpcError;
+      // First update the profile to mark as banned
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ 
+          is_banned: true, 
+          ban_reason: banReason,
+          ban_date: new Date().toISOString() // Record the ban date
+        })
+        .eq('id', profile.id);
+      
+      if (updateError) {
+        throw updateError;
       }
 
+      // Delete user's posts
+      const { error: postsError } = await supabase
+        .from('posts')
+        .delete()
+        .eq('author_id', profile.id);
+      
+      if (postsError) {
+        console.error("Error deleting posts:", postsError);
+      }
+
+      // Delete user's comments
+      const { error: commentsError } = await supabase
+        .from('comments')
+        .delete()
+        .eq('author_id', profile.id);
+      
+      if (commentsError) {
+        console.error("Error deleting comments:", commentsError);
+      }
+      
       // Update profile state to reflect ban locally
-      setProfile(prevProfile => prevProfile ? { ...prevProfile, is_banned: true, ban_reason: banReason } : null);
+      setProfile(prevProfile => prevProfile ? { ...prevProfile, is_banned: true, ban_reason: banReason, ban_date: new Date().toISOString() } : null);
       setShowBanReasonModal(false);
       setBanReason(''); 
-      alert(`User ${profile.username} has been banned. Reason: ${banReason}`);
+      alert(`User ${profile.username} has been banned. Reason: ${banReason}. Account will be permanently deleted after 10 days.`);
     } catch (error: any) {
       console.error('Error processing ban:', error);
       alert(`Failed to ban user: ${error.message}`);
