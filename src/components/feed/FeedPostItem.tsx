@@ -6,7 +6,7 @@ import {
   Heart, MessageCircle, Share2, MoreHorizontal, UserCircle2, Send, Loader2, Trash2, Edit3, XSquare, CheckSquare, 
   Megaphone, CalendarDays, HelpCircle, BarChart3, Pin, PinOff, Flag, Smile, ShieldCheck,
   Sailboat, ChevronLeft, ChevronRight, Reply, MapPin, Calendar, CheckCircle2, XCircle, Image as ImageIcon, Paperclip, 
-  Lock, AlertTriangle, Download, FileSpreadsheet, FilePdf, File, Video, Shield, User, Pencil, Plus, ChevronDown, ChevronUp
+  Lock, AlertTriangle, Download, FileSpreadsheet, File, Video, Shield, User, Pencil, Plus, ChevronDown, ChevronUp
 } from 'lucide-react'; 
 import CommentItem, { type CommentItemProps } from './CommentItem';
 import FeedPostReactionBar from './FeedPostReactionBar';
@@ -527,8 +527,8 @@ export default function FeedPostItem({
 
         if (pollQuestionData) {
           let userVoteOptionId: string | null = null;
-          const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map(opt => {
-            const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
+          const optionsWithVotes: PollOptionWithVotes[] = pollQuestionData.poll_options.map((opt: any) => {
+            const isVoted = currentUserId ? opt.poll_votes.some((vote: any) => vote.user_id === currentUserId) : false;
             if (isVoted) userVoteOptionId = opt.id;
             return {
               id: opt.id,
@@ -538,7 +538,7 @@ export default function FeedPostItem({
             };
           });
           
-          const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+          const totalDistinctVotes = new Set(pollQuestionData.poll_options.flatMap((opt: any) => opt.poll_votes.map((v: any) => v.user_id))).size;
 
         setPollDetails({ 
             question: pollQuestionData.question,
@@ -562,12 +562,12 @@ export default function FeedPostItem({
         const { data: pollQuestionDataFallback } = await supabase.from('polls').select('question, poll_options ( id, option_text, poll_votes (user_id) )').eq('id', poll_id).single();
         if (pollQuestionDataFallback) {
             let userVoteOptionId: string | null = null;
-            const optionsWithVotes: PollOptionWithVotes[] = pollQuestionDataFallback.poll_options.map(opt => {
-                const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
+            const optionsWithVotes: PollOptionWithVotes[] = pollQuestionDataFallback.poll_options.map((opt: any) => {
+                const isVoted = currentUserId ? opt.poll_votes.some((vote: any) => vote.user_id === currentUserId) : false;
                 if (isVoted) userVoteOptionId = opt.id;
                 return { id: opt.id, text: opt.option_text, votes: opt.poll_votes.length, isVotedByUser: isVoted, };
             });
-            const totalDistinctVotes = new Set(pollQuestionDataFallback.poll_options.flatMap(opt => opt.poll_votes.map(v => v.user_id))).size;
+            const totalDistinctVotes = new Set(pollQuestionDataFallback.poll_options.flatMap((opt: any) => opt.poll_votes.map((v: any) => v.user_id))).size;
             setPollDetails({ question: pollQuestionDataFallback.question, options: optionsWithVotes, totalVotesDistinctUsers: totalDistinctVotes });
             if (userVoteOptionId) setUserPollVote(userVoteOptionId); else setUserPollVote(null);
         } // No explicit setReactionError here as it's about fetching initial poll data.
@@ -668,8 +668,8 @@ export default function FeedPostItem({
         
       if (pollData) {
             let userVoteOptionId: string | null = null;
-        const optionsWithVotes: PollOptionWithVotes[] = pollData.poll_options.map(opt => {
-                const isVoted = currentUserId ? opt.poll_votes.some(vote => vote.user_id === currentUserId) : false;
+        const optionsWithVotes: PollOptionWithVotes[] = pollData.poll_options.map((opt: any) => {
+                const isVoted = currentUserId ? opt.poll_votes.some((vote: any) => vote.user_id === currentUserId) : false;
                 if (isVoted) userVoteOptionId = opt.id;
           return { 
             id: opt.id, 
@@ -679,8 +679,8 @@ export default function FeedPostItem({
           };
             });
         
-        const totalDistinctVotes = new Set(pollData.poll_options.flatMap(opt => 
-          opt.poll_votes.map(v => v.user_id)
+        const totalDistinctVotes = new Set(pollData.poll_options.flatMap((opt: any) => 
+          opt.poll_votes.map((v: any) => v.user_id)
         )).size;
         
         setPollDetails({ 
@@ -1289,7 +1289,7 @@ return (
         <button onClick={handleOptimisticLike} className={`flex items-center transition-colors px-2 py-1 rounded disabled:opacity-60 ${optimisticIsLiked ? 'text-red-500 hover:text-red-600' : 'text-gray-500 hover:text-red-500'}`} disabled={!currentUserId || isLiking}>
           {isLiking ? <Loader2 className="animate-spin w-4 h-4 mr-1" /> : <Heart className={`w-4 h-4 mr-1 ${optimisticIsLiked ? 'fill-current' : ''}`} />}
         </button>
-        <button onClick={handleCommentSubmitInternal} className="flex items-center transition-colors px-2 py-1 rounded disabled:opacity-60 text-gray-500 hover:text-gray-700">
+        <button onClick={() => setShowCommentInput(true)} className="flex items-center transition-colors px-2 py-1 rounded disabled:opacity-60 text-gray-500 hover:text-gray-700">
           <MessageCircle size={16} className="mr-1" />
         </button>
         <button onClick={handleReport} className="flex items-center transition-colors px-2 py-1 rounded disabled:opacity-60 text-gray-500 hover:text-gray-700">

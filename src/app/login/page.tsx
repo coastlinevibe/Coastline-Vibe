@@ -61,8 +61,8 @@ export default function LoginPage() {
                   .single();
                 
                 if (communityData?.slug) {
-                  // Direct users to the Local Directory
-                  router.push(`/community/${communityData.slug}/business/directory`);
+                  // Direct users to their dashboard
+                  router.push(`/community/${communityData.slug}`);
                 } else {
                   router.push('/');
                 }
@@ -196,8 +196,8 @@ export default function LoginPage() {
       } else if (userRole === 'business' && communitySlug) {
         router.push(`/community/${communitySlug}/business/directory/businessmenu`);
       } else if (communitySlug) {
-        // Direct all regular users to the Local Directory
-        router.push(`/community/${communitySlug}/business/directory`);
+        // Direct regular users to their dashboard
+        router.push(`/community/${communitySlug}`);
       } else {
         router.push('/');
       }

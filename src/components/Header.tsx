@@ -132,11 +132,13 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
                 <span className="font-medium text-darkCharcoal hidden md:inline">{profile.username}</span>
               </Link>
             )}
-            {/* Dashboard button for non-business profiles */}
+            {/* Mini-Dash button for non-business profiles */}
             {profile && profile.role !== 'business' && (
-            <Link href={`/community/${communitySlug}`} passHref legacyBehavior>
-              <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communitySlug}` ? 'ring-2 ring-seafoam' : ''}`}>Dashboard</a>
-            </Link>
+              <div className="flex gap-2">
+                <Link href={`/community/${communitySlug}/mini-dash`} passHref legacyBehavior>
+                  <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '').includes('/mini-dash') ? 'ring-2 ring-seafoam' : ''}`}>Mini-Dash</a>
+                </Link>
+              </div>
             )}
             <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
           </div>
@@ -184,13 +186,15 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
                   <span className="font-medium text-darkCharcoal">{profile.username}</span>
                 </Link>
               )}
-              {/* Dashboard button for non-business profiles (mobile) */}
+              {/* Mini-Dash button for non-business profiles (mobile) */}
               {profile && profile.role !== 'business' && (
-              <Link href={`/community/${communitySlug}`} passHref legacyBehavior>
-                <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communitySlug}` ? 'ring-2 ring-seafoam' : ''}`}
-                  onClick={() => setMenuOpen(false)}
-                >Dashboard</a>
-              </Link>
+                <div className="flex flex-col gap-2">
+                  <Link href={`/community/${communitySlug}/mini-dash`} passHref legacyBehavior>
+                    <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '').includes('/mini-dash') ? 'ring-2 ring-seafoam' : ''}`}
+                      onClick={() => setMenuOpen(false)}
+                    >Mini-Dash</a>
+                  </Link>
+                </div>
               )}
               <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
             </div>

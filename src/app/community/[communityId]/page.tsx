@@ -67,11 +67,21 @@ type PageStatus = 'loading' | 'unauthenticated' | 'unauthorized' | 'authorized' 
 
 export default function CommunityLandingPage() {
   const params = useParams();
-  
   const communityId = typeof params?.communityId === 'string' ? params.communityId : null;
+  const router = useRouter();
+  
+  // Redirect to mini-dash
+  useEffect(() => {
+    if (communityId) {
+      router.replace(`/community/${communityId}/mini-dash`);
+    }
+  }, [communityId, router]);
+  
+  // Return loading state while redirecting
+  return <div className="flex justify-center items-center h-screen">Redirecting to mini-dash...</div>;
+  
   const [communityUuid, setCommunityUuid] = useState<string | null>(null);
 
-  const router = useRouter();
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
