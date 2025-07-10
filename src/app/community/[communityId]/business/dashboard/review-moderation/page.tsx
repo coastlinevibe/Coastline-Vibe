@@ -13,7 +13,7 @@ export default function ReviewModerationPage() {
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       {/* Breadcrumb */}
       <div className="flex items-center text-sm text-gray-500 mb-6">
-        <Link href={`/community/${communityId}`} className="hover:text-teal-600">
+        <Link href={`/community/${communityId}/mini-dash`} className="hover:text-teal-600">
           Home
         </Link>
         <ChevronRight className="h-4 w-4 mx-2" />

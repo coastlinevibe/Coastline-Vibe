@@ -96,7 +96,7 @@ export default function BusinessDashboardPage() {
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       {/* Breadcrumb */}
       <div className="flex items-center text-sm text-gray-500 mb-6">
-        <Link href={`/community/${communityId}`} className="hover:text-teal-600">
+        <Link href={`/community/${communityId}/mini-dash`} className="hover:text-teal-600">
           Home
         </Link>
         <ChevronRight className="h-4 w-4 mx-2" />
@@ -160,11 +160,11 @@ export default function BusinessDashboardPage() {
                 Review Moderation
               </Link>
               <Link 
-                href={`/community/${communityId}`}
+                href={`/community/${communityId}/mini-dash`}
                 className="flex items-center p-2 text-gray-700 rounded hover:bg-gray-100"
               >
                 <MessageSquare className="h-5 w-5 mr-3 text-teal-600" />
-                Community Feed
+                Mini Dashboard
               </Link>
             </nav>
           </div>

@@ -61,8 +61,8 @@ export default function LoginPage() {
                   .single();
                 
                 if (communityData?.slug) {
-                  // Direct users to their dashboard
-                  router.push(`/community/${communityData.slug}`);
+                  // Direct users to their mini-dash
+                  router.push(`/community/${communityData.slug}/mini-dash`);
                 } else {
                   router.push('/');
                 }
@@ -197,7 +197,7 @@ export default function LoginPage() {
         router.push(`/community/${communitySlug}/business/directory/businessmenu`);
       } else if (communitySlug) {
         // Direct regular users to their dashboard
-        router.push(`/community/${communitySlug}`);
+        router.push(`/community/${communitySlug}/mini-dash`);
       } else {
         router.push('/');
       }

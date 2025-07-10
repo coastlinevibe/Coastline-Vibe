@@ -28,8 +28,8 @@ type BusinessMapViewProps = {
 };
 
 const defaultInitialViewState = {
-  latitude: 25.7617, // Miami by default
-  longitude: -80.1918,
+  latitude: 16.0544, // Da Nang by default
+  longitude: 108.2022,
   zoom: 12,
 };
 

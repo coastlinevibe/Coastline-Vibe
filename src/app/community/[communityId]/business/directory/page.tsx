@@ -585,8 +585,8 @@ export default function BusinessDirectoryPage() {
                     is_featured: business.is_featured
                   }))} 
                   initialViewState={{
-                    longitude: -80.19,
-                    latitude: 25.76,
+                    longitude: 108.2022,
+                    latitude: 16.0544,
                     zoom: 11
                   }}
                   communityId={communityId}
