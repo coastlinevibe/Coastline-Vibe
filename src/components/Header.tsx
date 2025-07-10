@@ -124,7 +124,7 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
         {!isHome && user && (
           <div className="hidden md:flex items-center gap-4 ml-4 min-w-max">
             {profile && (
-              <Link href="/business/dashboard" className="flex items-center gap-2 cursor-pointer" onClick={() => {
+              <Link href={`/community/${communitySlug}/business/directory/businessmenu`} className="flex items-center gap-2 cursor-pointer" onClick={() => {
                 // Set localStorage to indicate settings tab should be active
                 localStorage.setItem('activeDashboardTab', 'settings');
               }}>
@@ -134,8 +134,8 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
             )}
             {/* Dashboard button for non-business profiles */}
             {profile && profile.role !== 'business' && (
-            <Link href={`/community/${communitySlug}/business/directory`} passHref legacyBehavior>
-              <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '').includes(`/community/${communitySlug}/business/directory`) ? 'ring-2 ring-seafoam' : ''}`}>Directory</a>
+            <Link href={`/community/${communitySlug}`} passHref legacyBehavior>
+              <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communitySlug}` ? 'ring-2 ring-seafoam' : ''}`}>Dashboard</a>
             </Link>
             )}
             <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
@@ -175,7 +175,7 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
             </div>
             <div className="flex flex-col gap-2 px-4 pb-4 border-t border-seafoam/30">
               {profile && (
-                <Link href="/business/dashboard" className="flex items-center gap-2 cursor-pointer py-2" onClick={() => {
+                <Link href={`/community/${communitySlug}/business/directory/businessmenu`} className="flex items-center gap-2 cursor-pointer py-2" onClick={() => {
                   setMenuOpen(false);
                   // Set localStorage to indicate settings tab should be active
                   localStorage.setItem('activeDashboardTab', 'settings');
@@ -186,10 +186,10 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
               )}
               {/* Dashboard button for non-business profiles (mobile) */}
               {profile && profile.role !== 'business' && (
-              <Link href={`/community/${communitySlug}/business/directory`} passHref legacyBehavior>
-                <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '').includes(`/community/${communitySlug}/business/directory`) ? 'ring-2 ring-seafoam' : ''}`}
+              <Link href={`/community/${communitySlug}`} passHref legacyBehavior>
+                <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communitySlug}` ? 'ring-2 ring-seafoam' : ''}`}
                   onClick={() => setMenuOpen(false)}
-                >Directory</a>
+                >Dashboard</a>
               </Link>
               )}
               <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
