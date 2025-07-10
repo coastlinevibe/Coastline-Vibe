@@ -7,7 +7,7 @@ import type { Database } from '@/types/supabase';
 import MiamiDashboard from '@/components/community/MiamiDashboard';
 import Link from 'next/link';
 import Image from 'next/image';
-import { UserCircle2, ChevronDown, ChevronUp, ShieldCheck, MessageSquare, Heart, AtSign, Sailboat } from 'lucide-react';
+import { UserCircle2, ChevronDown, ChevronUp, ShieldCheck, MessageSquare, Heart, AtSign, Sailboat, Store, ExternalLink } from 'lucide-react';
 import FeedPostItem from '@/components/feed/FeedPostItem';
 import LocationVerificationForm from '@/components/profile/LocationVerificationForm';
 import { createClient } from '@/lib/supabase/client';
@@ -103,6 +103,7 @@ export default function CommunityLandingPage() {
   const [activeNotificationTab, setActiveNotificationTab] = useState<string>('Chatter');
   const [isActivityCollapsed, setIsActivityCollapsed] = useState<boolean>(true);
   const [isNotificationsCollapsed, setIsNotificationsCollapsed] = useState<boolean>(true);
+  const [communitySlug, setCommunitySlug] = useState<string | null>(null);
 
   // State for user-created properties and market items
   const [userProperties, setUserProperties] = useState<any[]>([]);
@@ -449,7 +450,7 @@ export default function CommunityLandingPage() {
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const isUuid = uuidPattern.test(communityId);
 
-      let query = supabase.from('communities').select('id, name');
+      let query = supabase.from('communities').select('id, name, slug');
       if (isUuid) {
         query = query.eq('id', communityId);
       } else {
@@ -465,6 +466,7 @@ export default function CommunityLandingPage() {
       } else if (communityData) {
         setCommunity({ name: communityData.name, id: communityData.id });
         setCommunityUuid(communityData.id);
+        setCommunitySlug(communityData.slug);
         } else {
         setError(`Community '${communityId}' not found.`);
         setCommunity(null);
@@ -995,6 +997,23 @@ export default function CommunityLandingPage() {
                     />
               </div>
               </div>
+              )}
+            </div>
+            
+            {/* Local Directory Highlight Section */}
+            <div className="bg-gradient-to-r from-cyan-500 to-blue-500 p-6 rounded-lg shadow">
+              <div className="flex items-center mb-4">
+                <Store className="h-8 w-8 text-white mr-3" />
+                <h2 className="text-xl font-bold text-white">Local Directory</h2>
+              </div>
+              <p className="text-white mb-4">
+                Discover businesses, services and local favorites in your community.
+              </p>
+              {communitySlug && (
+                <Link href={`/community/${communitySlug}/business/directory`} className="flex items-center justify-center bg-white text-blue-600 font-semibold py-3 px-4 rounded-lg hover:bg-blue-50 transition duration-150 ease-in-out shadow-md">
+                  <span>Explore the Directory</span>
+                  <ExternalLink className="ml-2 h-4 w-4" />
+                </Link>
               )}
             </div>
             
