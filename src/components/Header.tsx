@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
+import features from '@/config/features';
 
 export default function Header({ communityId = 'miami' }: { communityId?: string }) {
   const pathname = usePathname();
@@ -15,6 +16,7 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [communitySlug, setCommunitySlug] = useState<string>('miami');
 
   useEffect(() => {
     const fetchUserAndProfile = async () => {
@@ -24,15 +26,26 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
       if (user) {
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('username, avatar_url, role')
+          .select('username, avatar_url, role, community_id')
           .eq('id', user.id)
           .single();
 
         if (profileData) {
           setProfile(profileData);
+          if (profileData.community_id) {
+            const { data: communityData, error: communityError } = await supabase
+              .from('communities')
+              .select('slug')
+              .eq('id', profileData.community_id)
+              .single();
+            if (!communityError && communityData) {
+              setCommunitySlug(communityData.slug);
+            }
+          }
         }
       } else {
         setProfile(null);
+        setCommunitySlug('miami');
       }
     };
 
@@ -51,19 +64,23 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
   if ((pathname ?? '') === '/create-profile') return null;
 
   // Check if we're in a business profile view (but not in the directory)
-  const isBusinessProfileView = (pathname ?? '').includes(`/community/${communityId}/business/`) && 
+  const isBusinessProfileView = (pathname ?? '').includes(`/community/${communitySlug}/business/`) && 
                                !(pathname ?? '').includes('/directory');
 
+  // Use the features configuration
+  const activeFeatures = features;
+
   const baseNavLinks = [
-    { label: 'Coastline Chatter', href: `/community/${communityId}/feed` },
-    { label: 'Vibe Groups', href: `/community/${communityId}/vibe-groups` },
-    { label: 'Properties', href: '/properties' },
-    { label: 'Coastline Market', href: '/market' },
+    // Only show active features
+    ...(activeFeatures.feed ? [{ label: 'Coastline Chatter', href: `/community/${communitySlug}/feed` }] : []),
+    ...(activeFeatures.vibeGroups ? [{ label: 'Vibe Groups', href: `/community/${communitySlug}/vibe-groups` }] : []),
+    ...(activeFeatures.properties ? [{ label: 'Properties', href: '/properties' }] : []),
+    ...(activeFeatures.market ? [{ label: 'Coastline Market', href: '/market' }] : []),
   ];
   
-  // Only add Local Directory link if not in business profile view
-  if (!isBusinessProfileView) {
-    baseNavLinks.push({ label: 'Local Directory', href: `/community/${communityId}/business/directory` });
+  // Only add Local Directory link if it's active and we're not in business profile view
+  if (activeFeatures.directory && !isBusinessProfileView) {
+    baseNavLinks.push({ label: 'Local Directory', href: `/community/${communitySlug}/business/directory` });
   }
 
   const navLinks = [...baseNavLinks];
@@ -115,10 +132,10 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
                 <span className="font-medium text-darkCharcoal hidden md:inline">{profile.username}</span>
               </Link>
             )}
-            {/* Remove Dashboard button for business profiles */}
+            {/* Dashboard button for non-business profiles */}
             {profile && profile.role !== 'business' && (
-            <Link href={`/community/${communityId}`} passHref legacyBehavior>
-              <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communityId}` ? 'ring-2 ring-seafoam' : ''}`}>Dashboard</a>
+            <Link href={`/community/${communitySlug}/business/directory`} passHref legacyBehavior>
+              <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '').includes(`/community/${communitySlug}/business/directory`) ? 'ring-2 ring-seafoam' : ''}`}>Directory</a>
             </Link>
             )}
             <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
@@ -167,12 +184,12 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
                   <span className="font-medium text-darkCharcoal">{profile.username}</span>
                 </Link>
               )}
-              {/* Remove Dashboard button for business profiles */}
+              {/* Dashboard button for non-business profiles (mobile) */}
               {profile && profile.role !== 'business' && (
-              <Link href={`/community/${communityId}`} passHref legacyBehavior>
-                <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '') === `/community/${communityId}` ? 'ring-2 ring-seafoam' : ''}`}
+              <Link href={`/community/${communitySlug}/business/directory`} passHref legacyBehavior>
+                <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '').includes(`/community/${communitySlug}/business/directory`) ? 'ring-2 ring-seafoam' : ''}`}
                   onClick={() => setMenuOpen(false)}
-                >Dashboard</a>
+                >Directory</a>
               </Link>
               )}
               <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>

@@ -53,7 +53,19 @@ export default function LoginPage() {
             // Only proceed with routing if the component is still mounted
             if (isMounted) {
               if (profile?.community_id) {
-                router.push(`/community/${profile.community_id}`);
+                // Get the community slug
+                const { data: communityData } = await supabase
+                  .from('communities')
+                  .select('slug')
+                  .eq('id', profile.community_id)
+                  .single();
+                
+                if (communityData?.slug) {
+                  // Direct users to the Local Directory
+                  router.push(`/community/${communityData.slug}/business/directory`);
+                } else {
+                  router.push('/');
+                }
               } else {
                 router.push('/');
               }
@@ -168,12 +180,24 @@ export default function LoginPage() {
         return;
       }
       // If approved, redirect immediately (no popup)
-      if (userRole === "community admin" && userCommunityId) {
-        router.push(`/community/${userCommunityId}/admin`);
-      } else if (userRole === 'business' && userCommunityId) {
-        router.push(`/community/${userCommunityId}/business/directory/businessmenu`);
-      } else if (userCommunityId) {
-        router.push(`/community/${userCommunityId}`);
+      let communitySlug = null;
+      if (userCommunityId) {
+        const { data: communityData, error: communityError } = await supabase
+          .from('communities')
+          .select('slug')
+          .eq('id', userCommunityId)
+          .single();
+        if (!communityError && communityData) {
+          communitySlug = communityData.slug;
+        }
+      }
+      if (userRole === "community admin" && communitySlug) {
+        router.push(`/community/${communitySlug}/admin`);
+      } else if (userRole === 'business' && communitySlug) {
+        router.push(`/community/${communitySlug}/business/directory/businessmenu`);
+      } else if (communitySlug) {
+        // Direct all regular users to the Local Directory
+        router.push(`/community/${communitySlug}/business/directory`);
       } else {
         router.push('/');
       }
