@@ -167,9 +167,13 @@ export default function BusinessFormContainer({ communityId: propCommunityId }: 
       };
       
       setInitialData(formData);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching business data:', err);
-      setError(err.message || 'Failed to load business data');
+      if (err && typeof err === 'object' && 'message' in err && typeof (err as any).message === 'string') {
+        setError((err as any).message);
+      } else {
+        setError('Failed to load business data');
+      }
     } finally {
       setIsLoading(false);
     }

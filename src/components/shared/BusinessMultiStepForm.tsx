@@ -446,7 +446,7 @@ export default function BusinessMultiStepForm({
       }
 
       // Prepare the data based on current tab
-      let tabData: Record<string, any> = {};
+      let tabData: Record<string, unknown> = {};
       
       // Common fields for all tabs
       if (mode === 'create') {

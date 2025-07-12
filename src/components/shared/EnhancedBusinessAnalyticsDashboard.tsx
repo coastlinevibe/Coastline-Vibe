@@ -11,9 +11,43 @@ import {
   ArrowUpRight, ArrowDownRight, Users, Eye, MessageSquare, 
   Star, Calendar, Filter, Download, ChevronDown 
 } from 'lucide-react';
+import type { TooltipProps } from 'recharts';
+import type { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent';
 
 interface EnhancedBusinessAnalyticsProps {
   businessId: string;
+}
+
+// Chart data interfaces
+interface DailyView {
+  date: string;
+  views: number;
+  inquiries: number;
+  favorites: number;
+}
+interface DeviceType {
+  device: string;
+  count: number;
+}
+interface TrafficSource {
+  referrer: string;
+  count: number;
+}
+interface PopularPage {
+  page: string;
+  views: number;
+}
+interface InquiryCategory {
+  name: string;
+  value: number;
+}
+interface VisitorDemographic {
+  country: string;
+  count: number;
+}
+interface EngagementMetric {
+  name: string;
+  value: number;
 }
 
 export default function EnhancedBusinessAnalyticsDashboard({ businessId }: EnhancedBusinessAnalyticsProps) {
@@ -44,13 +78,13 @@ export default function EnhancedBusinessAnalyticsDashboard({ businessId }: Enhan
   
   // Charts data
   const [chartsData, setChartsData] = useState({
-    dailyViews: [] as any[],
-    trafficSources: [] as any[],
-    deviceTypes: [] as any[],
-    popularPages: [] as any[],
-    inquiryCategories: [] as any[],
-    visitorDemographics: [] as any[],
-    engagementMetrics: [] as any[]
+    dailyViews: [] as DailyView[],
+    trafficSources: [] as TrafficSource[],
+    deviceTypes: [] as DeviceType[],
+    popularPages: [] as PopularPage[],
+    inquiryCategories: [] as InquiryCategory[],
+    visitorDemographics: [] as VisitorDemographic[],
+    engagementMetrics: [] as EngagementMetric[]
   });
   
   // Colors
@@ -178,12 +212,12 @@ export default function EnhancedBusinessAnalyticsDashboard({ businessId }: Enhan
   }
   
   // Custom tooltip formatter for better accessibility
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameType>) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 border border-gray-200 shadow-md rounded" role="status" aria-live="polite">
           <p className="font-semibold text-sm">{label}</p>
-          {payload.map((entry: any, index: number) => (
+          {payload.map((entry, index) => (
             <p key={`item-${index}`} className="text-sm" style={{ color: entry.color }}>
               {`${entry.name}: ${entry.value}`}
             </p>

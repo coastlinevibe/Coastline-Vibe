@@ -8,10 +8,22 @@ import BusinessAnalyticsDashboard from '@/components/shared/BusinessAnalyticsDas
 import { ChevronRight, Building2, MessageSquare, Settings, Star, Shield } from 'lucide-react';
 import Link from 'next/link';
 
+// Add a type for Business
+interface Business {
+  id: string;
+  name: string;
+  description?: string;
+  address?: string;
+  category?: string;
+  rating?: number;
+  inquiries_count?: number;
+  is_verified?: boolean;
+}
+
 export default function BusinessDashboardPage() {
   const params = useParams();
   const communityId = params?.communityId as string;
-  const [businesses, setBusinesses] = useState<any[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBusiness, setSelectedBusiness] = useState<string | null>(null);
 

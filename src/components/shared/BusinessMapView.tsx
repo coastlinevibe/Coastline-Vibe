@@ -3,6 +3,7 @@ import Map, { Marker, Popup, NavigationControl, Source, Layer } from 'react-map-
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Link from 'next/link';
 import Image from 'next/image';
+import type { MapLayerMouseEvent, MapboxGeoJSONFeature, MapboxEvent, Map as MapboxMap, Point } from 'mapbox-gl';
 
 // Define the business type
 type MapBusiness = {
@@ -185,54 +186,57 @@ const BusinessMapView: React.FC<BusinessMapViewProps> = ({
   };
 
   // Handle cluster click to zoom in
-  const handleClusterClick = (event: any) => {
+  const handleClusterClick = (event: MapLayerMouseEvent) => {
     const features = event.target.queryRenderedFeatures(event.point, {
       layers: ['clusters']
-    });
+    }) as MapboxGeoJSONFeature[];
     
     if (!features.length) return;
     
-    const clusterId = features[0].properties.cluster_id;
-    const mapboxSource = event.target.getSource('businesses');
+    const clusterId = features[0].properties?.cluster_id;
+    const mapboxSource = event.target.getSource('businesses') as any;
     
-    mapboxSource.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+    mapboxSource.getClusterExpansionZoom(clusterId, (err: unknown, zoom: number) => {
       if (err) return;
       
-      setViewState({
-        ...viewState,
-        longitude: features[0].geometry.coordinates[0],
-        latitude: features[0].geometry.coordinates[1],
-        zoom: zoom,
-      });
+      if (features[0].geometry.type === 'Point') {
+        const coords = (features[0].geometry as { type: 'Point'; coordinates: [number, number] }).coordinates;
+        setViewState({
+          ...viewState,
+          longitude: coords[0],
+          latitude: coords[1],
+          zoom: zoom,
+        });
+      }
     });
   };
 
   // Handle unclustered point click
-  const handlePointClick = (event: any) => {
+  const handlePointClick = (event: MapLayerMouseEvent) => {
     const features = event.target.queryRenderedFeatures(event.point, {
       layers: ['unclustered-point']
-    });
+    }) as MapboxGeoJSONFeature[];
     
     if (!features.length) return;
     
-    const business = features[0].properties.businessObject;
+    const business = features[0].properties?.businessObject;
     if (business) {
       setPopupInfo(JSON.parse(business));
     }
   };
 
   // Handle point hover
-  const handlePointHover = (event: any) => {
+  const handlePointHover = (event: MapLayerMouseEvent) => {
     const features = event.target.queryRenderedFeatures(event.point, {
       layers: ['unclustered-point']
-    });
+    }) as MapboxGeoJSONFeature[];
     
     if (!features.length) {
       setHoverInfo(null);
       return;
     }
     
-    const business = features[0].properties.businessObject;
+    const business = features[0].properties?.businessObject;
     if (business) {
       setHoverInfo(JSON.parse(business));
     }

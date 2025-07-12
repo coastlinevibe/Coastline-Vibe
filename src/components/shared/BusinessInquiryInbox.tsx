@@ -85,9 +85,13 @@ const BusinessInquiryInbox: React.FC<{ businessId: string }> = ({ businessId }) 
         
         setInquiries(data || []);
         if (count !== null) setTotalCount(count);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error fetching inquiries:', err);
-        setError(err.message);
+        if (err && typeof err === 'object' && 'message' in err && typeof (err as any).message === 'string') {
+          setError((err as any).message);
+        } else {
+          setError('An error occurred while fetching inquiries.');
+        }
       } finally {
         setLoading(false);
       }
@@ -115,7 +119,7 @@ const BusinessInquiryInbox: React.FC<{ businessId: string }> = ({ businessId }) 
         if (selectedInquiry?.id === inquiry.id) {
           setSelectedInquiry({ ...selectedInquiry, status: 'read', updated_at: new Date().toISOString() });
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error marking inquiry as read:', err);
       }
     }
@@ -139,7 +143,7 @@ const BusinessInquiryInbox: React.FC<{ businessId: string }> = ({ businessId }) 
       if (selectedInquiry?.id === inquiry.id) {
         setSelectedInquiry({ ...selectedInquiry, status: 'replied', updated_at: new Date().toISOString() });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error marking inquiry as replied:', err);
     }
   };
@@ -167,7 +171,7 @@ const BusinessInquiryInbox: React.FC<{ businessId: string }> = ({ businessId }) 
       if (selectedInquiry?.id === inquiry.id) {
         setSelectedInquiry({ ...selectedInquiry, is_archived: newArchivedState, updated_at: new Date().toISOString() });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error toggling archive status:', err);
     }
   };
@@ -206,7 +210,7 @@ const BusinessInquiryInbox: React.FC<{ businessId: string }> = ({ businessId }) 
           updated_at: new Date().toISOString() 
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error toggling spam status:', err);
     }
   };

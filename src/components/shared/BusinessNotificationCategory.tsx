@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Bell, MessageSquare, CheckCircle, BarChart2, Star } from 'lucide-react';
-import { useNotifications } from '@/context/NotificationContext';
+import { useNotifications, Notification } from '@/context/NotificationContext';
 import NotificationItem from './NotificationItem';
 
 interface BusinessNotificationCategoryProps {
@@ -25,7 +25,7 @@ const BusinessNotificationCategory: React.FC<BusinessNotificationCategoryProps> 
     notification => notification.type === type
   );
 
-  const handleNotificationClick = async (notification: any) => {
+  const handleNotificationClick = async (notification: Notification) => {
     if (!notification.is_read) {
       await markAsRead(notification.id);
     }

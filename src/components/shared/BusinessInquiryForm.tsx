@@ -94,9 +94,13 @@ const BusinessInquiryForm: React.FC<BusinessInquiryFormProps> = ({
         setSubmitSuccess(false);
       }, 5000);
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error submitting inquiry:', err);
-      setErrorMessage(err.message || 'An error occurred while submitting your inquiry. Please try again.');
+      if (err && typeof err === 'object' && 'message' in err && typeof (err as any).message === 'string') {
+        setErrorMessage((err as any).message);
+      } else {
+        setErrorMessage('An error occurred while submitting your inquiry. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
