@@ -826,7 +826,7 @@ export default function CommunityBusinessDetailPage() {
         if (updateError) {
           console.error('Error updating business rating:', updateError);
         } else if (business) {
-          // Update local business state with new rating info
+          // Update local business state with rating info
           setBusiness({
             ...business,
             average_rating: averageRating,
