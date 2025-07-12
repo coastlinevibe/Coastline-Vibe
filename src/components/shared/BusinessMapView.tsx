@@ -15,6 +15,9 @@ type MapBusiness = {
   rating?: number;
   category_name?: string;
   is_featured?: boolean;
+  neighborhood?: string;
+  neighborhood_id?: string;
+  district?: string;
 };
 
 type BusinessMapViewProps = {
@@ -112,6 +115,9 @@ const BusinessMapView: React.FC<BusinessMapViewProps> = ({
           rating: business.rating || 0,
           category: business.category_name || '',
           isFeatured: business.is_featured || false,
+          neighborhood: business.neighborhood || '',
+          neighborhood_id: business.neighborhood_id || '',
+          district: business.district || '',
           businessObject: business // Store the entire business object
         },
         geometry: {
@@ -233,20 +239,20 @@ const BusinessMapView: React.FC<BusinessMapViewProps> = ({
   };
 
   return (
-    <div className="w-full h-[600px] rounded-lg overflow-hidden shadow-md relative">
+    <div className="w-full h-full rounded-lg overflow-hidden shadow-md relative">
       {/* Map Controls */}
-      <div className="absolute top-3 left-3 z-10 bg-white rounded-md shadow-md p-2 flex flex-col gap-2">
+      <div className="absolute top-2 left-2 z-10 bg-white rounded-md shadow-md p-1.5 flex flex-col gap-1.5">
         <button 
-          className={`p-2 rounded-md ${isClusteringEnabled ? 'bg-primaryTeal text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
+          className={`p-1.5 rounded-md ${isClusteringEnabled ? 'bg-primaryTeal text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
           onClick={() => setIsClusteringEnabled(!isClusteringEnabled)}
           title={isClusteringEnabled ? "Disable clustering" : "Enable clustering"}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
             <path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
           </svg>
         </button>
         <button 
-          className="p-2 rounded-md bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+          className="p-1.5 rounded-md bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
           onClick={() => {
             if (businessesWithLocation.length > 0) {
               // Reset to initial bounds
@@ -270,7 +276,7 @@ const BusinessMapView: React.FC<BusinessMapViewProps> = ({
           }}
           title="Reset view"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
             <path fillRule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
             <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
           </svg>
@@ -291,8 +297,9 @@ const BusinessMapView: React.FC<BusinessMapViewProps> = ({
           }
         }}
         interactiveLayerIds={isClusteringEnabled ? ['clusters', 'unclustered-point'] : []}
+        style={{ width: '100%', height: '100%' }}
       >
-        <NavigationControl position="top-right" />
+        <NavigationControl position="top-right" showCompass={false} />
         
         {/* Render markers directly when clustering is disabled */}
         {!isClusteringEnabled && businessesWithLocation.map(business => (
@@ -315,13 +322,14 @@ const BusinessMapView: React.FC<BusinessMapViewProps> = ({
             >
               <svg 
                 viewBox="0 0 24 24" 
-                width="32" 
-                height="32" 
+                width="24" 
+                height="24" 
                 stroke="currentColor" 
                 strokeWidth="2" 
                 fill="white" 
                 strokeLinecap="round" 
                 strokeLinejoin="round"
+                className="sm:w-8 sm:h-8"
               >
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
                 <circle cx="12" cy="10" r="3"></circle>
@@ -354,12 +362,27 @@ const BusinessMapView: React.FC<BusinessMapViewProps> = ({
               left: viewState.longitude < hoverInfo.location!.longitude ? '10px' : 'auto',
               right: viewState.longitude >= hoverInfo.location!.longitude ? '10px' : 'auto',
               bottom: '10px',
-              maxWidth: '250px'
+              maxWidth: '200px'
             }}
           >
-            <div className="font-semibold text-primaryTeal">{hoverInfo.name}</div>
+            <div className="font-semibold text-primaryTeal text-sm truncate">{hoverInfo.name}</div>
             {hoverInfo.category_name && (
-              <div className="text-xs text-gray-500">{hoverInfo.category_name}</div>
+              <div className="text-xs text-gray-500 truncate">{hoverInfo.category_name}</div>
+            )}
+            {(hoverInfo.neighborhood || hoverInfo.district) && (
+              <div className="text-xs text-gray-500 truncate flex items-center mt-0.5">
+                <svg 
+                  className="w-3 h-3 mr-0.5 flex-shrink-0" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24" 
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                <span className="truncate">{hoverInfo.neighborhood || hoverInfo.district}</span>
+              </div>
             )}
             {hoverInfo.rating !== undefined && (
               <div className="flex items-center mt-1">
@@ -377,7 +400,8 @@ const BusinessMapView: React.FC<BusinessMapViewProps> = ({
               </div>
             )}
             <div className="text-xs text-gray-600 mt-1 line-clamp-2">
-              {hoverInfo.description || "No description available"}
+              {hoverInfo.description?.substring(0, 50) || "No description available"}
+              {hoverInfo.description && hoverInfo.description.length > 50 ? "..." : ""}
             </div>
             <div className="text-xs text-primaryTeal mt-1">Click for details</div>
           </div>
@@ -393,74 +417,56 @@ const BusinessMapView: React.FC<BusinessMapViewProps> = ({
             closeOnClick={false}
             closeButton={true}
             className="z-10"
+            maxWidth="220px"
           >
-            <div className="p-2 max-w-[250px]">
+            <div className="p-1 sm:p-2 max-w-[220px]">
               <Link 
                 href={`/community/${communityId}/business/${popupInfo.id}`}
-                className="block hover:opacity-90 transition-opacity"
+                className="font-semibold text-primaryTeal text-sm hover:underline block truncate"
               >
-                <div className="relative w-full h-24 mb-2 bg-gray-100 rounded overflow-hidden">
-                  {popupInfo.cover_image_url ? (
-                    <Image
-                      src={popupInfo.cover_image_url}
-                      alt={popupInfo.name}
-                      fill
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                      <span className="text-gray-400">No image</span>
-                    </div>
+                {popupInfo.name}
+              </Link>
+              {popupInfo.category_name && (
+                <div className="text-xs text-gray-500">{popupInfo.category_name}</div>
                   )}
-                  
-                  {popupInfo.is_featured && (
-                    <div className="absolute top-1 right-1 bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded">
-                      Featured
-                    </div>
-                  )}
-                </div>
-                
-                <h3 className="font-semibold text-primaryTeal truncate">{popupInfo.name}</h3>
-                
-                <div className="flex items-center gap-1 mt-1">
-                  {popupInfo.rating ? (
-                    <>
-                      <div className="flex">
-                        {[1, 2, 3, 4, 5].map(star => (
+              {popupInfo.rating !== undefined && (
+                <div className="flex items-center mt-1">
+                  {Array.from({ length: 5 }).map((_, i) => (
                           <svg 
-                            key={star}
-                            className={`w-3 h-3 ${
-                              star <= popupInfo.rating!
-                                ? "text-yellow-400" 
-                                : "text-gray-300"
-                            }`}
+                      key={i}
+                      className={`w-3 h-3 ${i < popupInfo.rating! ? "text-yellow-400" : "text-gray-300"}`}
                             fill="currentColor"
                             viewBox="0 0 20 20"
                           >
                             <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                           </svg>
                         ))}
-                      </div>
-                      <span className="text-xs text-gray-500 ml-1">{popupInfo.rating}</span>
-                    </>
-                  ) : (
-                    <span className="text-xs text-gray-500">No ratings</span>
-                  )}
-                </div>
-                
-                {popupInfo.category_name && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    {popupInfo.category_name}
+                  <span className="text-xs text-gray-500 ml-1">{popupInfo.rating.toFixed(1)}</span>
                   </div>
                 )}
-                
-                <p className="text-xs text-gray-600 mt-2 line-clamp-2">
-                  {popupInfo.description || "No description available"}
-                </p>
-                
-                <div className="mt-2 text-xs text-primaryTeal font-medium">
-                  Click to view details
+              {(popupInfo.neighborhood || popupInfo.district) && (
+                <div className="text-xs text-gray-500 mt-1 flex items-center">
+                  <svg 
+                    className="w-3 h-3 mr-1" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24" 
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                  </svg>
+                  {popupInfo.neighborhood || popupInfo.district}
                 </div>
+              )}
+              <div className="text-xs text-gray-600 mt-1 max-h-12 overflow-y-auto">
+                {popupInfo.description || "No description available"}
+              </div>
+              <Link 
+                href={`/community/${communityId}/business/${popupInfo.id}`}
+                className="mt-2 text-xs text-white bg-primaryTeal px-2 py-1 rounded inline-block hover:bg-teal-600 transition-colors"
+              >
+                View Details
               </Link>
             </div>
           </Popup>

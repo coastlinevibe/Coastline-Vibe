@@ -683,6 +683,7 @@ export default function BusinessMultiStepForm({
   // Handle file uploads separately
   const handleFileUploads = async (businessId: string) => {
     console.log("Processing file uploads for business:", businessId);
+    let uploadErrors = [];
     
     try {
       // Handle thumbnail upload
@@ -695,6 +696,7 @@ export default function BusinessMultiStepForm({
         
         if (thumbnailError) {
           console.error("Error uploading thumbnail:", thumbnailError);
+          uploadErrors.push(`Thumbnail: ${thumbnailError.message}`);
         } else {
           const { data: thumbnailData } = supabase.storage
             .from('business-uploads')
@@ -703,7 +705,10 @@ export default function BusinessMultiStepForm({
           // Update business with thumbnail URL
           await supabase
             .from('businesses')
-            .update({ thumbnail_url: thumbnailData.publicUrl })
+            .update({ 
+              logo_url: thumbnailData.publicUrl,
+              thumbnail_url: thumbnailData.publicUrl 
+            })
             .eq('id', businessId);
             
           console.log("Thumbnail uploaded and saved:", thumbnailData.publicUrl);
@@ -720,6 +725,7 @@ export default function BusinessMultiStepForm({
         
         if (coverError) {
           console.error("Error uploading cover image:", coverError);
+          uploadErrors.push(`Cover image: ${coverError.message}`);
         } else {
           const { data: coverData } = supabase.storage
             .from('business-uploads')
@@ -728,7 +734,10 @@ export default function BusinessMultiStepForm({
           // Update business with cover URL
           await supabase
             .from('businesses')
-            .update({ cover_url: coverData.publicUrl })
+            .update({ 
+              cover_image_url: coverData.publicUrl,
+              cover_url: coverData.publicUrl 
+            })
             .eq('id', businessId);
             
           console.log("Cover image uploaded and saved:", coverData.publicUrl);
@@ -740,23 +749,46 @@ export default function BusinessMultiStepForm({
         console.log(`Uploading ${form.gallery.length} gallery images`);
         const galleryUrls: string[] = [];
         
-        for (let i = 0; i < form.gallery.length; i++) {
-          const galleryPath = `businesses/${businessId}/gallery/${i}`;
-          const { error: galleryError } = await supabase.storage
-            .from('business-uploads')
-            .upload(galleryPath, form.gallery[i], { upsert: true });
+        // Upload images in parallel with Promise.all for better performance
+        const uploadPromises = form.gallery.map(async (file, index) => {
+          const galleryPath = `businesses/${businessId}/gallery/${index}-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '')}`;
           
-          if (galleryError) {
-            console.error(`Error uploading gallery image ${i}:`, galleryError);
-          } else {
-            const { data: galleryData } = supabase.storage
+          try {
+            const { error: galleryError } = await supabase.storage
               .from('business-uploads')
-              .getPublicUrl(galleryPath);
-              
-            galleryUrls.push(galleryData.publicUrl);
-            console.log(`Gallery image ${i} uploaded:`, galleryData.publicUrl);
+              .upload(galleryPath, file, { upsert: true });
+            
+            if (galleryError) {
+              console.error(`Error uploading gallery image ${index}:`, galleryError);
+              return { error: galleryError, index };
+            } else {
+              const { data: galleryData } = supabase.storage
+                .from('business-uploads')
+                .getPublicUrl(galleryPath);
+                
+              console.log(`Gallery image ${index} uploaded:`, galleryData.publicUrl);
+              return { url: galleryData.publicUrl, index };
+            }
+          } catch (err) {
+            console.error(`Error uploading gallery image ${index}:`, err);
+            return { error: err, index };
           }
-        }
+        });
+        
+        const results = await Promise.all(uploadPromises);
+        
+        // Collect successful uploads and errors
+        results.forEach(result => {
+          if (result.url) {
+            galleryUrls.push(result.url);
+          } else if (result.error) {
+            uploadErrors.push(`Gallery image ${result.index + 1}: ${
+              typeof result.error === 'object' && result.error !== null && 'message' in result.error 
+                ? result.error.message 
+                : 'Unknown error'
+            }`);
+          }
+        });
         
         if (galleryUrls.length > 0) {
           // Update business with gallery URLs
@@ -779,6 +811,7 @@ export default function BusinessMultiStepForm({
         
         if (menuImageError) {
           console.error("Error uploading menu image:", menuImageError);
+          uploadErrors.push(`Menu image: ${menuImageError.message}`);
         } else {
           const { data: menuImageData } = supabase.storage
             .from('business-uploads')
@@ -794,9 +827,16 @@ export default function BusinessMultiStepForm({
         }
       }
       
+      // Display any upload errors
+      if (uploadErrors.length > 0) {
+        setError(`Some files could not be uploaded: ${uploadErrors.join(', ')}`);
+        return false;
+      }
+      
       return true;
     } catch (err) {
       console.error("Error handling file uploads:", err);
+      setError(`Error uploading files: ${err instanceof Error ? err.message : 'Unknown error'}`);
       return false;
     }
   };
@@ -1355,7 +1395,31 @@ export default function BusinessMultiStepForm({
               <div className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-darkCharcoal">Thumbnail Image</label>
-                  <div className="border-2 border-dashed border-seafoam rounded-md p-4 bg-sand/50 text-center">
+                  <div 
+                    className="border-2 border-dashed border-seafoam rounded-md p-4 bg-sand/50 text-center"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.add('bg-seafoam/20');
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.remove('bg-seafoam/20');
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.remove('bg-seafoam/20');
+                      
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        const file = e.dataTransfer.files[0];
+                        if (file.type.startsWith('image/')) {
+                          setForm({...form, thumbnail: file});
+                        }
+                      }
+                    }}
+                  >
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <div className="text-3xl text-seafoam">🖼️</div>
                       <p className="text-sm text-darkCharcoal">Drag and drop your thumbnail image or</p>
@@ -1375,7 +1439,14 @@ export default function BusinessMultiStepForm({
                       <p className="text-xs text-grayLight">Recommended: 400x300px, max 2MB</p>
                     </div>
                     {form.thumbnail && (
-                      <div className="mt-4 p-2 bg-white rounded border border-seafoam flex flex-col items-center">
+                      <div className="mt-4 p-2 bg-white rounded border border-seafoam flex flex-col items-center relative">
+                        <button 
+                          type="button"
+                          className="absolute -top-2 -right-2 bg-coralAccent text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-600 transition-colors"
+                          onClick={() => setForm({...form, thumbnail: null})}
+                        >
+                          ×
+                        </button>
                         <p className="text-sm text-darkCharcoal truncate">{form.thumbnail.name}</p>
                         <GalleryImagePreview file={form.thumbnail} />
                       </div>
@@ -1385,7 +1456,31 @@ export default function BusinessMultiStepForm({
                 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-darkCharcoal">Cover Image</label>
-                  <div className="border-2 border-dashed border-seafoam rounded-md p-4 bg-sand/50 text-center">
+                  <div 
+                    className="border-2 border-dashed border-seafoam rounded-md p-4 bg-sand/50 text-center"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.add('bg-seafoam/20');
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.remove('bg-seafoam/20');
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.remove('bg-seafoam/20');
+                      
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        const file = e.dataTransfer.files[0];
+                        if (file.type.startsWith('image/')) {
+                          setForm({...form, cover: file});
+                        }
+                      }
+                    }}
+                  >
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <div className="text-3xl text-seafoam">🌄</div>
                       <p className="text-sm text-darkCharcoal">Drag and drop your cover image or</p>
@@ -1405,9 +1500,15 @@ export default function BusinessMultiStepForm({
                       <p className="text-xs text-grayLight">Recommended: 1200x600px, max 5MB</p>
                     </div>
                     {form.cover && (
-                      <div className="mt-4 p-2 bg-white rounded border border-seafoam flex flex-col items-center">
+                      <div className="mt-4 p-2 bg-white rounded border border-seafoam flex flex-col items-center relative">
+                        <button 
+                          type="button"
+                          className="absolute -top-2 -right-2 bg-coralAccent text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-600 transition-colors"
+                          onClick={() => setForm({...form, cover: null})}
+                        >
+                          ×
+                        </button>
                         <p className="text-sm text-darkCharcoal truncate">{form.cover.name}</p>
-                        {/* Show image preview if possible */}
                         <CoverImagePreview file={form.cover} />
                       </div>
                     )}
@@ -1444,10 +1545,45 @@ export default function BusinessMultiStepForm({
                 
                 <div className="space-y-2 mt-4">
                   <label className="text-sm font-medium text-darkCharcoal">Gallery Images</label>
-                  <div className="border-2 border-dashed border-seafoam rounded-md p-4 bg-sand/50 text-center">
+                  <div 
+                    className="border-2 border-dashed border-seafoam rounded-md p-4 bg-sand/50 text-center"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.add('bg-seafoam/20');
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.remove('bg-seafoam/20');
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.remove('bg-seafoam/20');
+                      
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        const filesArray = Array.from(e.dataTransfer.files).filter(
+                          file => file.type.startsWith('image/')
+                        );
+                        
+                        if (filesArray.length > 0) {
+                          // Limit to 10 images total
+                          const totalImages = form.gallery.length + filesArray.length;
+                          const filesToAdd = filesArray.slice(0, Math.max(0, 10 - form.gallery.length));
+                          
+                          setForm({...form, gallery: [...form.gallery, ...filesToAdd]});
+                          
+                          if (totalImages > 10) {
+                            setError(`You can only upload up to 10 images. ${totalImages - 10} images were not added.`);
+                          }
+                        }
+                      }
+                    }}
+                  >
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <div className="text-3xl text-seafoam">📸</div>
-                      <p className="text-sm text-darkCharcoal">Upload multiple gallery images</p>
+                      <p className="text-sm text-darkCharcoal">Drag and drop multiple gallery images or</p>
                       <label className="px-4 py-2 bg-seafoam text-primaryTeal rounded-md cursor-pointer hover:bg-seafoam/80 transition-colors font-medium">
                         Browse Files
                         <input 
@@ -1458,26 +1594,58 @@ export default function BusinessMultiStepForm({
                           onChange={(e) => {
                             if (e.target.files && e.target.files.length > 0) {
                               const filesArray = Array.from(e.target.files);
-                              setForm({...form, gallery: [...form.gallery, ...filesArray]});
+                              
+                              // Limit to 10 images total
+                              const totalImages = form.gallery.length + filesArray.length;
+                              const filesToAdd = filesArray.slice(0, Math.max(0, 10 - form.gallery.length));
+                              
+                              setForm({...form, gallery: [...form.gallery, ...filesToAdd]});
+                              
+                              if (totalImages > 10) {
+                                setError(`You can only upload up to 10 images. ${totalImages - 10} images were not added.`);
+                              }
                             }
                           }}
                         />
                       </label>
                       <p className="text-xs text-grayLight">Up to 10 images, max 2MB each</p>
                     </div>
+                    
                     {form.gallery.length > 0 && (
-                      <div className="mt-4 grid grid-cols-3 gap-2">
-                        {form.gallery.slice(0, 3).map((file, index) => (
-                          <div key={index} className="p-2 bg-white rounded border border-seafoam flex flex-col items-center">
-                            <p className="text-xs text-darkCharcoal truncate">{file.name}</p>
-                            <GalleryImagePreview file={file} />
-                          </div>
-                        ))}
-                        {form.gallery.length > 3 && (
-                          <div className="p-2 bg-white rounded border border-seafoam flex items-center justify-center">
-                            <p className="text-xs text-darkCharcoal">+{form.gallery.length - 3} more</p>
-                          </div>
-                        )}
+                      <div className="mt-4">
+                        <div className="flex justify-between items-center mb-2">
+                          <p className="text-sm font-medium text-darkCharcoal">{form.gallery.length} image{form.gallery.length !== 1 ? 's' : ''} selected</p>
+                          <button 
+                            type="button"
+                            className="text-xs text-coralAccent hover:underline"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to remove all gallery images?')) {
+                                setForm({...form, gallery: []});
+                              }
+                            }}
+                          >
+                            Remove All
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {form.gallery.map((file, index) => (
+                            <div key={index} className="relative p-2 bg-white rounded border border-seafoam flex flex-col items-center">
+                              <button 
+                                type="button"
+                                className="absolute -top-2 -right-2 bg-coralAccent text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-600 transition-colors"
+                                onClick={() => {
+                                  const newGallery = [...form.gallery];
+                                  newGallery.splice(index, 1);
+                                  setForm({...form, gallery: newGallery});
+                                }}
+                              >
+                                ×
+                              </button>
+                              <p className="text-xs text-darkCharcoal truncate w-full text-center mb-1">{file.name.length > 15 ? file.name.substring(0, 12) + '...' : file.name}</p>
+                              <GalleryImagePreview file={file} />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2275,24 +2443,110 @@ export default function BusinessMultiStepForm({
 
 function CoverImagePreview({ file }: { file: File }) {
   const [src, setSrc] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(false);
+  
   React.useEffect(() => {
+    setLoading(true);
+    setError(false);
     const reader = new FileReader();
-    reader.onload = (e) => setSrc(e.target?.result as string);
+    
+    reader.onload = (e) => {
+      setSrc(e.target?.result as string);
+      setLoading(false);
+    };
+    
+    reader.onerror = () => {
+      setError(true);
+      setLoading(false);
+    };
+    
     reader.readAsDataURL(file);
-    return () => { setSrc(null); };
+    
+    return () => { 
+      setSrc(null);
+      reader.abort();
+    };
   }, [file]);
-  if (!src) return null;
-  return <img src={src} alt="Cover preview" className="mt-2 max-h-32 rounded shadow" />;
+  
+  if (loading) {
+    return (
+      <div className="w-full h-32 flex items-center justify-center bg-sand/30 rounded">
+        <div className="w-5 h-5 border-2 border-seafoam border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+  
+  if (error || !src) {
+    return (
+      <div className="w-full h-32 flex items-center justify-center bg-sand/30 rounded text-coralAccent text-xs">
+        Error loading image
+      </div>
+    );
+  }
+  
+  return (
+    <div className="w-full h-32 flex items-center justify-center overflow-hidden rounded">
+      <img 
+        src={src} 
+        alt="Cover preview" 
+        className="w-full h-full object-cover rounded shadow" 
+      />
+    </div>
+  );
 }
 
 function GalleryImagePreview({ file }: { file: File }) {
   const [src, setSrc] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(false);
+  
   React.useEffect(() => {
+    setLoading(true);
+    setError(false);
     const reader = new FileReader();
-    reader.onload = (e) => setSrc(e.target?.result as string);
+    
+    reader.onload = (e) => {
+      setSrc(e.target?.result as string);
+      setLoading(false);
+    };
+    
+    reader.onerror = () => {
+      setError(true);
+      setLoading(false);
+    };
+    
     reader.readAsDataURL(file);
-    return () => { setSrc(null); };
+    
+    return () => { 
+      setSrc(null);
+      reader.abort();
+    };
   }, [file]);
-  if (!src) return null;
-  return <img src={src} alt="Gallery preview" className="mt-2 max-h-20 rounded shadow" />;
+  
+  if (loading) {
+    return (
+      <div className="w-full h-20 flex items-center justify-center bg-sand/30 rounded">
+        <div className="w-4 h-4 border-2 border-seafoam border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+  
+  if (error || !src) {
+    return (
+      <div className="w-full h-20 flex items-center justify-center bg-sand/30 rounded text-coralAccent text-xs">
+        Error loading image
+      </div>
+    );
+  }
+  
+  return (
+    <div className="w-full h-20 flex items-center justify-center overflow-hidden rounded">
+      <img 
+        src={src} 
+        alt="Gallery preview" 
+        className="w-full h-full object-cover rounded shadow" 
+      />
+    </div>
+  );
 }

@@ -2,6 +2,14 @@
 
 import React from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
+import { getNeighborhoodById } from '@/data/danang-neighborhoods';
+import { 
+  getCategoryById, 
+  getSubcategoryById,
+  getLocalizedCategoryName,
+  getLocalizedSubcategoryName
+} from '@/data/danang-categories';
 
 interface ActiveFiltersTagsProps {
   filters: Record<string, any>;
@@ -14,15 +22,24 @@ export default function ActiveFiltersTags({
   onRemoveFilter,
   className = ''
 }: ActiveFiltersTagsProps) {
+  const { t, language } = useTranslation();
+
+
+
   // Format filter value for display
   const formatFilterValue = (key: string, value: any): string => {
     switch (key) {
       case 'category':
-        return value;
+        if (value.subcategoryId) {
+          return getLocalizedSubcategoryName(value.subcategoryId, language);
+        } else if (value.categoryId) {
+          return getLocalizedCategoryName(value.categoryId, language);
+        }
+        return '';
       case 'search':
         return `"${value}"`;
       case 'rating':
-        return `${value}+ Stars`;
+        return `${value}+ ${t('directory.stars', 'Stars')}`;
       case 'amenities':
         // For array values, we'll create separate tags
         return '';
@@ -36,16 +53,22 @@ export default function ActiveFiltersTags({
         return '';
       case 'hours':
         if (value.openNow) {
-          return 'Open Now';
+          return t('directory.openNow', 'Open Now');
         } else if (value.days?.length) {
-          return `Open: ${value.days.length} days`;
+          return `${t('directory.open', 'Open')}: ${value.days.length} ${t('directory.days', 'days')}`;
         }
         return '';
       case 'location':
-        if (value.neighborhood) {
-          return value.neighborhood;
+        if (value.neighborhoodId) {
+          const neighborhood = getNeighborhoodById(value.neighborhoodId);
+          if (neighborhood) {
+            return language === 'vi' ? neighborhood.name.vi : neighborhood.name.en;
+          }
+          return value.neighborhoodId;
+        } else if (value.district) {
+          return value.district;
         } else if (value.radius && value.coordinates) {
-          return `Within ${value.radius}km`;
+          return `${t('directory.within', 'Within')} ${value.radius}km`;
         }
         return '';
       default:
@@ -56,13 +79,13 @@ export default function ActiveFiltersTags({
   // Get filter label
   const getFilterLabel = (key: string): string => {
     switch (key) {
-      case 'category': return 'Category';
-      case 'search': return 'Search';
-      case 'rating': return 'Rating';
-      case 'amenities': return 'Amenity';
-      case 'price': return 'Price';
-      case 'hours': return 'Hours';
-      case 'location': return 'Location';
+      case 'category': return t('directory.categories', 'Category');
+      case 'search': return t('common.search', 'Search');
+      case 'rating': return t('directory.rating', 'Rating');
+      case 'amenities': return t('directory.amenities', 'Amenity');
+      case 'price': return t('directory.price', 'Price');
+      case 'hours': return t('directory.hours', 'Hours');
+      case 'location': return t('directory.location', 'Location');
       default: return key.charAt(0).toUpperCase() + key.slice(1);
     }
   };
@@ -70,16 +93,16 @@ export default function ActiveFiltersTags({
   // Get amenity label
   const getAmenityLabel = (amenityId: string): string => {
     const amenityMap: Record<string, string> = {
-      wifi: 'WiFi',
-      parking: 'Parking',
-      accessibility: 'Accessible',
-      delivery: 'Delivery',
-      takeout: 'Takeout',
-      outdoor_seating: 'Outdoor Seating',
-      reservations: 'Reservations',
-      credit_cards: 'Credit Cards',
-      family_friendly: 'Family Friendly',
-      pet_friendly: 'Pet Friendly'
+      wifi: t('amenities.wifi', 'WiFi'),
+      parking: t('amenities.parking', 'Parking'),
+      accessibility: t('amenities.wheelchair', 'Accessible'),
+      delivery: t('amenities.delivery', 'Delivery'),
+      takeout: t('amenities.takeout', 'Takeout'),
+      outdoor_seating: t('amenities.outdoor', 'Outdoor Seating'),
+      reservations: t('amenities.reservations', 'Reservations'),
+      credit_cards: t('amenities.creditCards', 'Credit Cards'),
+      family_friendly: t('amenities.familyFriendly', 'Family Friendly'),
+      pet_friendly: t('amenities.petFriendly', 'Pet Friendly')
     };
     
     return amenityMap[amenityId] || amenityId;
@@ -150,14 +173,14 @@ export default function ActiveFiltersTags({
 
   return (
     <div className={`flex flex-wrap items-center ${className}`}>
-      <span className="text-sm text-gray-500 mr-2">Active Filters:</span>
+      <span className="text-sm text-gray-500 mr-2">{t('directory.activeFilters', 'Active Filters')}:</span>
       {filterTags}
       {filterTags.length > 1 && (
         <button
           onClick={() => Object.keys(filters).forEach(key => onRemoveFilter(key))}
           className="text-xs text-red-500 hover:text-red-700 font-medium underline ml-1"
         >
-          Clear All
+          {t('common.clearAll', 'Clear All')}
         </button>
       )}
     </div>

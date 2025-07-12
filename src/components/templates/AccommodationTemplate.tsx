@@ -67,9 +67,10 @@ interface AccommodationTemplateProps {
       rating?: number;
     }[];
   };
+  userRole: string | null;
 }
 
-export default function AccommodationTemplate({ business }: AccommodationTemplateProps) {
+export default function AccommodationTemplate({ business, userRole }: AccommodationTemplateProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'amenities' | 'gallery' | 'reviews'>('overview');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -195,14 +196,16 @@ export default function AccommodationTemplate({ business }: AccommodationTemplat
       </div>
 
       {/* Back to My Businesses Link */}
-      <div className="max-w-content mx-auto px-4 py-4">
-        <Link 
-          href={`/community/${communityId}/business/directory/my-businesses`}
-          className="inline-flex items-center text-primaryTeal hover:text-seafoam transition-colors"
-        >
-          <span className="mr-1">←</span> Back to My Businesses
-        </Link>
-      </div>
+      {userRole === 'business' && (
+        <div className="max-w-content mx-auto px-4 py-4">
+          <Link 
+            href={`/community/${communityId}/business/directory/my-businesses`}
+            className="inline-flex items-center text-primaryTeal hover:text-seafoam transition-colors"
+          >
+            <span className="mr-1">←</span> Back to My Businesses
+          </Link>
+        </div>
+      )}
       
       {/* Hero Section with Main Image */}
       <section className="relative w-full h-[60vh] min-h-[400px]">

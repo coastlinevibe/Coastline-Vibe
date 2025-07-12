@@ -7,10 +7,13 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Filter, List, Map as MapIcon, SlidersHorizontal } from "lucide-react";
+import { useTranslation } from "@/hooks/useTranslation";
 
-// Import our new filter components
+// Import our filter components
 import AdvancedFilterSidebar from "@/components/shared/AdvancedFilterSidebar";
 import ActiveFiltersTags from "@/components/shared/ActiveFiltersTags";
+import FloatingSocialShare from "../../../../../components/shared/FloatingSocialShare";
+import { danangNeighborhoods, getNeighborhoodById } from "@/data/danang-neighborhoods";
 
 // Dynamically import the map component to avoid SSR issues with mapbox-gl
 const BusinessMapView = dynamic(
@@ -52,6 +55,9 @@ type Business = {
   contact_phone?: string;
   contact_email?: string;
   location?: { latitude: number; longitude: number } | null;
+  neighborhood?: string;
+  neighborhood_id?: string;
+  district?: string;
 };
 
 export default function BusinessDirectoryPage() {
@@ -59,6 +65,7 @@ export default function BusinessDirectoryPage() {
   const params = useParams();
   const communityId = (params?.communityId as string) || '';
   const router = useRouter();
+  const { t } = useTranslation();
 
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -265,23 +272,57 @@ export default function BusinessDirectoryPage() {
     
     // Add filters if they exist
     if (filters.search) {
-      query = query.ilike("name", `%${filters.search}%`);
+      // Search across multiple fields using 'or' filter
+      const search = filters.search;
+      query = query.or(`
+        name.ilike.%${search}%,
+        description.ilike.%${search}%,
+        address.ilike.%${search}%,
+        category.name.ilike.%${search}%,
+        subcategory.name.ilike.%${search}%
+      `);
     }
     
     if (filters.category) {
-      query = query.eq("category_id", filters.category);
+      if (filters.category.categoryId) {
+        query = query.eq("category_id", filters.category.categoryId);
     }
     
-    if (filters.location?.neighborhood) {
-      query = query.eq("neighborhood", filters.location.neighborhood);
+      if (filters.category.subcategoryId) {
+        query = query.eq("subcategory_id", filters.category.subcategoryId);
+      }
+    }
+    
+    if (filters.location?.neighborhoodId) {
+      // Get the neighborhood by ID
+      const neighborhood = getNeighborhoodById(filters.location.neighborhoodId);
+      if (neighborhood) {
+        // Try to match either by neighborhood_id or by neighborhood name
+        query = query.or(`neighborhood_id.eq.${filters.location.neighborhoodId},neighborhood.ilike.%${neighborhood.name.en}%,neighborhood.ilike.%${neighborhood.name.vi}%`);
+        
+        // Also set district if available
+        if (neighborhood.district) {
+          query = query.or(`district.eq.${neighborhood.district}`);
+        }
+      }
+    } else if (filters.location?.district) {
+      // Filter by district
+      query = query.eq("district", filters.location.district);
     }
     
     if (filters.location?.radius && filters.location?.coordinates) {
+      // Use PostGIS for spatial queries if available
+      try {
       query = query.filter(
         "location",
         "st_d_within",
         `SRID=4326;POINT(${filters.location.coordinates.lng} ${filters.location.coordinates.lat}),${filters.location.radius * 1000}`
       );
+      } catch (error) {
+        console.error("Error with spatial query:", error);
+        // Fallback to simple distance calculation if PostGIS is not available
+        // This would need to be implemented on the client side
+      }
     }
     
     if (filters.rating > 0) {
@@ -404,13 +445,13 @@ export default function BusinessDirectoryPage() {
       {userRole && (
         <div className="mb-4 p-3 bg-sky-100 text-sky-700 rounded-md text-sm">
           {userRole === 'community admin' && (
-            <>You're viewing the business directory as a community administrator. You can create and manage all businesses.</>
+            <>{t('directory.viewingAsAdmin', "You're viewing the business directory as a community administrator. You can create and manage all businesses.")}</>
           )}
           {userRole === 'business' && (
-            <>You're viewing the business directory as a business account. You can create and manage your own businesses.</>
+            <>{t('directory.viewingAsBusiness', "You're viewing the business directory as a business account. You can create and manage your own businesses.")}</>
           )}
           {userRole !== 'community admin' && userRole !== 'business' && (
-            <>You're viewing the business directory as a regular member. You can view businesses but not create them.</>
+            <>{t('directory.viewingAsUser', "You're viewing the business directory as a regular member. You can view businesses but not create them.")}</>
           )}
         </div>
       )}
@@ -422,19 +463,19 @@ export default function BusinessDirectoryPage() {
             href={`/community/${communityId}/business/directory`}
             className="px-4 py-2 bg-white rounded-md shadow-sm border border-gray-200 text-cyan-700 font-medium hover:bg-gray-50 transition-colors"
           >
-            All Businesses
+            {t('directory.allBusinesses', 'All Businesses')}
           </Link>
           <Link
             href={`/community/${communityId}/business/directory/my-businesses`}
             className="px-4 py-2 bg-white rounded-md shadow-sm border border-gray-200 text-cyan-700 font-medium hover:bg-gray-50 transition-colors"
           >
-            My Businesses
+            {t('directory.myBusinesses', 'My Businesses')}
           </Link>
           <Link
             href={`/community/${communityId}/business/create`}
             className="px-4 py-2 bg-primaryTeal rounded-md shadow-sm text-white font-medium hover:bg-teal-600 transition-colors"
           >
-            + Create Business
+            + {t('directory.createBusiness', 'Create Business')}
           </Link>
         </div>
       )}
@@ -442,10 +483,10 @@ export default function BusinessDirectoryPage() {
       {/* 1. Modern Search/Filter Bar */}
       <section className="w-full bg-gradient-to-r from-primaryTeal/60 to-seafoam/40 py-12 md:py-16 flex flex-col items-center justify-center text-center relative">
         <h1 className="text-3xl md:text-4xl font-heading font-extrabold text-offWhite mb-2 drop-shadow">
-          {communityId ? `${communityId} – Business Directory` : 'Business Directory'}
+          {communityId ? `${communityId} – ${t('directory.title', 'Business Directory')}` : t('directory.title', 'Business Directory')}
         </h1>
         <p className="text-lg text-offWhite mb-6 md:mb-8 font-body drop-shadow">
-          Discover local businesses by type, area, or rating.
+          {t('directory.discoverBusinesses', 'Discover local businesses by type, area, or rating.')}
         </p>
         
         <div className="flex justify-center w-full max-w-content mx-auto px-4">
@@ -458,7 +499,7 @@ export default function BusinessDirectoryPage() {
           >
             <input
               type="text"
-              placeholder="What are you finding?"
+              placeholder={t('directory.findingWhat', 'What are you finding?')}
               className="w-full sm:flex-1 px-4 py-3 rounded-lg border-none bg-transparent text-darkCharcoal font-body focus:ring-2 focus:ring-primaryTeal focus:outline-none text-base"
               value={filters.search}
               onChange={e => handleFilterChange('search', e.target.value)}
@@ -468,15 +509,17 @@ export default function BusinessDirectoryPage() {
                 type="submit"
                 className="flex-1 sm:flex-none px-6 py-3 rounded-lg bg-primaryTeal text-offWhite font-semibold font-body text-base hover:bg-seafoam transition shadow-elevated"
               >
-                Search
+                {t('common.search', 'Search')}
               </button>
               <button
                 type="button"
                 className="flex-1 sm:flex-none px-5 py-3 rounded-lg bg-white border border-primaryTeal text-primaryTeal font-semibold font-body text-base hover:bg-primaryTeal hover:text-white transition shadow-sm"
                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                aria-expanded={showAdvancedFilters}
+                aria-controls="advanced-filters-sidebar"
               >
                 <SlidersHorizontal size={18} className="inline-block mr-2" />
-                Filters
+                {t('common.filters', 'Filters')}
               </button>
             </div>
           </form>
@@ -484,47 +527,47 @@ export default function BusinessDirectoryPage() {
       </section>
       
       {/* Main Content with Advanced Filter Sidebar */}
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
         {/* View Toggle and Sort Controls */}
-        <div className="flex flex-wrap items-center justify-between mb-6">
-          <div className="flex items-center space-x-2 mb-4 sm:mb-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3">
+          <div className="flex items-center space-x-2">
             <button
               onClick={() => setViewMode('list')}
-              className={`px-3 py-2 rounded-md flex items-center ${
+              className={`px-2 sm:px-3 py-2 rounded-md flex items-center ${
                 viewMode === 'list' 
                   ? 'bg-primaryTeal text-white' 
                   : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
-              <List size={18} className="mr-2" />
-              List View
+              <List size={16} className="mr-1 sm:mr-2" />
+              <span className="text-sm sm:text-base">{t('directory.listView', 'List View')}</span>
             </button>
             <button
               onClick={() => setViewMode('map')}
-              className={`px-3 py-2 rounded-md flex items-center ${
+              className={`px-2 sm:px-3 py-2 rounded-md flex items-center ${
                 viewMode === 'map' 
                   ? 'bg-primaryTeal text-white' 
                   : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
-              <MapIcon size={18} className="mr-2" />
-              Map View
+              <MapIcon size={16} className="mr-1 sm:mr-2" />
+              <span className="text-sm sm:text-base">{t('directory.mapView', 'Map View')}</span>
             </button>
           </div>
           
-          <div className="flex items-center">
-            <label className="text-sm text-gray-600 mr-2">Sort by:</label>
+          <div className="flex items-center mt-2 sm:mt-0">
+            <label className="text-xs sm:text-sm text-gray-600 mr-2">{t('directory.sortBy', 'Sort by:')}:</label>
             <select
               value={filters.sort}
               onChange={(e) => handleFilterChange('sort', e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-primaryTeal focus:border-primaryTeal"
+              className="px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-md text-xs sm:text-sm focus:ring-primaryTeal focus:border-primaryTeal"
             >
-              <option value="featured">Featured</option>
-              <option value="rating_high">Highest Rated</option>
-              <option value="rating_low">Lowest Rated</option>
-              <option value="name_asc">Name (A-Z)</option>
-              <option value="name_desc">Name (Z-A)</option>
-              <option value="newest">Newest</option>
+              <option value="featured">{t('directory.featured', 'Featured')}</option>
+              <option value="rating_high">{t('directory.highestRated', 'Highest Rated')}</option>
+              <option value="rating_low">{t('directory.lowestRated', 'Lowest Rated')}</option>
+              <option value="name_asc">{t('directory.nameAsc', 'Name (A-Z)')}</option>
+              <option value="name_desc">{t('directory.nameDesc', 'Name (Z-A)')}</option>
+              <option value="newest">{t('directory.newest', 'Newest')}</option>
             </select>
           </div>
         </div>
@@ -533,14 +576,14 @@ export default function BusinessDirectoryPage() {
         <ActiveFiltersTags 
           filters={filters} 
           onRemoveFilter={handleRemoveFilter}
-          className="mb-6" 
+          className="mb-4 sm:mb-6 overflow-x-auto pb-2 flex flex-nowrap" 
         />
         
         {/* Main Content with Sidebar */}
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           {/* Advanced Filter Sidebar - only shown when showAdvancedFilters is true */}
           {showAdvancedFilters && (
-            <div className="lg:w-72 flex-shrink-0">
+            <div className="lg:w-72 flex-shrink-0 sticky top-0 max-h-screen overflow-y-auto z-10">
               <AdvancedFilterSidebar
                 filters={filters}
                 onFilterChange={handleFilterChange}
@@ -559,43 +602,65 @@ export default function BusinessDirectoryPage() {
               </div>
             ) : viewMode === 'list' ? (
               businesses.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {businesses.map((business) => (
                     <BusinessCard key={business.id} business={business} />
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12 bg-white rounded-lg shadow">
-                  <h3 className="text-xl font-semibold text-gray-700 mb-2">No businesses found</h3>
-                  <p className="text-gray-500">Try adjusting your filters or search terms.</p>
+                <div className="text-center py-8 sm:py-12 bg-white rounded-lg shadow">
+                  <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-2">{t('directory.noResults', 'No businesses found')}</h3>
+                  <p className="text-gray-500 text-sm sm:text-base">{t('directory.tryAdjusting', 'Try adjusting your filters or search terms.')}</p>
                 </div>
               )
             ) : (
-              <div className="h-[600px] rounded-lg overflow-hidden shadow-lg">
+              <div className="h-[400px] sm:h-[500px] md:h-[600px] rounded-lg overflow-hidden shadow-lg">
                 <BusinessMapView 
-                  businesses={businesses.map(business => ({
+                  businesses={businesses.map(business => {
+                    // Extract category name safely
+                    let categoryName = '';
+                    if (typeof business.category === 'string') {
+                      categoryName = business.category;
+                    } else if (business.category && typeof business.category === 'object' && 'name' in business.category) {
+                      categoryName = business.category.name;
+                    } else if (business.category_name) {
+                      categoryName = business.category_name;
+                    }
+                    
+                    return {
                     id: business.id,
                     name: business.name,
                     description: business.description || '',
-                    logo_url: business.logo_url,
-                    cover_image_url: business.cover_image_url,
+                      logo_url: business.logo_url || '',
+                      cover_image_url: business.cover_image_url || '',
                     location: business.location,
                     rating: business.rating,
-                    category_name: business.category_name || '',
-                    is_featured: business.is_featured
-                  }))} 
+                      category_name: categoryName,
+                      is_featured: business.is_featured,
+                      neighborhood: business.neighborhood,
+                      neighborhood_id: business.neighborhood_id,
+                      district: business.district
+                    };
+                  })}
+                  communityId={communityId}
                   initialViewState={{
                     longitude: 108.2022,
                     latitude: 16.0544,
                     zoom: 11
                   }}
-                  communityId={communityId}
                 />
               </div>
             )}
           </div>
         </div>
       </div>
+      
+      {/* Floating Social Share Button */}
+      <FloatingSocialShare
+        url={typeof window !== 'undefined' ? window.location.href : `/community/${communityId}/business/directory`}
+        title="Business Directory"
+        description="Discover local businesses in our community directory"
+      />
     </div>
   );
 } 

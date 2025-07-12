@@ -46,7 +46,7 @@ export default function LoginPage() {
           try {
             const { data: profile } = await supabase
               .from('profiles')
-              .select('community_id')
+              .select('community_id, role')
               .eq('id', session.user.id)
               .single();
 
@@ -61,8 +61,13 @@ export default function LoginPage() {
                   .single();
                 
                 if (communityData?.slug) {
-                  // Direct users to their mini-dash
-                  router.push(`/community/${communityData.slug}/mini-dash`);
+                  // Direct business users to business menu, others to mini-dash
+                  if (profile.role === 'business') {
+                    router.push(`/community/${communityData.slug}/business/directory/businessmenu`);
+                  } else {
+                    // Direct users to their mini-dash
+                    router.push(`/community/${communityData.slug}/mini-dash`);
+                  }
                 } else {
                   router.push('/');
                 }

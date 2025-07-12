@@ -5,14 +5,15 @@ import {
   Filter, Search, MapPin, Clock, DollarSign, 
   Settings, Star, BookmarkPlus, Tag, List 
 } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
 
 // Import filter panels
 import BusinessAmenitiesFilter from './filter-panels/BusinessAmenitiesFilter';
 import PriceRangeFilter from './filter-panels/PriceRangeFilter';
 import OpeningHoursFilter from './filter-panels/OpeningHoursFilter';
-import LocationFilter from './filter-panels/LocationFilter';
+import EnhancedLocationFilter from './filter-panels/EnhancedLocationFilter';
 import SavedFiltersPanel from './filter-panels/SavedFiltersPanel';
-import CategoryFilter from './filter-panels/CategoryFilter';
+import EnhancedCategoryFilter from './filter-panels/EnhancedCategoryFilter';
 
 interface AdvancedFilterSidebarProps {
   filters: Record<string, any>;
@@ -35,6 +36,7 @@ export default function AdvancedFilterSidebar({
 }: AdvancedFilterSidebarProps) {
   const [isExpanded, setIsExpanded] = useState(!isCollapsible);
   const [activeFilterPanel, setActiveFilterPanel] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   // Count active filters
   const countActiveFilters = () => {
@@ -58,32 +60,31 @@ export default function AdvancedFilterSidebar({
   const filterPanels = [
     { 
       key: 'category', 
-      label: 'Categories', 
+      label: t('directory.categories', 'Categories'), 
       icon: Tag,
       component: (
-        <CategoryFilter 
+        <EnhancedCategoryFilter 
           filterKey="category" 
-          value={filters.category || 'All'} 
+          value={filters.category || {}} 
           onChange={(value) => onFilterChange('category', value)} 
         />
       )
     },
     { 
       key: 'location', 
-      label: 'Location', 
+      label: t('directory.location', 'Location'), 
       icon: MapPin,
       component: (
-        <LocationFilter 
+        <EnhancedLocationFilter 
           filterKey="location" 
           value={filters.location || {}} 
           onChange={(value) => onFilterChange('location', value)} 
-          neighborhoods={neighborhoods}
         />
       )
     },
     { 
       key: 'amenities', 
-      label: 'Amenities', 
+      label: t('directory.amenities', 'Amenities'), 
       icon: Settings,
       component: (
         <BusinessAmenitiesFilter 
@@ -95,7 +96,7 @@ export default function AdvancedFilterSidebar({
     },
     { 
       key: 'price', 
-      label: 'Price', 
+      label: t('directory.price', 'Price'), 
       icon: DollarSign,
       component: (
         <PriceRangeFilter 
@@ -107,7 +108,7 @@ export default function AdvancedFilterSidebar({
     },
     { 
       key: 'hours', 
-      label: 'Opening Hours', 
+      label: t('directory.hours', 'Opening Hours'), 
       icon: Clock,
       component: (
         <OpeningHoursFilter 
@@ -119,7 +120,7 @@ export default function AdvancedFilterSidebar({
     },
     { 
       key: 'saved', 
-      label: 'Saved Filters', 
+      label: t('common.savedFilters', 'Saved Filters'), 
       icon: BookmarkPlus,
       component: (
         <SavedFiltersPanel 
@@ -165,20 +166,21 @@ export default function AdvancedFilterSidebar({
 
   return (
     <div 
+      id="advanced-filters-sidebar"
       className={`bg-white rounded-lg shadow-md transition-all duration-300 h-full flex flex-col ${
-        isExpanded ? 'w-72' : 'w-16'
+        isExpanded ? 'w-full lg:w-72' : 'w-14 sm:w-16'
       } ${className}`}
     >
       {/* Header */}
       <div className="p-3 border-b flex items-center justify-between">
         {isExpanded && (
-          <h2 className="font-bold text-primaryTeal">Filters</h2>
+          <h2 className="font-bold text-primaryTeal text-sm sm:text-base">{t('common.filters', 'Filters')}</h2>
         )}
         {isCollapsible && (
           <button 
             onClick={() => setIsExpanded(!isExpanded)}
             className="p-1.5 bg-primaryTeal/10 rounded-full text-primaryTeal hover:bg-primaryTeal/20 transition-colors"
-            aria-label={isExpanded ? "Collapse filters" : "Expand filters"}
+            aria-label={isExpanded ? t('common.collapseFilters', "Collapse filters") : t('common.expandFilters', "Expand filters")}
           >
             <Filter size={16} />
           </button>
@@ -204,13 +206,13 @@ export default function AdvancedFilterSidebar({
                       : badgeCount > 0 
                         ? 'bg-gray-50 text-primaryTeal' 
                         : 'text-gray-600 hover:bg-gray-50'
-                  } rounded-md transition-colors`}
+                  } rounded-md transition-colors relative`}
                   onClick={() => toggleFilterPanel(panel.key)}
                 >
                   <div className="flex items-center">
                     <Icon size={isExpanded ? 16 : 20} />
                     {isExpanded && (
-                      <span className="ml-3 font-medium">{panel.label}</span>
+                      <span className="ml-3 font-medium text-sm sm:text-base">{panel.label}</span>
                     )}
                   </div>
                   {isExpanded && badgeCount > 0 && (
@@ -227,7 +229,7 @@ export default function AdvancedFilterSidebar({
 
                 {/* Filter Panel (only when expanded and active) */}
                 {isExpanded && isActive && (
-                  <div className="mt-1 mx-1 p-3 bg-gray-50 rounded-md">
+                  <div className="mt-1 mx-1 p-3 bg-gray-50 rounded-md overflow-x-hidden">
                     {panel.component}
                   </div>
                 )}
@@ -242,10 +244,10 @@ export default function AdvancedFilterSidebar({
         <div className="p-3 border-t">
           <button
             onClick={onClearAllFilters}
-            className="w-full py-2 flex items-center justify-center gap-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+            className="w-full py-2 flex items-center justify-center gap-2 text-xs sm:text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
           >
             <span>✕</span>
-            <span>Clear All Filters ({activeFiltersCount})</span>
+            <span>{t('common.clearAll', 'Clear All')} ({activeFiltersCount})</span>
           </button>
         </div>
       )}

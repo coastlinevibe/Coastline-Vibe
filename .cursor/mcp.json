@@ -13,13 +13,6 @@
         "uxnmlfvjjmgbhjyxfuyq"
       ]
     },
-    "server-name": {
-      "command": "npx",
-      "args": ["-y", "mcp-server"],
-      "env": {
-        "API_KEY": "value"
-      }
-    },
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp"]

@@ -7,6 +7,8 @@ import AccommodationTemplate from "../../../../../components/templates/Accommoda
 import Link from "next/link";
 import Breadcrumb from "../../../../../components/shared/Breadcrumb";
 import BusinessInquiryForm from "../../../../../components/shared/BusinessInquiryForm";
+import SocialShareButtons from "../../../../../components/shared/SocialShareButtons";
+import FloatingSocialShare from "../../../../../components/shared/FloatingSocialShare";
 
 type Business = {
   id: string;
@@ -90,6 +92,7 @@ export default function CommunityBusinessDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState<boolean>(false);
   const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
+  const [userRole, setUserRole] = useState<string | null>(null);
   
   // Schedule state
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -128,6 +131,16 @@ export default function CommunityBusinessDetailPage() {
     const getCurrentUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
+      if (user) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        setUserRole(profileData?.role || null);
+      } else {
+        setUserRole(null);
+      }
     };
     
     getCurrentUser();
@@ -899,7 +912,7 @@ export default function CommunityBusinessDetailPage() {
   const categoryName = business.category?.name;
   
   if (categoryName === "Accommodations") {
-    return <AccommodationTemplate business={business} />;
+    return <AccommodationTemplate business={business} userRole={userRole} />;
   }
   
   // Default template for other business types
@@ -916,13 +929,14 @@ export default function CommunityBusinessDetailPage() {
         />
 
         <div className="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+          {userRole === 'business' && (
           <Link 
             href={`/community/${communityId}/business/directory/my-businesses`}
             className="flex items-center justify-center sm:justify-start text-cyan-700 hover:text-cyan-900 bg-white py-2 px-4 rounded-md shadow-sm"
           >
             <span>← Back to My Businesses</span>
           </Link>
-          
+          )}
           <button 
             onClick={() => router.push(`/community/${communityId}/business/directory`)}
             className="flex items-center justify-center text-cyan-700 hover:text-cyan-900 bg-white py-2 px-4 rounded-md shadow-sm"
@@ -983,6 +997,7 @@ export default function CommunityBusinessDetailPage() {
               </div>
               
               {/* Verification Badge */}
+              <div className="flex flex-col sm:flex-row gap-2 items-center">
               <div className={`flex items-center gap-2 px-3 py-2 mt-2 sm:mt-0 rounded-lg ${
                 business.is_verified 
                   ? "bg-emerald-100 text-emerald-700" 
@@ -1008,6 +1023,18 @@ export default function CommunityBusinessDetailPage() {
                 <span className="font-medium">
                   {business.is_verified ? "Verified Business" : "Verification Pending"}
                 </span>
+                </div>
+                
+                {/* Social Share Buttons */}
+                {business && (
+                  <SocialShareButtons
+                    url={typeof window !== 'undefined' ? window.location.href : `/community/${communityId}/business/${businessId}`}
+                    title={business.name || business.title || 'Business'}
+                    description={business.description || ''}
+                    imageUrl={business.banner_url || business.cover_url || business.logo_url || ''}
+                    className="mt-2 sm:mt-0"
+                  />
+                )}
               </div>
             </div>
             <p className="text-sm sm:text-base text-gray-700 whitespace-pre-line">{business.description}</p>
@@ -1257,24 +1284,24 @@ export default function CommunityBusinessDetailPage() {
           </div>
         )}
         
-        {/* Gallery (if available) */}
+        {/* Business image gallery */}
         {business.gallery_urls && business.gallery_urls.length > 0 && (
           <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 mb-8">
             <h2 className="text-lg sm:text-xl font-semibold text-cyan-900 mb-4">Photo Gallery</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
-              {business.gallery_urls.map((url: string, idx: number) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-4">
+              {business.gallery_urls.map((url, index) => (
                 <div 
-                  key={idx} 
-                  className="relative aspect-square overflow-hidden rounded-lg cursor-pointer hover:opacity-90 transition-opacity border border-gray-200"
-                  onClick={() => openLightbox(idx)}
+                  key={index} 
+                  className="relative h-24 sm:h-32 rounded-lg overflow-hidden cursor-pointer border border-gray-200 hover:opacity-90 transition-opacity"
+                  onClick={() => openLightbox(index)}
                 >
                   <img 
                     src={url} 
-                    alt={`Gallery image ${idx+1}`} 
-                    className="object-cover w-full h-full"
+                    alt={`${business.name} gallery ${index + 1}`} 
+                    className="w-full h-full object-cover"
                     onError={(e) => {
-                      console.error("Error loading gallery image:", url);
-                      e.currentTarget.src = "/placeholder-business.jpg";
+                      console.error("Error loading gallery image");
+                      e.currentTarget.src = '/placeholder-business.jpg';
                     }}
                   />
                 </div>
@@ -1283,185 +1310,17 @@ export default function CommunityBusinessDetailPage() {
           </div>
         )}
 
-        {/* Menu Items (if available) */}
-        {business.menu_items && business.menu_items.length > 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-cyan-900">Menu Items</h2>
-              {business.menu_price && (
-                <div className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-sm">
-                  Price Range: {business.menu_price}
-                </div>
-              )}
-            </div>
-            
-            {business.menu_name && (
-              <p className="text-lg font-medium text-cyan-800 mb-4">{business.menu_name}</p>
-            )}
-            
-            <ul className="divide-y">
-              {business.menu_items.map((item: string, idx: number) => (
-                <li key={idx} className="py-2 flex items-center gap-2">
-                  <span className="text-amber-500">•</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-            
-            {business.menu_image_url && (
-              <div className="mt-4">
-                <img 
-                  src={business.menu_image_url} 
-                  alt="Menu" 
-                  className="max-w-full rounded-lg border border-gray-200"
-                  onError={(e) => {
-                    console.error("Error loading menu image");
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Tags (if available) */}
-        {business.tags && business.tags.length > 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <h2 className="text-xl font-semibold text-cyan-900 mb-4">Tags</h2>
-            <div className="flex flex-wrap gap-2">
-              {business.tags.map((tag: string, idx: number) => (
-                <div key={idx} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                  #{tag}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {/* Business hours - show regardless of schedule availability */}
+        {/* Reviews Section */}
         <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold text-cyan-900">Business Hours</h2>
-            
-            {/* Open Now Indicator - only show if schedule exists */}
-            {business.schedule && Object.keys(business.schedule).length > 0 && (
-              <div className="flex flex-col items-end">
-                <div className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium flex items-center gap-1 ${
-                  isOpen 
-                    ? "bg-blue-100 text-blue-800" 
-                    : isCurrentlyOpen() 
-                  ? "bg-green-100 text-green-800" 
-                  : "bg-red-100 text-red-800"
-              }`}>
-                <span className={`w-2 h-2 rounded-full ${
-                    isOpen ? "bg-blue-500" : isCurrentlyOpen() ? "bg-green-500" : "bg-red-500"
-                }`}></span>
-                  {isOpen 
-                    ? "Open 24/7" 
-                    : isCurrentlyOpen() ? "Open Now" : "Closed Now"}
-                </div>
-                {!isOpen && timeUntilChange && (
-                  <div className="text-xs text-gray-500 mt-1">{timeUntilChange}</div>
-                )}
-              </div>
-            )}
-          </div>
-          
-          {/* Check if schedule exists and has valid entries */}
-          {business.schedule && 
-           Object.keys(business.schedule).length > 0 && 
-           Object.values(business.schedule).some(day => day && (day.open || day.close)) ? (
-            isOpen ? (
-              <div className="bg-blue-50 rounded-lg p-4 text-center">
-                <div className="flex items-center justify-center mb-2">
-                  <svg className="w-5 h-5 text-blue-700 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-blue-800 font-medium">Open 24 hours, 7 days a week</span>
-                </div>
-                <p className="text-sm text-blue-600">This business is always open</p>
-              </div>
-            ) : (
-              <div className="border rounded-lg overflow-hidden overflow-x-auto">
-              <table className="w-full">
-                <tbody>
-                  {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => {
-                    const schedule = business.schedule?.[day];
-                    const isToday = day.toLowerCase() === currentDay.toLowerCase();
-                    
-                    // Check if this day has valid schedule data
-                    const hasHours = schedule && (schedule.open || schedule.close);
-                
-                    return (
-                      <tr 
-                        key={day} 
-                        className={`border-b last:border-b-0 ${isToday ? "bg-cyan-50" : ""}`}
-                      >
-                          <td className={`py-2 px-3 sm:px-4 font-medium text-xs sm:text-sm ${isToday ? "text-cyan-800" : ""}`}>
-                            <div className="flex items-center gap-1 sm:gap-2">
-                            {isToday && (
-                              <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-                            )}
-                            <span className="capitalize">{day}</span>
-                              {isToday && <span className="text-xs text-cyan-700 hidden sm:inline">(Today)</span>}
-                          </div>
-                        </td>
-                          <td className={`py-2 px-3 sm:px-4 text-right text-xs sm:text-sm ${isToday ? "text-cyan-800" : "text-gray-600"}`}>
-                          {hasHours
-                              ? `${formatTime(schedule.open || 'N/A')} - ${formatTime(schedule.close || 'N/A')}`
-                            : 'Closed'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            )
-          ) : (
-            <div className="border rounded-lg p-4 sm:p-6 flex flex-col items-center justify-center text-center">
-              <svg className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-sm sm:text-base text-gray-500 mb-1">No business hours available</p>
-              <p className="text-xs sm:text-sm text-gray-400">Contact the business for hours of operation</p>
-              
-              {business.phone && (
-                <a 
-                  href={`tel:${business.phone}`}
-                  className="mt-4 text-cyan-600 hover:text-cyan-800 flex items-center gap-1 text-sm"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                  </svg>
-                  Call for hours
-                </a>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {/* Reviews and Rating Section */}
-      <div className="max-w-4xl mx-auto px-4 mb-8">
-        <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
-          <h2 className="text-xl sm:text-2xl font-semibold text-cyan-900 mb-6">Reviews & Ratings</h2>
-          
-          {/* Overall Rating Display */}
-          <div className="flex items-center gap-4 mb-8 p-4 bg-cyan-50 rounded-lg">
-            <div className="text-3xl sm:text-4xl font-bold text-cyan-700">
-              {business.average_rating ? business.average_rating.toFixed(1) : "N/A"}
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
             <div>
-              <div className="flex items-center mb-1">
-                {[1, 2, 3, 4, 5].map((star) => (
+              <h2 className="text-lg sm:text-xl font-semibold text-cyan-900">Customer Reviews</h2>
+              <div className="flex items-center mt-1">
+                <div className="flex items-center mr-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
                   <svg 
-                    key={star}
-                    className={`w-4 h-4 sm:w-5 sm:h-5 ${
-                      business.average_rating && star <= Math.round(business.average_rating)
-                        ? "text-yellow-400" 
-                        : "text-gray-300"
-                    }`}
+                      key={i}
+                      className={`w-4 h-4 ${i < (business.average_rating || 0) ? "text-yellow-400" : "text-gray-300"}`}
                     fill="currentColor"
                     viewBox="0 0 20 20"
                   >
@@ -1469,77 +1328,35 @@ export default function CommunityBusinessDetailPage() {
                   </svg>
                 ))}
               </div>
-              <div className="text-xs sm:text-sm text-gray-600">
-                Based on {business.review_count || 0} {business.review_count === 1 ? 'review' : 'reviews'}
+                <span className="text-sm text-gray-600">
+                  {business.average_rating?.toFixed(1) || '0.0'} ({business.review_count || 0} reviews)
+                </span>
               </div>
             </div>
           </div>
           
-          {/* Write a Review Form */}
-          <div className="border-t pt-6 mt-6">
-            <h3 className="text-lg sm:text-xl font-semibold text-cyan-900 mb-4">Write a Review</h3>
-            
-            {reviewSubmitted ? (
-              <div className="bg-green-50 text-green-800 p-4 rounded-lg mb-6 border border-green-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span className="font-medium text-green-700">Thank you for your review!</span>
-                </div>
-                <p className="text-sm text-green-700">Your feedback helps the community make better decisions.</p>
-                <div className="mt-4 flex gap-3">
-                <button 
-                  onClick={() => setReviewSubmitted(false)}
-                    className="px-4 py-2 text-sm bg-white text-green-700 border border-green-300 rounded-md hover:bg-green-50"
-                >
-                  Write another review
-                </button>
-                  <a 
-                    href="#reviews-list"
-                    className="px-4 py-2 text-sm bg-green-700 text-white rounded-md hover:bg-green-800 inline-block"
-                  >
-                    View all reviews
-                  </a>
-                </div>
-              </div>
-            ) : !currentUser ? (
-              <div className="bg-blue-50 text-blue-800 p-4 rounded-lg mb-6 border border-blue-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="font-medium">Please log in to write a review</span>
-                </div>
-                <p className="text-sm">You need to be logged in to share your experience with this business.</p>
-                <button 
-                  onClick={() => router.push(`/login?redirect=/community/${communityId}/business/${businessId}`)}
-                  className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Log In
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleReviewSubmit} className="space-y-4">
-                {/* Star Rating Input */}
+          {/* Write a review form */}
+          {currentUser && !editingReviewId && (
+            <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-6">
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">Share Your Experience</h3>
+              
+              <form onSubmit={handleReviewSubmit} className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Rating</label>
-                  <div className="flex items-center gap-1 sm:gap-2">
+                  <div className="flex items-center">
                     {[1, 2, 3, 4, 5].map((star) => (
                       <button
                         key={star}
                         type="button"
+                        className="p-1 focus:outline-none"
                         onClick={() => setRating(star)}
                         onMouseEnter={() => setHoverRating(star)}
                         onMouseLeave={() => setHoverRating(0)}
-                        className="focus:outline-none p-1 transition-transform duration-150 hover:scale-110"
                       >
                         <svg 
-                          className={`w-7 h-7 sm:w-8 sm:h-8 ${
-                            (hoverRating || rating) >= star 
-                              ? "text-yellow-400 filter drop-shadow-sm" 
-                              : "text-gray-300"
-                          } hover:text-yellow-400 transition-all duration-150`}
+                          className={`w-6 h-6 ${
+                            (hoverRating || rating) >= star ? "text-yellow-400" : "text-gray-300"
+                          } transition-colors`}
                           fill="currentColor"
                           viewBox="0 0 20 20"
                         >
@@ -1547,136 +1364,80 @@ export default function CommunityBusinessDetailPage() {
                         </svg>
                       </button>
                     ))}
-                    <span className={`ml-2 text-sm ${rating === 0 ? 'text-gray-500' : 'font-medium text-cyan-700'}`}>
-                      {rating === 0 ? "Select a rating" : 
-                       rating === 1 ? "Poor" : 
-                       rating === 2 ? "Fair" : 
-                       rating === 3 ? "Good" : 
-                       rating === 4 ? "Very Good" : "Excellent"}
-                    </span>
                   </div>
                   {validationErrors.rating && (
-                    <p className="mt-1 text-sm text-red-600">{validationErrors.rating}</p>
+                    <p className="mt-1 text-xs text-red-600">{validationErrors.rating}</p>
                   )}
                 </div>
                 
-                {/* Review Text Input */}
                 <div>
-                  <label htmlFor="review" className="block text-sm font-medium text-gray-700 mb-1">
-                    Your Review
-                  </label>
+                  <label htmlFor="review-text" className="block text-sm font-medium text-gray-700 mb-1">Your Review</label>
                   <textarea
-                    id="review"
+                    id="review-text"
                     rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-cyan-500 focus:border-cyan-500 text-sm"
+                    placeholder="Share your experience with this business..."
                     value={reviewText}
                     onChange={(e) => setReviewText(e.target.value)}
-                    placeholder="Share your experience with this business..."
-                    className={`w-full px-3 py-2 border ${
-                      validationErrors.reviewText 
-                        ? 'border-red-300 focus:ring-red-500' 
-                        : 'border-gray-300 focus:ring-cyan-500'
-                    } rounded-md focus:outline-none focus:ring-2 focus:border-transparent text-sm`}
                   ></textarea>
-                  <div className="mt-1 flex justify-between items-center">
-                    <p className={`text-xs ${
-                      reviewText.length > 500 
-                        ? 'text-red-500' 
-                        : reviewText.length > 400 
-                          ? 'text-amber-500' 
-                          : 'text-gray-500'
-                    }`}>
-                    {reviewText.length}/500 characters (minimum 10)
-                  </p>
-                    {reviewText.length > 0 && reviewText.length < 10 && (
-                      <p className="text-xs text-amber-500">Review is too short</p>
-                    )}
-                  </div>
                   {validationErrors.reviewText && (
-                    <p className="mt-1 text-sm text-red-600">{validationErrors.reviewText}</p>
+                    <p className="mt-1 text-xs text-red-600">{validationErrors.reviewText}</p>
                   )}
                 </div>
                 
-                {/* Error Message */}
-                {reviewError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
-                    <p className="text-sm font-medium">{reviewError}</p>
-                  </div>
-                )}
-                
-                {/* Submit Button */}
-                <div>
+                <div className="flex items-center justify-end gap-2">
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className={`px-4 py-3 sm:py-2 rounded-md text-white font-medium text-sm sm:text-base w-full sm:w-auto transition-all duration-150 ${
-                      isSubmitting 
-                        ? "bg-gray-400 cursor-not-allowed" 
-                        : "bg-cyan-600 hover:bg-cyan-700 hover:shadow-md"
-                    }`}
+                    className="px-4 py-2 bg-cyan-600 text-white rounded-md shadow-sm hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 text-sm font-medium disabled:opacity-50"
                   >
-                    {isSubmitting ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Submitting...
-                      </span>
-                    ) : "Submit Review"}
+                    {isSubmitting ? "Submitting..." : "Submit Review"}
                   </button>
                 </div>
               </form>
+            </div>
             )}
-          </div>
-          
-          {/* Recent Reviews List */}
-          <div id="reviews-list" className="border-t pt-6 mt-8">
-            <h3 className="text-lg sm:text-xl font-semibold text-cyan-900 mb-4">Recent Reviews</h3>
-            
-            {loadingReviews ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-cyan-600"></div>
-              </div>
-            ) : reviews.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <p>No reviews yet. Be the first to share your experience!</p>
-              </div>
-            ) : (
-              <div className="space-y-4 sm:space-y-6">
-                {reviews.map((review) => (
-                  <div key={review.id} className="bg-gray-50 rounded-lg p-3 sm:p-4">
-                    {editingReviewId === review.id ? (
-                      // Edit Review Form
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <h4 className="font-medium text-cyan-900">Edit Your Review</h4>
-                          <button 
-                            onClick={cancelEditingReview}
-                            className="text-gray-500 hover:text-gray-700"
-                          >
-                            Cancel
-                          </button>
-                        </div>
 
-                        {/* Star Rating Edit */}
+          {/* Review submission success message */}
+          {reviewSubmitted && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md mb-6">
+              <p className="text-sm">Your review has been submitted successfully!</p>
+          </div>
+          )}
+          
+          {/* Reviews list */}
+          <div className="space-y-4">
+            {loadingReviews ? (
+              <div className="py-4 text-center text-gray-500">Loading reviews...</div>
+            ) : reviews.length > 0 ? (
+              reviews.map((review) => (
+                <div 
+                  key={review.id} 
+                  className="border-t border-gray-200 pt-4 first:border-t-0 first:pt-0"
+                >
+                  {/* Display review or edit form */}
+                    {editingReviewId === review.id ? (
+                    // Edit review form
+                    <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+                      <h4 className="text-sm font-medium text-gray-900 mb-2">Edit Your Review</h4>
+                      
+                      <div className="space-y-3">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Rating</label>
-                          <div className="flex items-center gap-1 sm:gap-2">
+                          <div className="flex items-center">
                             {[1, 2, 3, 4, 5].map((star) => (
                               <button
                                 key={star}
                                 type="button"
+                                className="p-1 focus:outline-none"
                                 onClick={() => setEditRating(star)}
                                 onMouseEnter={() => setEditHoverRating(star)}
                                 onMouseLeave={() => setEditHoverRating(0)}
-                                className="focus:outline-none p-1 transition-transform duration-150 hover:scale-110"
                               >
                                 <svg 
-                                  className={`w-6 h-6 sm:w-7 sm:h-7 ${
-                                    (editHoverRating || editRating) >= star 
-                                      ? "text-yellow-400 filter drop-shadow-sm" 
-                                      : "text-gray-300"
-                                  } hover:text-yellow-400 transition-all duration-150`}
+                                  className={`w-6 h-6 ${
+                                    (editHoverRating || editRating) >= star ? "text-yellow-400" : "text-gray-300"
+                                  } transition-colors`}
                                   fill="currentColor"
                                   viewBox="0 0 20 20"
                                 >
@@ -1684,247 +1445,143 @@ export default function CommunityBusinessDetailPage() {
                                 </svg>
                               </button>
                             ))}
-                            <span className={`ml-2 text-sm ${editRating === 0 ? 'text-gray-500' : 'font-medium text-cyan-700'}`}>
-                              {editRating === 0 ? "Select a rating" : 
-                               editRating === 1 ? "Poor" : 
-                               editRating === 2 ? "Fair" : 
-                               editRating === 3 ? "Good" : 
-                               editRating === 4 ? "Very Good" : "Excellent"}
-                            </span>
                           </div>
-                          {validationErrors.rating && (
-                            <p className="mt-1 text-sm text-red-600">{validationErrors.rating}</p>
-                          )}
                         </div>
                         
-                        {/* Review Text Edit */}
                         <div>
-                          <label htmlFor="editReview" className="block text-sm font-medium text-gray-700 mb-1">
-                            Your Review
-                          </label>
+                          <label htmlFor="edit-review-text" className="block text-sm font-medium text-gray-700 mb-1">Your Review</label>
                           <textarea
-                            id="editReview"
+                            id="edit-review-text"
                             rows={4}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-cyan-500 focus:border-cyan-500 text-sm"
                             value={editReviewText}
                             onChange={(e) => setEditReviewText(e.target.value)}
-                            placeholder="Share your experience with this business..."
-                            className={`w-full px-3 py-2 border ${
-                              validationErrors.reviewText 
-                                ? 'border-red-300 focus:ring-red-500' 
-                                : 'border-gray-300 focus:ring-cyan-500'
-                            } rounded-md focus:outline-none focus:ring-2 focus:border-transparent text-sm`}
                           ></textarea>
-                          <div className="mt-1 flex justify-between items-center">
-                            <p className={`text-xs ${
-                              editReviewText.length > 500 
-                                ? 'text-red-500' 
-                                : editReviewText.length > 400 
-                                  ? 'text-amber-500' 
-                                  : 'text-gray-500'
-                            }`}>
-                              {editReviewText.length}/500 characters (minimum 10)
-                            </p>
-                            {editReviewText.length > 0 && editReviewText.length < 10 && (
-                              <p className="text-xs text-amber-500">Review is too short</p>
-                            )}
-                          </div>
-                          {validationErrors.reviewText && (
-                            <p className="mt-1 text-sm text-red-600">{validationErrors.reviewText}</p>
-                          )}
                         </div>
                         
-                        {/* Update Button */}
-                        <div className="flex justify-end">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                           <button
                             type="button"
-                            disabled={isUpdatingReview}
-                            onClick={() => handleUpdateReview(review.id)}
-                            className={`px-4 py-2 rounded-md text-white font-medium text-sm transition-all duration-150 ${
-                              isUpdatingReview 
-                                ? "bg-gray-400 cursor-not-allowed" 
-                                : "bg-cyan-600 hover:bg-cyan-700 hover:shadow-md"
-                            }`}
-                          >
-                            {isUpdatingReview ? "Updating..." : "Update Review"}
-                          </button>
-                        </div>
-                      </div>
-                    ) : showDeleteConfirm === review.id ? (
-                      // Delete Confirmation
-                      <div className="space-y-3">
-                        <p className="text-gray-800 font-medium">Are you sure you want to delete this review?</p>
-                        <p className="text-gray-600 text-sm">This action cannot be undone.</p>
-                        <div className="flex justify-end gap-2 mt-3">
-                          <button
-                            onClick={() => setShowDeleteConfirm(null)}
-                            className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm"
+                            onClick={cancelEditingReview}
+                            className="px-3 py-1.5 border border-gray-300 bg-white text-gray-700 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 text-xs sm:text-sm font-medium"
                           >
                             Cancel
                           </button>
                           <button
-                            onClick={() => handleDeleteReview(review.id)}
-                            className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+                            type="button"
+                            onClick={() => handleUpdateReview(review.id)}
+                            disabled={isUpdatingReview}
+                            className="px-3 py-1.5 bg-cyan-600 text-white rounded-md shadow-sm hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 text-xs sm:text-sm font-medium disabled:opacity-50"
                           >
-                            Delete
+                            {isUpdatingReview ? "Updating..." : "Update Review"}
                           </button>
+                        </div>
                         </div>
                       </div>
                     ) : (
-                      // Regular Review Display
-                      <>
-                    <div className="flex justify-between items-start mb-2">
+                    // Review display
                       <div>
-                        <div className="flex items-center gap-2">
-                              <div className="bg-cyan-100 text-cyan-800 rounded-full w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center font-medium text-xs sm:text-base">
-                            {review.user_name?.charAt(0) || 'A'}
+                      <div className="flex items-start justify-between mb-1">
+                        <div className="flex items-center">
+                          <div className="rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 text-white w-8 h-8 flex items-center justify-center font-medium text-sm">
+                            {review.user_name?.charAt(0) || review.user_email?.charAt(0) || "?"}
                           </div>
-                              <span className="font-medium text-sm sm:text-base">{review.user_name}</span>
-                              {review.is_edited && (
-                                <span className="text-xs text-gray-500 italic">(Edited)</span>
-                              )}
-                        </div>
-                        <div className="flex items-center mt-1">
+                          <div className="ml-2">
+                            <h4 className="text-sm font-medium text-gray-900">
+                              {review.user_name || review.user_email?.split('@')[0] || "Anonymous"}
+                            </h4>
+                            <div className="flex items-center">
+                              <div className="flex mr-1">
                           {[1, 2, 3, 4, 5].map((star) => (
                             <svg 
                               key={star}
-                                  className={`w-3 h-3 sm:w-4 sm:h-4 ${
-                                star <= review.rating 
-                                  ? "text-yellow-400" 
-                                  : "text-gray-300"
-                              }`}
+                                    className={`w-3.5 h-3.5 ${star <= review.rating ? "text-yellow-400" : "text-gray-300"}`}
                               fill="currentColor"
                               viewBox="0 0 20 20"
                             >
                               <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                             </svg>
                           ))}
-                          <span className="ml-1 text-xs text-gray-500">
-                            {review.rating === 1 ? "Poor" : 
-                             review.rating === 2 ? "Fair" : 
-                             review.rating === 3 ? "Good" : 
-                             review.rating === 4 ? "Very Good" : "Excellent"}
-                          </span>
                         </div>
-                      </div>
-                          
-                          <div className="flex flex-col items-end">
-                      <div className="text-xs text-gray-500">
+                              <time className="text-xs text-gray-500" dateTime={review.created_at}>
                         {new Date(review.created_at).toLocaleDateString()}
+                              </time>
+                              {review.is_edited && (
+                                <span className="text-xs text-gray-500 ml-1">(edited)</span>
+                              )}
+                            </div>
+                          </div>
                       </div>
                             
-                            {/* Edit/Delete options for user's own reviews */}
+                        {/* Review Management Controls (for user's own reviews) */}
                             {currentUser && currentUser.id === review.user_id && (
-                              <div className="flex gap-2 mt-2">
+                          <div className="flex items-center space-x-2 ml-2">
                                 <button 
+                              type="button"
                                   onClick={() => startEditingReview(review)}
                                   className="text-xs text-cyan-600 hover:text-cyan-800"
+                              aria-label="Edit review"
                                 >
                                   Edit
                                 </button>
-                                <span className="text-gray-300">|</span>
                                 <button 
+                              type="button"
                                   onClick={() => setShowDeleteConfirm(review.id)}
                                   className="text-xs text-red-600 hover:text-red-800"
+                              aria-label="Delete review"
                                 >
                                   Delete
                                 </button>
                     </div>
                             )}
-                          </div>
-                        </div>
-                        <p className="text-gray-700 mt-2 whitespace-pre-line text-sm sm:text-base">{review.comment}</p>
-                      </>
-                    )}
-                  </div>
-                ))}
+      </div>
+      
+                      <div className="mt-1 text-sm text-gray-700 whitespace-pre-line">{review.comment}</div>
+      
+                      {/* Delete confirmation */}
+                      {showDeleteConfirm === review.id && (
+                        <div className="mt-3 p-2 sm:p-3 border border-red-200 bg-red-50 rounded-md">
+                          <p className="text-xs sm:text-sm text-red-600 mb-2">Are you sure you want to delete this review? This action cannot be undone.</p>
+                          <div className="flex justify-end space-x-2">
+          <button 
+                              type="button"
+                              onClick={() => setShowDeleteConfirm(null)}
+                              className="px-2 py-1 text-xs border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50"
+                            >
+                              Cancel
+          </button>
+          <button 
+                              type="button"
+                              onClick={() => handleDeleteReview(review.id)}
+                              className="px-2 py-1 text-xs bg-red-600 text-white rounded-md hover:bg-red-700"
+                            >
+                              Delete
+          </button>
+            </div>
+          </div>
+                      )}
               </div>
-            )}
+                  )}
+            </div>
+              ))
+            ) : (
+              <div className="py-4 text-center text-gray-500">
+                <p className="text-sm mb-1">No reviews yet.</p>
+                <p className="text-xs text-gray-400">Be the first to share your experience!</p>
+          </div>
+        )}
           </div>
         </div>
       </div>
       
-      {/* Contact/Inquiry Form */}
-      <div className="mb-8">
-        <BusinessInquiryForm 
-          businessId={businessId}
-          businessName={business ? (business.name || business.title || "Business") : "Business"}
-          communityId={communityId}
+      {/* Floating Social Share Button */}
+      {business && (
+        <FloatingSocialShare
+          url={typeof window !== 'undefined' ? window.location.href : `/community/${communityId}/business/${businessId}`}
+          title={business.name || business.title || 'Business'}
+          description={business.description || ''}
+          imageUrl={business.banner_url || business.cover_url || business.logo_url || ''}
         />
-      </div>
-      
-      {/* Lightbox Component */}
-      {lightboxOpen && business && business.gallery_urls && business.gallery_urls.length > 0 && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center">
-          {/* Close button */}
-          <button 
-            onClick={closeLightbox}
-            className="absolute top-2 right-2 sm:top-4 sm:right-4 text-white p-2 rounded-full hover:bg-white/20 transition z-50"
-            aria-label="Close lightbox"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 sm:h-8 sm:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-          
-          {/* Previous button */}
-          <button 
-            onClick={goToPrevious}
-            className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white p-1 sm:p-2 rounded-full hover:bg-white/20 transition z-50"
-            aria-label="Previous image"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 sm:h-8 sm:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          
-          {/* Next button */}
-          <button 
-            onClick={goToNext}
-            className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white p-1 sm:p-2 rounded-full hover:bg-white/20 transition z-50"
-            aria-label="Next image"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 sm:h-8 sm:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          
-          {/* Current image */}
-          <div className="max-h-[85vh] sm:max-h-[90vh] max-w-[90vw] relative">
-            <img
-              src={business.gallery_urls[currentImageIndex]}
-              alt={`${business.name || 'Business'} - Photo ${currentImageIndex + 1}`}
-              className="max-h-[85vh] sm:max-h-[90vh] max-w-[90vw] object-contain"
-              onError={(e) => {
-                e.currentTarget.src = "/placeholder-business.jpg";
-              }}
-            />
-            
-            {/* Image counter */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-3 py-1 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm">
-              {currentImageIndex + 1} / {business.gallery_urls.length}
-            </div>
-          </div>
-          
-          {/* Thumbnail navigation at bottom - hide on very small screens */}
-          <div className="absolute bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 hidden sm:flex gap-2 overflow-x-auto max-w-[80vw] pb-2">
-            {business.gallery_urls.map((image: string, index: number) => (
-              <div 
-                key={index} 
-                className={`w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0 cursor-pointer rounded overflow-hidden border-2 ${index === currentImageIndex ? 'border-white' : 'border-transparent'}`}
-                onClick={() => setCurrentImageIndex(index)}
-              >
-                <img
-                  src={image}
-                  alt={`Thumbnail ${index + 1}`}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.src = "/placeholder-business.jpg";
-                  }}
-                />
-              </div>
-            ))}
-            </div>
-          </div>
         )}
     </div>
   );

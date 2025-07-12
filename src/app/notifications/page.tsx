@@ -1,56 +1,51 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNotifications } from '@/context/NotificationContext';
-import { formatDistanceToNow } from 'date-fns';
-import { Bell, Check, User, Heart, MessageSquare, Calendar, Megaphone, HelpCircle, BarChart2 } from 'lucide-react';
-import Image from 'next/image';
-import Link from 'next/link';
+import { Bell, Check } from 'lucide-react';
+import NotificationItem from '@/components/shared/NotificationItem';
+import NotificationFilter from '@/components/shared/NotificationFilter';
+
+type NotificationType = 'all' | 'business_verification' | 'review' | 'inquiry' | 'featured_business' | 'analytics_alert';
 
 export default function NotificationsPage() {
   const { notifications, loading, markAsRead, markAllAsRead } = useNotifications();
+  const [activeFilter, setActiveFilter] = useState<NotificationType>('all');
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'post_like':
-        return <Heart className="h-5 w-5 text-red-500" />;
-      case 'comment':
-        return <MessageSquare className="h-5 w-5 text-blue-500" />;
-      case 'event':
-        return <Calendar className="h-5 w-5 text-green-500" />;
-      case 'announcement':
-        return <Megaphone className="h-5 w-5 text-yellow-500" />;
-      case 'question':
-        return <HelpCircle className="h-5 w-5 text-orange-500" />;
-      case 'poll':
-        return <BarChart2 className="h-5 w-5 text-indigo-500" />;
-      default:
-        return <Bell className="h-5 w-5 text-gray-500" />;
+  // Filter notifications based on selected type
+  const filteredNotifications = useMemo(() => {
+    if (activeFilter === 'all') {
+      return notifications;
     }
-  };
-
-  const getNotificationLink = (notification: any) => {
-    const { type, target_entity_type, target_entity_id, community_id } = notification;
+    return notifications.filter(notif => notif.type === activeFilter);
+  }, [notifications, activeFilter]);
+  
+  // Calculate counts for each notification type
+  const notificationCounts = useMemo(() => {
+    const counts = {
+      all: notifications.length,
+      business_verification: 0,
+      review: 0,
+      inquiry: 0,
+      featured_business: 0,
+      analytics_alert: 0
+    };
     
-    if (!target_entity_id) return '#';
-    
-    if (target_entity_type === 'posts') {
-      if (community_id) {
-        return `/community/${community_id}/feed?postId=${target_entity_id}`;
+    notifications.forEach(notification => {
+      const type = notification.type as NotificationType;
+      if (counts[type] !== undefined) {
+        counts[type] += 1;
       }
-      return `/feed?postId=${target_entity_id}`;
-    }
+    });
     
-    return '#';
-  };
+    return counts;
+  }, [notifications]);
 
   const handleNotificationClick = async (notification: any) => {
     if (!notification.is_read) {
       await markAsRead(notification.id);
     }
   };
-
-  const filteredNotifications = notifications.filter(notification => notification.type !== 'mention');
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
@@ -67,6 +62,13 @@ export default function NotificationsPage() {
           </button>
         </div>
         
+        {/* Notification filters */}
+        <NotificationFilter 
+          activeFilter={activeFilter}
+          onFilterChange={setActiveFilter}
+          counts={notificationCounts}
+        />
+        
         <div className="p-4">
           {loading ? (
             <div className="flex justify-center items-center p-8">
@@ -81,46 +83,12 @@ export default function NotificationsPage() {
               {filteredNotifications.map((notification) => (
                 <li 
                   key={notification.id}
-                  className={`py-4 ${!notification.is_read ? 'bg-blue-50 rounded-md px-3' : ''}`}
+                  className={`py-2 ${!notification.is_read ? 'bg-blue-50 rounded-md' : ''}`}
                 >
-                  <Link 
-                    href={getNotificationLink(notification)}
-                    onClick={() => handleNotificationClick(notification)}
-                    className="block"
-                  >
-                    <div className="flex items-start">
-                      <div className="flex-shrink-0 mr-4">
-                        {notification.actor_profile?.avatar_url ? (
-                          <div className="relative h-12 w-12 rounded-full overflow-hidden">
-                            <Image 
-                              src={notification.actor_profile.avatar_url}
-                              alt={notification.actor_profile.username || 'User'}
-                              fill
-                              sizes="48px"
-                              className="object-cover"
-                            />
-                          </div>
-                        ) : (
-                          <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center">
-                            <User className="h-6 w-6 text-gray-500" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-900">
-                            {notification.content_snippet}
-                          </p>
-                          <div className="flex-shrink-0 ml-2">
-                            {getNotificationIcon(notification.type)}
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
-                        </p>
-                      </div>
-                    </div>
-                  </Link>
+                  <NotificationItem 
+                    notification={notification}
+                    onClick={handleNotificationClick}
+                  />
                 </li>
               ))}
             </ul>

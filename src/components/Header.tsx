@@ -4,10 +4,13 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import features from '@/config/features';
+import { useTranslation } from '@/hooks/useTranslation';
+import LanguageSwitcher from './LanguageSwitcher';
 
 export default function Header({ communityId = 'miami' }: { communityId?: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useTranslation();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -72,15 +75,15 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
 
   const baseNavLinks = [
     // Only show active features
-    ...(activeFeatures.feed ? [{ label: 'Coastline Chatter', href: `/community/${communitySlug}/feed` }] : []),
-    ...(activeFeatures.vibeGroups ? [{ label: 'Vibe Groups', href: `/community/${communitySlug}/vibe-groups` }] : []),
-    ...(activeFeatures.properties ? [{ label: 'Properties', href: '/properties' }] : []),
-    ...(activeFeatures.market ? [{ label: 'Coastline Market', href: '/market' }] : []),
+    ...(activeFeatures.feed ? [{ label: t('navigation.feed', 'Coastline Chatter'), href: `/community/${communitySlug}/feed` }] : []),
+    ...(activeFeatures.vibeGroups ? [{ label: t('navigation.vibeGroups', 'Vibe Groups'), href: `/community/${communitySlug}/vibe-groups` }] : []),
+    ...(activeFeatures.properties ? [{ label: t('navigation.properties', 'Properties'), href: '/properties' }] : []),
+    ...(activeFeatures.market ? [{ label: t('navigation.market', 'Coastline Market'), href: '/market' }] : []),
   ];
   
   // Only add Local Directory link if it's active and we're not in business profile view
   if (activeFeatures.directory && !isBusinessProfileView) {
-    baseNavLinks.push({ label: 'Local Directory', href: `/community/${communitySlug}/business/directory` });
+    baseNavLinks.push({ label: t('navigation.localDirectory', 'Local Directory'), href: `/community/${communitySlug}/business/directory` });
   }
 
   const navLinks = [...baseNavLinks];
@@ -123,6 +126,8 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
         {/* User Info and Dashboard/Logout Buttons (desktop, always right) */}
         {!isHome && user && (
           <div className="hidden md:flex items-center gap-4 ml-4 min-w-max">
+            <LanguageSwitcher />
+            
             {profile && (
               <Link href={`/community/${communitySlug}/business/directory/businessmenu`} className="flex items-center gap-2 cursor-pointer" onClick={() => {
                 // Set localStorage to indicate settings tab should be active
@@ -136,11 +141,11 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
             {profile && profile.role !== 'business' && (
               <div className="flex gap-2">
                 <Link href={`/community/${communitySlug}/mini-dash`} passHref legacyBehavior>
-                  <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '').includes('/mini-dash') ? 'ring-2 ring-seafoam' : ''}`}>Mini-Dash</a>
-                </Link>
+                  <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '').includes('/mini-dash') ? 'ring-2 ring-seafoam' : ''}`}>{t('navigation.miniDash', 'Mini-Dash')}</a>
+            </Link>
               </div>
             )}
-            <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
+            <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">{t('navigation.logout', 'Logout')}</button>
           </div>
         )}
         {/* Hamburger for mobile (always right) */}
@@ -191,12 +196,17 @@ export default function Header({ communityId = 'miami' }: { communityId?: string
                 <div className="flex flex-col gap-2">
                   <Link href={`/community/${communitySlug}/mini-dash`} passHref legacyBehavior>
                     <a className={`px-4 py-2 rounded-md font-semibold text-offWhite bg-primaryTeal hover:bg-seafoam hover:text-primaryTeal transition-colors border-2 border-primaryTeal shadow-subtle ${(pathname ?? '').includes('/mini-dash') ? 'ring-2 ring-seafoam' : ''}`}
-                      onClick={() => setMenuOpen(false)}
-                    >Mini-Dash</a>
-                  </Link>
+                  onClick={() => setMenuOpen(false)}
+                    >{t('navigation.miniDash', 'Mini-Dash')}</a>
+              </Link>
                 </div>
               )}
-              <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">Logout</button>
+              <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="px-4 py-2 rounded-md font-semibold bg-transparent text-primaryTeal hover:underline transition">{t('navigation.logout', 'Logout')}</button>
+              <div className="mt-2 py-2 border-t border-seafoam/30">
+                <div className="px-2">
+                  <LanguageSwitcher />
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -26,7 +26,7 @@ export default function Home() {
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('community_id')
+          .select('community_id, role')
           .eq('id', user.id)
           .single();
           
@@ -39,7 +39,11 @@ export default function Home() {
             
           if (community) {
             setRedirecting(true);
-            router.push(`/community/${community.slug}/mini-dash`);
+            if (profile.role === 'business') {
+              router.push(`/community/${community.slug}/business/directory/businessmenu`);
+            } else {
+              router.push(`/community/${community.slug}/mini-dash`);
+            }
           }
         }
       }
@@ -58,20 +62,20 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Hero Section */}
+        {/* Hero Section */}
       <div className="relative h-screen bg-teal-900">
         {/* Background Image */}
         <Image 
-          src="/images/placeholder.svg" 
+          src="/images/cover.jpg" 
           alt="Da Nang Beach" 
           fill 
           style={{ objectFit: 'cover', objectPosition: 'center' }}
           priority
         />
-        
-        {/* Overlay */}
+
+          {/* Overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-teal-900/70 to-teal-900/30"></div>
-        
+
         {/* Content */}
         <div className="absolute inset-0 flex flex-col justify-center items-center text-white p-4">
           <div className="mb-4 inline-flex items-center px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full">
@@ -80,7 +84,7 @@ export default function Home() {
           </div>
           <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold text-center mb-4">
             Discover Da Nang
-          </h1>
+            </h1>
           <p className="text-xl sm:text-2xl font-light mb-6 text-center max-w-2xl">
             Your guide to local businesses and hidden gems
           </p>
@@ -209,7 +213,7 @@ export default function Home() {
             ))}
           </div>
         </div>
-      </div>
+            </div>
       
       {/* Join Community CTA */}
       <div className="bg-gradient-to-r from-teal-500 to-blue-500 py-16 px-4 text-white">
@@ -228,7 +232,7 @@ export default function Home() {
           </div>
         </div>
       </div>
-      
+
       {/* Footer */}
       <footer className="bg-gray-900 text-gray-300 py-12 px-4">
         <div className="max-w-6xl mx-auto">
@@ -291,8 +295,8 @@ export default function Home() {
           </div>
           <div className="border-t border-gray-700 mt-12 pt-8 text-center text-sm">
             <p>&copy; {new Date().getFullYear()} CoastlineVibe - Da Nang Local Directory. All rights reserved.</p>
+            </div>
           </div>
-        </div>
       </footer>
     </div>
   );

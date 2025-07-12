@@ -7,6 +7,7 @@ import PointerModeToggle from '../components/PointerModeToggle';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { ToastProvider } from '@/components/ui/toast';
 import { Translator } from "@/components/translator";
+import NotificationToastContainer from "@/components/shared/NotificationToastContainer";
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -42,6 +43,7 @@ export default function RootLayout({
             <Translator>
               <Header />
               {children}
+              <NotificationToastContainer />
             </Translator>
           </ToastProvider>
         </NotificationProvider>

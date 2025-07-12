@@ -8,6 +8,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { UserCircle2, ShieldCheck, MessageSquare, Heart, Sailboat, Store, ExternalLink } from 'lucide-react';
 import LocationVerificationForm from '@/components/profile/LocationVerificationForm';
+import DashboardNotifications from '@/components/shared/DashboardNotifications';
+import { NotificationProvider } from '@/context/NotificationContext';
 
 // Define a simplified Profile type for this page's needs
 interface Profile {
@@ -80,6 +82,19 @@ export default function MiniDashPage() {
           setError('Not logged in');
           setLoading(false);
           router.push('/login');
+          return;
+        }
+        
+        // Get user profile to check role
+        const { data: userProfile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', authUser.id)
+          .single();
+          
+        // Redirect business users to business menu
+        if (userProfile?.role === 'business') {
+          router.replace(`/community/${communityId}/business/directory/businessmenu`);
           return;
         }
         
@@ -452,54 +467,9 @@ export default function MiniDashPage() {
           </div>
           
           {/* Notifications Section */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">My Notifications</h2>
-              <button 
-                onClick={() => setIsNotificationsCollapsed(!isNotificationsCollapsed)}
-                className="text-slate-500 hover:text-slate-700"
-              >
-                {isNotificationsCollapsed ? '▼' : '▲'}
-              </button>
-            </div>
-            
-            {!isNotificationsCollapsed && (
-              <div className="space-y-2">
-                {notifications.length > 0 ? (
-                  notifications.map(notification => (
-                    <div key={notification.id} className="flex items-start p-2 border-b">
-                      <div className="mr-3">
-                        <Image 
-                          src={notification.actor?.avatar_url || getAvatarUrl(notification.actor?.username, null)} 
-                          alt={notification.actor?.username || 'User'} 
-                          width={40} 
-                          height={40} 
-                          className="rounded-full" 
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between">
-                          <span className="font-semibold">{notification.actor?.username || 'Someone'}</span>
-                          <span className="text-xs text-slate-500">{formatDate(notification.created_at)}</span>
-                        </div>
-                        <p className="text-sm">
-                          {notification.type === 'mention' && 'mentioned you in a post.'}
-                          {notification.type === 'post_like' && 'liked your post.'}
-                          {notification.type === 'new_comment' && 'commented on your post.'}
-                          {notification.type === 'FRIEND_REQUEST' && 'sent you a friend request.'}
-                          {notification.content_snippet && (
-                            <span className="text-xs block text-slate-500 mt-1">"{notification.content_snippet}"</span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-center text-slate-500">No notifications yet.</p>
-                )}
-              </div>
-            )}
-          </div>
+          <NotificationProvider>
+            <DashboardNotifications maxItems={5} initiallyExpanded={false} />
+          </NotificationProvider>
           
           {/* Recent Activity Section */}
           <div className="bg-white p-6 rounded-lg shadow">

@@ -159,13 +159,6 @@ export default function BusinessDashboardPage() {
                 <Shield className="h-5 w-5 mr-3 text-teal-600" />
                 Review Moderation
               </Link>
-              <Link 
-                href={`/community/${communityId}/mini-dash`}
-                className="flex items-center p-2 text-gray-700 rounded hover:bg-gray-100"
-              >
-                <MessageSquare className="h-5 w-5 mr-3 text-teal-600" />
-                Mini Dashboard
-              </Link>
             </nav>
           </div>
         </div>

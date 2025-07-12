@@ -237,11 +237,11 @@ export default function MarketItemDetailPage() {
         <button
           className="mt-8 px-6 py-2 rounded bg-gray-200 text-cyan-900 font-semibold hover:bg-gray-300 transition"
           onClick={() => {
-                          const communityId = item?.community_id || sellerProfile?.community_id;
-              if (communityId) {
+            const communityId = item?.community_id || sellerProfile?.community_id;
+            if (communityId) {
                 router.push(`/community/${communityId}/mini-dash`);
-              } else {
-                router.push('/dashboard');
+            } else {
+              router.push('/dashboard');
             }
           }}
         >
