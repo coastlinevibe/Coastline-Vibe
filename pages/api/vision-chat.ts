@@ -13,8 +13,22 @@ async function parseForm(req: NextApiRequest): Promise<{ image?: Buffer; prompt:
     const form = formidable({ multiples: false });
     form.parse(req, (err: any, fields: Fields, files: Files) => {
       if (err) return reject(err);
-      const prompt = fields.prompt as string || '';
-      const imageFile = files.image as FormidableFile;
+      // Fix: handle prompt as string | string[] | undefined
+      let promptValue = fields.prompt;
+      let prompt = '';
+      if (Array.isArray(promptValue)) {
+        prompt = promptValue[0] || '';
+      } else if (typeof promptValue === 'string') {
+        prompt = promptValue;
+      }
+      // Fix: handle imageFile as FormidableFile | FormidableFile[] | undefined
+      let imageFileValue = files.image;
+      let imageFile: FormidableFile | undefined;
+      if (Array.isArray(imageFileValue)) {
+        imageFile = imageFileValue[0];
+      } else if (imageFileValue) {
+        imageFile = imageFileValue as FormidableFile;
+      }
       if (!imageFile) return resolve({ prompt }); // No image uploaded
       fs.readFile(imageFile.filepath, (err, data) => {
         if (err) return reject(err);
