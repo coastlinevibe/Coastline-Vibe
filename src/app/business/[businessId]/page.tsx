@@ -7,7 +7,7 @@ import AccommodationTemplate from "../../../components/templates/AccommodationTe
 
 export default function BusinessDetailPage() {
   const params = useParams();
-  const businessId = params.businessId as string;
+  const businessId = params?.businessId as string | undefined;
   const [business, setBusiness] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export default function BusinessDetailPage() {
   const categoryName = business.category?.name;
   
   if (categoryName === "Accommodations") {
-    return <AccommodationTemplate business={business} />;
+    return <AccommodationTemplate business={business} userRole={null} />;
   }
   
   // Default template for other business types
