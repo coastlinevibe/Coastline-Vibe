@@ -140,17 +140,17 @@ export default function Home() {
             {[
               {
                 name: "My An Beach Area",
-                image: "/images/placeholder.svg",
+                image: "/beach-ball.png",
                 description: "Popular for its beautiful beach, vibrant cafes, and international restaurants."
               },
               {
                 name: "Han Riverside",
-                image: "/images/placeholder.svg",
+                image: "/beach-ball.png",
                 description: "Famous for the Dragon Bridge, night market, and scenic river views."
               },
               {
                 name: "Son Tra Peninsula",
-                image: "/images/placeholder.svg",
+                image: "/beach-ball.png",
                 description: "Nature reserve with stunning views, beaches, and the famous Lady Buddha statue."
               }
             ].map((neighborhood, idx) => (
