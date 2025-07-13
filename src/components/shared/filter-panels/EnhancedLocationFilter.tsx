@@ -377,7 +377,7 @@ export default function EnhancedLocationFilter({
                 onError={() => setMapPreviewUrl(null)}
               />
               <div className="bg-gray-50 p-2 text-xs text-gray-600">
-                {t('directory.searchingWithinRadius', 'Searching within {{radius}} km radius', { radius })}
+                {t('directory.searchingWithinRadius', 'Searching within {{radius}} km radius')}
               </div>
             </div>
           )}

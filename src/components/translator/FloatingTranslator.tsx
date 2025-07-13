@@ -116,7 +116,7 @@ export default function FloatingTranslator() {
       {/* Translator popup */}
       {showPopup && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/20">
-          <TranslatorPopup onClose={handleClosePopup} />
+          <TranslatorPopup onClose={handleClosePopup} position={{ x: 0, y: 0 }} />
         </div>
       )}
     </>

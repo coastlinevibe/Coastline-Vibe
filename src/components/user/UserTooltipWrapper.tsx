@@ -14,8 +14,8 @@ interface UserTooltipWrapperProps {
 const UserTooltipWrapper: React.FC<UserTooltipWrapperProps> = ({ children, profileData, delay = 200, currentUserId }) => {
   const router = useRouter();
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
-  const hoverTimeoutRef = useRef<number | null>(null);
-  const leaveTimeoutRef = useRef<number | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimeouts = () => {
     if (hoverTimeoutRef.current) {

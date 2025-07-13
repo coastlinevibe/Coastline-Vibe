@@ -1,12 +1,10 @@
-import { AnimationProps } from 'framer-motion';
-
 // Floating animation for when a reaction is clicked
 export const floatingAnimation = (
   x: number | string = 0, 
   y: string = '-500%', 
   rotate: number = 0,
   scale: number = 2
-): AnimationProps => ({
+) => ({
   initial: { 
     y: 0, 
     opacity: 1, 
@@ -31,7 +29,7 @@ export const floatingAnimation = (
 });
 
 // Animation for reaction count change
-export const countChangeAnimation = (): AnimationProps => ({
+export const countChangeAnimation = () => ({
   initial: { 
     scale: 0.7 
   },
@@ -46,7 +44,7 @@ export const countChangeAnimation = (): AnimationProps => ({
 });
 
 // Animation for reaction item appearance
-export const reactionAppearAnimation = (): AnimationProps => ({
+export const reactionAppearAnimation = () => ({
   initial: { 
     scale: 0.5, 
     opacity: 0 
@@ -70,7 +68,7 @@ export const reactionAppearAnimation = (): AnimationProps => ({
 });
 
 // Complex animation for reactions with multi-stage animation
-export const complexReactionAnimation = (): AnimationProps => ({
+export const complexReactionAnimation = () => ({
   initial: { 
     opacity: 1, 
     scale: 1, 

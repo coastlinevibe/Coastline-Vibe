@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import BusinessMultiStepForm from './BusinessMultiStepForm';
-import CommunityBusinessDetailPage from '@/app/community/[communityId]/business/[businessId]/page';
 import AccommodationTemplate from '@/components/templates/AccommodationTemplate';
 import Link from 'next/link';
 import Image from 'next/image';
