@@ -4,12 +4,12 @@ import { createClient } from '@/lib/supabase/client';
 export async function GET() {
   const supabase = createClient();
   const results = {
-    auth: null,
-    tables: null,
-    notificationsTableExists: false,
-    createNotificationAttempt: null,
-    rawInsertAttempt: null,
-    diagnostics: {}
+    auth: null as any,
+    tables: null as any,
+    notificationsTableExists: false as any,
+    createNotificationAttempt: null as any,
+    rawInsertAttempt: null as any,
+    diagnostics: {} as any
   };
   
   try {
@@ -144,7 +144,7 @@ export async function GET() {
     console.error('Debug endpoint error:', error);
     return NextResponse.json({ 
       message: "Error running diagnostics", 
-      error: error.message,
+      error: (error as any).message,
       results
     }, { status: 500 });
   }
