@@ -1,18 +1,7 @@
 {
   "version": 2,
+  "framework": "nextjs",
   "buildCommand": "next build",
-  "outputDirectory": ".next",
-  "routes": [
-    {
-      "src": "/favicon.ico",
-      "dest": "/favicon.ico"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/"
-    }
-  ]
+  "devCommand": "next dev",
+  "installCommand": "npm install"
 } 
