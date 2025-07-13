@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     .eq('friend_id', user_id)
     .in('status', ['pending', 'accepted']);
   if (req1Error || req2Error) {
-    return NextResponse.json({ error: (req1Error || req2Error).message }, { status: 500 });
+    return NextResponse.json({ error: (req1Error || req2Error)?.message || 'Unknown error' }, { status: 500 });
   }
   const existingRequest = [...(req1 || []), ...(req2 || [])];
   if (existingRequest.length > 0) {
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     .eq('community_id', community_id)
     .eq('status', 'accepted');
   if (acc1Error || acc2Error) {
-    return NextResponse.json({ error: (acc1Error || acc2Error).message }, { status: 500 });
+    return NextResponse.json({ error: (acc1Error || acc2Error)?.message || 'Unknown error' }, { status: 500 });
   }
   const existingFriend = [...(acc1 || []), ...(acc2 || [])];
   if (existingFriend.length > 0) {
