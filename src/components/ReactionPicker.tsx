@@ -1,6 +1,5 @@
 import React from 'react';
 import Image from 'next/image';
-import styles from '../styles/ephemeral.css';
 
 interface ReactionPickerProps {
   onSelect: (reactionId: string, event: React.MouseEvent) => void;
