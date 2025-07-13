@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Waves } from 'lucide-react';
 import Link from 'next/link';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import type { Database } from '@/types/supabase';
 import { Eye, EyeOff } from 'lucide-react';
 
 // Define a simple interface for our form values
@@ -142,7 +140,6 @@ export default function LoginPage() {
       }
       
       const userEmail = profileData.email;
-      const userIsAdmin = profileData.role === 'community admin' || profileData.role === 'superadmin';
       const userCommunityId = profileData.community_id;
       const userRole = profileData.role;
       const approvalStatus = profileData.approval_status;

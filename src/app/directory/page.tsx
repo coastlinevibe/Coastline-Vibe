@@ -19,6 +19,19 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// Define a minimal type for businesses
+interface Business {
+  id: string;
+  user_id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+interface Profile {
+  id: string;
+  is_approved?: boolean;
+}
+
 export default function DirectoryPage() {
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [communities, setCommunities] = useState<{ id: string; name: string }[]>([]);
@@ -34,7 +47,7 @@ export default function DirectoryPage() {
     radius: 5,
     coords: null,
   });
-  const [businesses, setBusinesses] = useState<any[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -94,7 +107,7 @@ export default function DirectoryPage() {
         setLoading(false);
         if (!res.error && res.data) {
           // Fetch owner profiles for all businesses
-          const userIds = res.data.map((b: any) => b.user_id).filter(Boolean);
+          const userIds = res.data.map((b: Business) => b.user_id).filter(Boolean);
           if (userIds.length === 0) {
             setBusinesses([]);
             return;
@@ -107,8 +120,8 @@ export default function DirectoryPage() {
             setBusinesses([]);
             return;
           }
-          const approvedIds = new Set(profiles.filter((p: any) => p.is_approved).map((p: any) => p.id));
-          const filtered = res.data.filter((b: any) => approvedIds.has(b.user_id));
+          const approvedIds = new Set(profiles.filter((p: Profile) => p.is_approved).map((p: Profile) => p.id));
+          const filtered = res.data.filter((b: Business) => approvedIds.has(b.user_id));
           setBusinesses(filtered);
         } else {
           setBusinesses([]);

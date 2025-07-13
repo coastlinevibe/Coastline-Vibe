@@ -14,7 +14,7 @@ export default function Home() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<unknown>(null);
   const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
@@ -103,7 +103,7 @@ export default function Home() {
       <div className="py-16 bg-white">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-800 mb-4">Discover Da Nang's Local Directory</h2>
+            <h2 className="text-3xl font-bold text-gray-800 mb-4">Discover Da Nang&apos;s Local Directory</h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               Find the best places to eat, stay, and play in Da Nang. Our community-powered directory gives you access to local favorites and hidden gems.
             </p>
@@ -132,7 +132,7 @@ export default function Home() {
       <div className="py-16 bg-gray-50">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-800 mb-4">Explore Da Nang's Neighborhoods</h2>
+            <h2 className="text-3xl font-bold text-gray-800 mb-4">Explore Da Nang&apos;s Neighborhoods</h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               Each area of Da Nang offers a unique experience. Discover businesses across these vibrant neighborhoods.
             </p>
@@ -187,7 +187,7 @@ export default function Home() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-800 mb-4">Popular Categories</h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Find exactly what you're looking for in our comprehensive business directory.
+              Find exactly what you&apos;re looking for in our comprehensive business directory.
             </p>
           </div>
           
@@ -244,7 +244,7 @@ export default function Home() {
                 </div>
                 <span className="text-2xl font-bold text-white">CoastlineVibe</span>
               </div>
-              <p className="mb-4">Your guide to Da Nang's local businesses and community.</p>
+              <p className="mb-4">Your guide to Da Nang&apos;s local businesses and community.</p>
               <div className="flex space-x-4">
                 <a href="#" className="text-gray-300 hover:text-primaryTeal transition-colors">
                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
