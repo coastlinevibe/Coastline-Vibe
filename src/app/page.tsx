@@ -90,7 +90,7 @@ export default function Home() {
             <Link href="/login?redirect=/community/da-nang/business/directory" className="bg-primaryTeal hover:bg-teal-600 text-white font-bold py-4 px-8 rounded-lg shadow-lg transition duration-300 text-center">
               Explore Local Directory
             </Link>
-            <Link href="/login" className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white font-bold py-4 px-8 rounded-lg shadow-lg transition duration-300 text-center">
+            <Link href="/signup" className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white font-bold py-4 px-8 rounded-lg shadow-lg transition duration-300 text-center">
               Join Community
             </Link>
           </div>
@@ -221,7 +221,7 @@ export default function Home() {
             Connect with locals, discover new places, and get the most out of your time in Da Nang.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <Link href="/login" className="bg-white text-teal-600 hover:bg-slate-100 font-bold py-3 px-8 rounded-lg shadow-lg transition duration-300 text-center">
+            <Link href="/signup" className="bg-white text-teal-600 hover:bg-slate-100 font-bold py-3 px-8 rounded-lg shadow-lg transition duration-300 text-center">
               Create Account
             </Link>
             <Link href="/login?redirect=/community/da-nang/business/directory" className="bg-transparent hover:bg-white hover:bg-opacity-20 border-2 border-white font-bold py-3 px-8 rounded-lg shadow-lg transition duration-300 text-center">
@@ -284,7 +284,7 @@ export default function Home() {
                 <h3 className="text-white font-semibold text-lg mb-4">Info</h3>
                 <ul className="space-y-2">
                   <li><a href="#" className="hover:text-primaryTeal transition-colors">About Us</a></li>
-                  <li><a href="#" className="hover:text-primaryTeal transition-colors">Join Community</a></li>
+                  <li><a href="/signup" className="hover:text-primaryTeal transition-colors">Join Community</a></li>
                   <li><a href="#" className="hover:text-primaryTeal transition-colors">Add Your Business</a></li>
                   <li><a href="#" className="hover:text-primaryTeal transition-colors">Contact</a></li>
                 </ul>
