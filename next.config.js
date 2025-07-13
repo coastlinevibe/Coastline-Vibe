@@ -12,7 +12,11 @@ const nextConfig = {
       'api.dicebear.com',
       'i.pravatar.cc',
     ],
+    unoptimized: process.env.NODE_ENV === 'production',
   },
+  output: 'standalone',
+  trailingSlash: false,
+  reactStrictMode: true,
 };
 
 module.exports = nextConfig; 
