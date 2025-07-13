@@ -66,7 +66,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json({ 
       error: "Error running diagnostics",
-      message: error.message 
+      message: (error as any).message 
     }, { status: 500 });
   }
 } 
