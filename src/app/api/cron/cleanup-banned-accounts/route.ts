@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 
 /**
  * API route that handles cleanup of banned accounts older than 10 days
@@ -8,7 +9,7 @@ import { createClient } from '@/lib/supabase/server';
 export async function GET(request: NextRequest) {
   try {
     // Create Supabase client with admin privileges
-    const supabase = createClient();
+    const supabase = createClient(cookies());
 
     // Query for banned users older than 10 days
     const tenDaysAgo = new Date();
