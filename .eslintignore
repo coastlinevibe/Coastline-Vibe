@@ -1,0 +1,23 @@
+# Ignore everything in src/app except directory, login, and page.tsx
+src/app/*
+!src/app/directory/
+!src/app/login/
+!src/app/page.tsx
+
+# Ignore other top-level directories not needed now
+BookingApp/
+CoastlineBooking/
+pages/
+
+# Optionally ignore other unused src subfolders
+src/components/
+src/hooks/
+src/lib/
+src/constants/
+src/data/
+src/providers/
+src/scripts/
+src/styles/
+src/translations/
+src/types/
+src/utils/ 
