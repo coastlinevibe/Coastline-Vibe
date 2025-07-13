@@ -12,7 +12,6 @@ import { useState, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { FilterPanel, Filters } from "@/components/FilterPanel";
 import { BusinessCard } from "@/components/BusinessCard";
-import { useRouter } from "next/navigation";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

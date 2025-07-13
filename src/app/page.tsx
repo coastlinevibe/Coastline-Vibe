@@ -14,14 +14,12 @@ export default function Home() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const [user, setUser] = useState<unknown>(null);
   const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     // Check if the user is already logged in
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
 
       if (user) {
         const { data: profile } = await supabase
