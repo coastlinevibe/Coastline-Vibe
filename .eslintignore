@@ -3,7 +3,7 @@ src/app/*
 !src/app/directory/
 !src/app/login/
 !src/app/page.tsx
-!src/app/community/
+src/app/community/
 
 # Ignore other top-level directories not needed now
 BookingApp/
